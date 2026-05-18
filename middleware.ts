@@ -3,19 +3,30 @@ import type { NextRequest } from 'next/server';
 import { updateSession } from '@/utils/supabase/middleware';
 
 // Emails autorizados y su rol en KitchenOps
+// admin → acceso total (ycaro + jsepulveda)
 const RMAP: Record<string, string> = {
-  'chefstorobayo@cerveceriakunstmann.cl': 'cocina',
-  'fcaro@cerveceriakunstmann.cl':         'jefatura',
-  'jsepulveda@cerveceriakunstmann.cl':    'finanzas',
-  'ycaro@cerveceriakunstmann.cl':         'finanzas',
+  'ycaro@cerveceriakunstmann.cl':         'admin',
+  'jsepulveda@cerveceriakunstmann.cl':    'admin',
   'ddelgado@cerveceriakunstmann.cl':      'finanzas',
+  'fcaro@cerveceriakunstmann.cl':         'jefatura',
+  'chefstorobayo@cerveceriakunstmann.cl': 'cocina',
 };
 
 // Rutas permitidas por rol
+// admin tiene acceso a TODO
 const RUTAS_ROL: Record<string, string[]> = {
-  cocina:   ['/produccion', '/colacion', '/mermas', '/historial'],
-  jefatura: ['/dashboard', '/historial', '/export'],
+  admin:    ['/produccion', '/colacion', '/mermas', '/historial', '/dashboard', '/kpis', '/costos', '/export'],
   finanzas: ['/kpis', '/costos', '/historial', '/export'],
+  jefatura: ['/dashboard', '/historial', '/export'],
+  cocina:   ['/produccion', '/colacion', '/mermas', '/historial'],
+};
+
+// Ruta de inicio por rol
+const RUTA_INICIO: Record<string, string> = {
+  admin:    '/kpis',
+  finanzas: '/kpis',
+  jefatura: '/dashboard',
+  cocina:   '/produccion',
 };
 
 export async function middleware(request: NextRequest) {
@@ -29,7 +40,6 @@ export async function middleware(request: NextRequest) {
     /\.(svg|png|jpg|jpeg|gif|webp|ico|css|js)$/.test(pathname);
 
   if (esPublica) {
-    // Para rutas de API, solo refrescar sesión y pasar
     const { supabaseResponse } = await updateSession(request);
     return supabaseResponse;
   }
@@ -53,25 +63,20 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Ruta raíz → redirigir según rol
+  // Ruta raíz → redirigir a inicio del rol
   if (pathname === '/') {
     const url = request.nextUrl.clone();
-    url.pathname = rol === 'cocina'
-      ? '/produccion'
-      : rol === 'jefatura'
-      ? '/dashboard'
-      : '/kpis';
+    url.pathname = RUTA_INICIO[rol] ?? '/login';
     return NextResponse.redirect(url);
   }
 
-  // Verificar acceso a rutas protegidas por rol
+  // Verificar acceso según rol
   const rutasPermitidas = RUTAS_ROL[rol] ?? [];
   const tieneAcceso = rutasPermitidas.some(ruta => pathname.startsWith(ruta));
 
   if (!tieneAcceso) {
-    // Redirigir a su ruta principal si intenta acceder a una que no le corresponde
     const url = request.nextUrl.clone();
-    url.pathname = rutasPermitidas[0] ?? '/login';
+    url.pathname = RUTA_INICIO[rol] ?? '/login';
     return NextResponse.redirect(url);
   }
 

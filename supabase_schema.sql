@@ -322,20 +322,26 @@ CREATE POLICY "Acceso autenticado" ON carta_ingredientes
 -- PASO 5: DATOS MAESTROS INICIALES
 -- ============================================================
 
--- Responsables (personal de cocina + finanzas/jefatura)
+-- Responsables
+-- admin: acceso total (ycaro + jsepulveda) — pueden hacer todo
+-- finanzas: KPIs, costos, historial, export (solo lectura operaciones)
+-- jefatura: dashboard, historial, export
+-- cocina: registrar producción, colación, mermas, historial
 INSERT INTO responsables (nombre, email, rol, color_hex, iniciales) VALUES
-  ('JAVIERA SEPULVEDA',  'jsepulveda@cerveceriakunstmann.cl', 'finanzas',  '#0D9373', 'JS'),
-  ('YONATAN CARO',       'ycaro@cerveceriakunstmann.cl',      'finanzas',  '#8B5CF6', 'YC'),
-  ('DANIEL DELGADO',     'ddelgado@cerveceriakunstmann.cl',   'finanzas',  '#3B82F6', 'DD'),
-  ('FELIPE CARO',        'fcaro@cerveceriakunstmann.cl',      'jefatura',  '#E8560A', 'FC'),
-  ('PAULINA TRONCOSO',   'chefstorobayo@cerveceriakunstmann.cl', 'cocina', '#D97706', 'PT'),
-  ('LUISA FLANDEZ',      'chefstorobayo@cerveceriakunstmann.cl', 'cocina', '#10B981', 'LF'),
-  ('JOAQUIN VELASQUEZ',  'chefstorobayo@cerveceriakunstmann.cl', 'cocina', '#6366F1', 'JV'),
-  ('JOEL MENDEZ',        'chefstorobayo@cerveceriakunstmann.cl', 'cocina', '#F59E0B', 'JM'),
-  ('FELIPE VIDAL',       'chefstorobayo@cerveceriakunstmann.cl', 'cocina', '#EF4444', 'FV'),
-  ('PAMELA COLIHUINCA',  'chefstorobayo@cerveceriakunstmann.cl', 'cocina', '#EC4899', 'PC'),
-  ('PIA TELLO',          'chefstorobayo@cerveceriakunstmann.cl', 'cocina', '#14B8A6', 'PT')
-ON CONFLICT (nombre) DO NOTHING;
+  ('YONATAN CARO',       'ycaro@cerveceriakunstmann.cl',         'admin',    '#8B5CF6', 'YC'),
+  ('JAVIERA SEPULVEDA',  'jsepulveda@cerveceriakunstmann.cl',    'admin',    '#0D9373', 'JS'),
+  ('DANIEL DELGADO',     'ddelgado@cerveceriakunstmann.cl',      'finanzas', '#3B82F6', 'DD'),
+  ('FELIPE CARO',        'fcaro@cerveceriakunstmann.cl',         'jefatura', '#E8560A', 'FC'),
+  ('PAULINA TRONCOSO',   'chefstorobayo@cerveceriakunstmann.cl', 'cocina',   '#D97706', 'PT'),
+  ('LUISA FLANDEZ',      'chefstorobayo@cerveceriakunstmann.cl', 'cocina',   '#10B981', 'LF'),
+  ('JOAQUIN VELASQUEZ',  'chefstorobayo@cerveceriakunstmann.cl', 'cocina',   '#6366F1', 'JV'),
+  ('JOEL MENDEZ',        'chefstorobayo@cerveceriakunstmann.cl', 'cocina',   '#F59E0B', 'JM'),
+  ('FELIPE VIDAL',       'chefstorobayo@cerveceriakunstmann.cl', 'cocina',   '#EF4444', 'FV'),
+  ('PAMELA COLIHUINCA',  'chefstorobayo@cerveceriakunstmann.cl', 'cocina',   '#EC4899', 'PC'),
+  ('PIA TELLO',          'chefstorobayo@cerveceriakunstmann.cl', 'cocina',   '#14B8A6', 'PT2')
+ON CONFLICT (nombre) DO UPDATE SET
+  email = EXCLUDED.email, rol = EXCLUDED.rol,
+  color_hex = EXCLUDED.color_hex, iniciales = EXCLUDED.iniciales;
 
 -- Verduras (base del módulo de rendimiento)
 INSERT INTO verduras (nombre) VALUES
