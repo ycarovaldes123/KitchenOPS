@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+/* ─── Paleta Kunstmann ──────────────────────────────────────── */
+:root {
+  --bg:  #F7F4EF;   /* fondo crema */
+  --sf:  #ffffff;   /* superficies / cards */
+  --sb:  #141414;   /* sidebar negro */
+  --ac:  #E8560A;   /* naranja Kunstmann — acción principal */
+  --al:  #FDF0E8;   /* naranja claro */
+  --tl:  #0D9373;   /* verde teal — éxito / producción */
+  --am:  #D97706;   /* amarillo advertencia */
+  --rd:  #DC2626;   /* rojo error / merma */
+  --bo:  #E5E0D8;   /* borde */
+  --ra:  12px;      /* border-radius estándar */
+
+  /* Texto */
+  --tx:  #141414;   /* texto primario */
+  --ts:  #6B6560;   /* texto secundario */
+}
+
+/* ─── Tailwind v4 custom theme ─────────────────────────────── */
+@theme inline {
+  --color-bg:  var(--bg);
+  --color-sf:  var(--sf);
+  --color-sb:  var(--sb);
+  --color-ac:  var(--ac);
+  --color-al:  var(--al);
+  --color-tl:  var(--tl);
+  --color-am:  var(--am);
+  --color-rd:  var(--rd);
+  --color-bo:  var(--bo);
+  --color-tx:  var(--tx);
+  --color-ts:  var(--ts);
+
+  --radius-ra: var(--ra);
+
+  --font-syne:   'Syne', sans-serif;
+  --font-dm:     'DM Sans', sans-serif;
+}
+
+/* ─── Google Fonts (Syne + DM Sans) ───────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap');
+
+/* ─── Base ─────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--tx);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+}
+
+/* ─── Scrollbar discreta ───────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bo); border-radius: 3px; }
