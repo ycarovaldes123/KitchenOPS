@@ -167,7 +167,7 @@ export default function DashboardPage() {
   })();
 
   return (
-    <div style={{ padding: '20px 32px', maxWidth: '1280px' }}>
+    <div className="page">
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
@@ -196,7 +196,7 @@ export default function DashboardPage() {
       ) : kpis ? (
         <>
           {/* KPI summary row */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '16px' }}>
+          <div className="dash-kpi-row">
             <KpiCard label="Turnos producción" value={String(kpis.total_informes)} sub="informes registrados" accent="var(--ac)" />
             <KpiCard label="Costo de insumos" value={(kpis.total_produccion_clp ?? 0) > 0 ? formatCLP(kpis.total_produccion_clp!) : '—'} sub={(kpis.costo_por_orden ?? 0) > 0 ? `≈ ${formatCLP(kpis.costo_por_orden!)} / turno` : 'consumo materia prima'} color="var(--tl)" accent="var(--tl)" />
             <KpiCard label="Costos hundidos" value={totalHundido > 0 ? formatCLP(totalHundido) : '—'} sub="mermas + colación" accent="#DC2626" color="#DC2626" />
@@ -210,7 +210,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Charts row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '12px', marginBottom: '12px' }}>
+          <div className="dash-chart-row" style={{ marginBottom: '12px' }}>
 
             {/* Área chart — Producción KG */}
             <ChartCard title="Producción diaria (KG)">
@@ -273,7 +273,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Bottom row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '12px' }}>
+          <div className="dash-chart-row">
 
             {/* Stacked bar — Costos por día */}
             <ChartCard title="Costos del período (producción · colación · mermas)">

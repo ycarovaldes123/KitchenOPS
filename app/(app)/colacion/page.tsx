@@ -331,10 +331,10 @@ export default function ColacionPage() {
     <>
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
-        @media (max-width: 800px) { .col-grid { grid-template-columns: 1fr !important; } }
+        @media (max-width: 1023px) { .col-grid { grid-template-columns: 1fr !important; } }
       `}</style>
 
-      <div style={{ padding: '20px 28px 48px', maxWidth: '1400px' }}>
+      <div className="page" style={{ paddingBottom: '48px' }}>
 
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '10px' }}>

@@ -28,11 +28,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         .app-bottomnav { display: none  !important; }
         .app-main      { margin-left: 220px; }
 
-        @media (max-width: 767px) {
+        @media (max-width: 1023px) {
           .app-sidebar   { display: none  !important; }
           .app-topbar    { display: flex  !important; }
           .app-bottomnav { display: flex  !important; }
-          .app-main      { margin-left: 0; padding-top: 56px; padding-bottom: 68px; }
+          .app-main      { margin-left: 0; padding-top: 56px; padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px)); }
         }
       `}</style>
 

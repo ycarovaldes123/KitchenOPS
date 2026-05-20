@@ -84,7 +84,7 @@ function TablaProduccion({ datos }: { datos: Record<string, unknown>[] }) {
   if (!datos.length) return <Empty msg="No hay informes de producción en este período." />;
 
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '560px' }}>
         <thead>
           <tr>
@@ -219,7 +219,7 @@ function TablaColacion({ datos }: { datos: Record<string, unknown>[] }) {
   if (!datos.length) return <Empty msg="No hay colaciones registradas en este período." />;
 
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '500px' }}>
         <thead>
           <tr>
@@ -326,7 +326,7 @@ function TablaMermas({ datos }: { datos: Record<string, unknown>[] }) {
   if (!datos.length) return <Empty msg="No hay mermas registradas en este período." />;
 
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '480px' }}>
         <thead>
           <tr>
@@ -469,13 +469,11 @@ function PeriodShortcuts({ onSelect }: { onSelect: (d: string, h: string) => voi
     { label: 'Año',     d: restarMeses(12),h: hoy },
   ];
   return (
-    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+    <div className="tab-row">
       {shorts.map(s => (
-        <button key={s.label} type="button" onClick={() => onSelect(s.d, s.h)}
-          style={{ padding: '5px 12px', borderRadius: '20px', border: '1.5px solid var(--bo)', background: 'var(--bg)', color: 'var(--ts)', fontSize: '12px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--ac)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--ac)'; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--bo)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--ts)'; }}
-        >{s.label}</button>
+        <button key={s.label} type="button" onClick={() => onSelect(s.d, s.h)} className="pill-btn">
+          {s.label}
+        </button>
       ))}
     </div>
   );
@@ -514,7 +512,7 @@ export default function HistorialPage() {
   ];
 
   return (
-    <div style={{ padding: '20px 28px', maxWidth: '1400px' }}>
+    <div className="page">
       <div style={{ marginBottom: '20px' }}>
         <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '22px', fontWeight: 800, margin: '0 0 3px' }}>Historial</h1>
         <p style={{ color: 'var(--ts)', fontSize: '13px', margin: 0 }}>Registros por período — haz clic en una fila para ver el detalle</p>
@@ -522,18 +520,10 @@ export default function HistorialPage() {
 
       {/* Filtros */}
       <div style={{ background: 'var(--sf)', borderRadius: '12px', border: '1px solid var(--bo)', padding: '14px 18px', marginBottom: '14px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <input type="date" value={desde} onChange={e => setDesde(e.target.value)}
-            style={{ border: '1.5px solid var(--bo)', borderRadius: '8px', padding: '6px 10px', fontSize: '13px', background: 'var(--bg)', color: 'var(--tx)', outline: 'none', fontFamily: 'DM Sans, sans-serif' }}
-            onFocus={e => (e.currentTarget.style.borderColor = 'var(--ac)')}
-            onBlur={e => (e.currentTarget.style.borderColor = 'var(--bo)')}
-          />
+        <div className="date-row">
+          <input type="date" value={desde} onChange={e => setDesde(e.target.value)} className="field-input" style={{ padding: '6px 10px', fontSize: '13px', minHeight: 'unset' }} />
           <span style={{ color: 'var(--ts)', fontSize: '13px' }}>→</span>
-          <input type="date" value={hasta} onChange={e => setHasta(e.target.value)}
-            style={{ border: '1.5px solid var(--bo)', borderRadius: '8px', padding: '6px 10px', fontSize: '13px', background: 'var(--bg)', color: 'var(--tx)', outline: 'none', fontFamily: 'DM Sans, sans-serif' }}
-            onFocus={e => (e.currentTarget.style.borderColor = 'var(--ac)')}
-            onBlur={e => (e.currentTarget.style.borderColor = 'var(--bo)')}
-          />
+          <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="field-input" style={{ padding: '6px 10px', fontSize: '13px', minHeight: 'unset' }} />
         </div>
         <PeriodShortcuts onSelect={(d, h) => { setDesde(d); setHasta(h); }} />
         {!loading && datos.length > 0 && (

@@ -76,25 +76,25 @@ export default function KpisPage() {
   ];
 
   return (
-    <div style={{ padding: '20px 32px', maxWidth: '1280px' }}>
+    <div className="page">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
         <div>
           <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '22px', fontWeight: 800, margin: '0 0 2px' }}>KPIs</h1>
           <p style={{ color: 'var(--ts)', fontSize: '13px', margin: 0 }}>Indicadores financieros y operacionales por período</p>
         </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <input type="date" value={desde} onChange={e => setDesde(e.target.value)}
-            style={{ border: '1.5px solid var(--bo)', borderRadius: '8px', padding: '6px 10px', fontSize: '13px', background: 'var(--bg)', color: 'var(--tx)', outline: 'none', fontFamily: 'DM Sans, sans-serif' }} />
-          <span style={{ color: 'var(--ts)', fontSize: '13px' }}>→</span>
-          <input type="date" value={hasta} onChange={e => setHasta(e.target.value)}
-            style={{ border: '1.5px solid var(--bo)', borderRadius: '8px', padding: '6px 10px', fontSize: '13px', background: 'var(--bg)', color: 'var(--tx)', outline: 'none', fontFamily: 'DM Sans, sans-serif' }} />
-          {shortcuts.map(s => (
-            <button key={s.label} type="button" onClick={() => { setDesde(s.desde); setHasta(s.hasta); }}
-              style={{ padding: '5px 12px', borderRadius: '20px', border: '1.5px solid var(--bo)', background: 'var(--bg)', color: 'var(--ts)', fontSize: '12px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--ac)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--ac)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--bo)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--ts)'; }}
-            >{s.label}</button>
-          ))}
+        <div className="page-header-controls">
+          <div className="date-row">
+            <input type="date" value={desde} onChange={e => setDesde(e.target.value)} className="field-input" style={{ padding: '6px 10px', fontSize: '13px', minHeight: 'unset' }} />
+            <span style={{ color: 'var(--ts)', fontSize: '13px' }}>→</span>
+            <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="field-input" style={{ padding: '6px 10px', fontSize: '13px', minHeight: 'unset' }} />
+          </div>
+          <div className="tab-row">
+            {shortcuts.map(s => (
+              <button key={s.label} type="button" onClick={() => { setDesde(s.desde); setHasta(s.hasta); }} className="pill-btn">
+                {s.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -104,7 +104,7 @@ export default function KpisPage() {
         <div style={{ padding: '60px', textAlign: 'center', color: 'var(--ts)' }}>Cargando...</div>
       ) : data ? (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px' }}>
+          <div className="kpi-grid">
             <StatCard label="Turnos registrados" value={String(data.total_informes)} sub="informes de producción" />
             <StatCard label="Costo de insumos" value={(data.total_produccion_clp ?? 0) > 0 ? formatCLP(data.total_produccion_clp!) : '—'} sub="consumo materia prima estimado" color="var(--tl)" />
             <StatCard label="Costo promedio / turno" value={(data.costo_por_orden ?? 0) > 0 ? formatCLP(data.costo_por_orden!) : '—'} sub="costo de consumo por orden" color="var(--ac)" />

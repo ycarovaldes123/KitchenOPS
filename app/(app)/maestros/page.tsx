@@ -296,7 +296,7 @@ export default function MaestrosPage() {
   // ── Render ────────────────────────────────────────────────────
 
   return (
-    <div style={{ padding: '32px 28px' }}>
+    <div className="page">
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
         <div>

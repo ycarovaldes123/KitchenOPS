@@ -89,7 +89,7 @@ export default function ExportPage() {
   }
 
   return (
-    <div style={{ padding: '20px 32px', maxWidth: '1280px' }}>
+    <div className="page">
       <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '22px', fontWeight: 800, margin: '0 0 2px' }}>Exportar</h1>
       <p style={{ color: 'var(--ts)', fontSize: '13px', marginBottom: '16px', marginTop: 0 }}>
         Descarga los registros del período en formato Excel (.xlsx)
@@ -101,7 +101,8 @@ export default function ExportPage() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 360px) 1fr', gap: '16px', alignItems: 'start', marginBottom: '16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 360px) 1fr', gap: '16px', alignItems: 'start', marginBottom: '16px' }}
+           className="export-grid">
 
         {/* Col izq: Selector de período */}
         <div style={{ background: 'var(--sf)', borderRadius: '12px', border: '1px solid var(--bo)', padding: '20px' }}>
@@ -116,15 +117,11 @@ export default function ExportPage() {
             <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} style={inputSt} />
           </div>
 
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          <div className="tab-row">
             {shortcuts.map(s => (
-              <button
-                key={s.label} type="button"
-                onClick={() => { setDesde(s.desde()); setHasta(s.hasta()); }}
-                style={{ padding: '5px 12px', borderRadius: '20px', border: '1.5px solid var(--bo)', background: 'var(--bg)', color: 'var(--ts)', fontSize: '12px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}
-                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--ac)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--ac)'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--bo)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--ts)'; }}
-              >{s.label}</button>
+              <button key={s.label} type="button" onClick={() => { setDesde(s.desde()); setHasta(s.hasta()); }} className="pill-btn">
+                {s.label}
+              </button>
             ))}
           </div>
 

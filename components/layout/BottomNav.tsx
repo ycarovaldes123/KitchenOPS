@@ -18,7 +18,8 @@ export default function BottomNav({ navItems }: BottomNavProps) {
       position: 'fixed', bottom: 0, left: 0, right: 0,
       background: 'var(--sf)', borderTop: '1px solid var(--bo)',
       display: 'flex', alignItems: 'center', justifyContent: 'space-around',
-      height: '60px', zIndex: 100, padding: '0 4px',
+      paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+      height: 'calc(60px + env(safe-area-inset-bottom, 0px))', zIndex: 100, padding: '0 4px',
     }}>
       {visible.map(item => {
         const active = pathname.startsWith(item.href);

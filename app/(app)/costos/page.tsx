@@ -155,11 +155,11 @@ export default function CostosPage() {
   }), [platos]);
 
   if (loading) return (
-    <div style={{ padding: '32px 28px', color: 'var(--ts)', fontSize: '14px' }}>Cargando carta...</div>
+    <div className="page" style={{ color: 'var(--ts)', fontSize: '14px' }}>Cargando carta...</div>
   );
 
   if (error) return (
-    <div style={{ padding: '32px 28px' }}>
+    <div className="page">
       <div style={{ background: '#FEF2F2', border: '1px solid var(--rd)', borderRadius: '10px', padding: '16px', color: 'var(--rd)', fontSize: '14px' }}>
         ⚠ {error}
       </div>
@@ -167,7 +167,7 @@ export default function CostosPage() {
   );
 
   return (
-    <div style={{ padding: '20px 32px', maxWidth: '1280px' }}>
+    <div className="page">
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '16px', gap: '12px' }}>

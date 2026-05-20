@@ -38,6 +38,8 @@
 /* ─── Base ─────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
+html { -webkit-text-size-adjust: 100%; }
+
 body {
   background-color: var(--bg);
   color: var(--tx);
@@ -55,3 +57,232 @@ h1, h2, h3 {
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--bo); border-radius: 3px; }
+
+/* ─── Touch targets ─────────────────────────────────────────── */
+button, [role="button"] {
+  touch-action: manipulation;
+}
+input, select, textarea, button {
+  font-family: 'DM Sans', sans-serif;
+}
+@media (max-width: 1023px) {
+  input, select, textarea {
+    font-size: 16px !important; /* previene zoom en iOS al hacer foco */
+  }
+}
+
+/* ─── Page container responsive ────────────────────────────── */
+.page {
+  padding: 20px 32px;
+  max-width: 1280px;
+}
+@media (max-width: 1023px) {
+  .page { padding: 16px 20px; }
+}
+@media (max-width: 600px) {
+  .page { padding: 14px 14px; }
+}
+
+/* ─── Scroll horizontal para tablas ────────────────────────── */
+.scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 12px;
+  border: 1px solid var(--bo);
+}
+.scroll-x table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 600px;
+}
+
+/* ─── KPI / stat grid ──────────────────────────────────────── */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+@media (max-width: 600px) {
+  .kpi-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+}
+
+/* ─── Dashboard chart grid ──────────────────────────────────── */
+.dash-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+@media (max-width: 1023px) {
+  .dash-kpi-row { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+  .dash-kpi-row { grid-template-columns: 1fr 1fr; gap: 8px; }
+}
+
+.dash-chart-row {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+@media (max-width: 1023px) {
+  .dash-chart-row { grid-template-columns: 1fr; }
+}
+
+/* ─── Page header row ───────────────────────────────────────── */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.page-header-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ─── Form card ─────────────────────────────────────────────── */
+.form-card {
+  background: var(--sf);
+  border-radius: 12px;
+  border: 1px solid var(--bo);
+  padding: 20px 24px;
+  margin-bottom: 16px;
+}
+@media (max-width: 600px) {
+  .form-card { padding: 14px 14px; }
+}
+
+/* ─── Form row (fields side by side → stack on mobile) ─────── */
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+@media (max-width: 480px) {
+  .form-row { grid-template-columns: 1fr; }
+}
+
+/* ─── Field label ───────────────────────────────────────────── */
+.field-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ts);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 5px;
+}
+
+/* ─── Input base ────────────────────────────────────────────── */
+.field-input {
+  width: 100%;
+  border: 1.5px solid var(--bo);
+  border-radius: 8px;
+  padding: 8px 11px;
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--tx);
+  outline: none;
+  min-height: 40px;
+  transition: border-color 0.15s;
+}
+.field-input:focus { border-color: var(--ac); }
+@media (max-width: 1023px) {
+  .field-input { min-height: 44px; }
+}
+
+/* ─── Button base ───────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  min-height: 40px;
+  transition: opacity 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn-primary  { background: var(--ac); color: #fff; }
+.btn-outline  { background: var(--bg); color: var(--ts); border: 1.5px solid var(--bo); }
+@media (max-width: 1023px) {
+  .btn { min-height: 44px; padding: 10px 16px; }
+}
+
+/* ─── Submit bar ────────────────────────────────────────────── */
+.submit-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 8px;
+}
+@media (max-width: 600px) {
+  .submit-bar {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .submit-bar .btn { width: 100%; }
+}
+
+/* ─── Date picker row ───────────────────────────────────────── */
+.date-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+@media (max-width: 600px) {
+  .date-row { gap: 6px; }
+  .date-row input[type="date"] { flex: 1; min-width: 0; }
+}
+
+/* ─── Shortcut pill buttons ─────────────────────────────────── */
+.pill-btn {
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1.5px solid var(--bo);
+  background: var(--bg);
+  color: var(--ts);
+  font-size: 12px;
+  cursor: pointer;
+  min-height: 34px;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+.pill-btn:hover { border-color: var(--ac); color: var(--ac); }
+@media (max-width: 480px) {
+  .pill-btn { font-size: 11px; padding: 4px 9px; }
+}
+
+/* ─── Tab row ───────────────────────────────────────────────── */
+.tab-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ─── Safe-area bottom nav ──────────────────────────────────── */
+.bottom-nav-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ─── Export grid ───────────────────────────────────────────── */
+@media (max-width: 1023px) {
+  .export-grid { grid-template-columns: 1fr !important; }
+}
