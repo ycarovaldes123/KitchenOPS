@@ -11,7 +11,12 @@ export type TipoPP        = 'PORCION' | 'CC' | 'UND' | 'DIRECTO';
 export type TurnoType     = 'AM' | 'PM';
 export type RolType       = 'cocina' | 'jefatura' | 'finanzas' | 'admin';
 export type EstadoType    = 'REGISTRADO';
-export type MotivoMerma   = 'Vencimiento' | 'Daño físico' | 'Sobra producción' | 'Contaminación';
+export type MotivoMerma   =
+  // Nuevos (desde may-2026):
+  | 'Vencimiento' | 'Mala manipulación' | 'Sobreproducción'
+  | 'Devolución' | 'Corte / limpieza' | 'Error de producción' | 'Otro'
+  // Históricos (registros anteriores):
+  | 'Daño físico' | 'Sobra producción' | 'Contaminación';
 export type CategoriaCarta = 'PICADAS' | 'CLÁSICOS' | 'SANDWICH & BURGERS' | 'ENSALADAS' | 'POSTRES' | 'CATERING';
 export type ColorSemaforo = 'green' | 'yellow' | 'red' | 'gray';
 

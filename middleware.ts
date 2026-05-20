@@ -1,83 +1,48 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { updateSession } from '@/utils/supabase/middleware';
+import { RMAP, RUTAS_ROL, RUTA_INICIO } from '@/lib/roles';
 
-// Emails autorizados y su rol en KitchenOps
-// admin → acceso total (ycaro + jsepulveda)
-const RMAP: Record<string, string> = {
-  'ycaro@cerveceriakunstmann.cl':         'admin',
-  'jsepulveda@cerveceriakunstmann.cl':    'admin',
-  'ddelgado@cerveceriakunstmann.cl':      'finanzas',
-  'fcaro@cerveceriakunstmann.cl':         'jefatura',
-  'chefstorobayo@cerveceriakunstmann.cl': 'cocina',
-};
+const PUBLIC_PATHS = ['/login', '/auth', '/logout'];
 
-// Rutas permitidas por rol
-// admin tiene acceso a TODO
-const RUTAS_ROL: Record<string, string[]> = {
-  admin:    ['/produccion', '/colacion', '/mermas', '/historial', '/dashboard', '/kpis', '/costos', '/export'],
-  finanzas: ['/kpis', '/costos', '/historial', '/export'],
-  jefatura: ['/dashboard', '/historial', '/export'],
-  cocina:   ['/produccion', '/colacion', '/mermas', '/historial'],
-};
+export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
 
-// Ruta de inicio por rol
-const RUTA_INICIO: Record<string, string> = {
-  admin:    '/kpis',
-  finanzas: '/kpis',
-  jefatura: '/dashboard',
-  cocina:   '/produccion',
-};
+  // API routes do their own auth validation
+  if (pathname.startsWith('/api/')) return NextResponse.next();
 
-export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  // Keep Supabase session fresh
+  const { supabaseResponse, user } = await updateSession(req);
 
-  // Rutas que no requieren auth
-  const esPublica =
-    pathname === '/login' ||
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/api/') ||
-    /\.(svg|png|jpg|jpeg|gif|webp|ico|css|js)$/.test(pathname);
-
-  if (esPublica) {
-    const { supabaseResponse } = await updateSession(request);
+  // Public paths — redirect already-authed users to their home
+  if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) {
+    if (user) {
+      const rol = RMAP[user.email ?? ''];
+      if (rol) return NextResponse.redirect(new URL(RUTA_INICIO[rol], req.url));
+    }
     return supabaseResponse;
   }
 
-  // Refrescar sesión y obtener usuario
-  const { supabaseResponse, user } = await updateSession(request);
-
-  // Sin sesión → login
+  // Not authenticated
   if (!user) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(new URL('/login', req.url));
   }
 
-  // Email no autorizado → login con error
+  // Authenticated but no role in RMAP
   const rol = RMAP[user.email ?? ''];
   if (!rol) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    url.searchParams.set('error', 'unauthorized');
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(new URL('/login?error=unauthorized', req.url));
   }
 
-  // Ruta raíz → redirigir a inicio del rol
+  // Root redirect
   if (pathname === '/') {
-    const url = request.nextUrl.clone();
-    url.pathname = RUTA_INICIO[rol] ?? '/login';
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(new URL(RUTA_INICIO[rol], req.url));
   }
 
-  // Verificar acceso según rol
-  const rutasPermitidas = RUTAS_ROL[rol] ?? [];
-  const tieneAcceso = rutasPermitidas.some(ruta => pathname.startsWith(ruta));
-
-  if (!tieneAcceso) {
-    const url = request.nextUrl.clone();
-    url.pathname = RUTA_INICIO[rol] ?? '/login';
-    return NextResponse.redirect(url);
+  // Check module access
+  const segmento = '/' + pathname.split('/')[1];
+  const permitidas = RUTAS_ROL[rol];
+  if (segmento !== '/' && !permitidas.some(r => pathname.startsWith(r))) {
+    return NextResponse.redirect(new URL(RUTA_INICIO[rol], req.url));
   }
 
   return supabaseResponse;
@@ -85,6 +50,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

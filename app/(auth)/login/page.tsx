@@ -1,10 +1,244 @@
-// Stub — implementado en Paso 2 (Auth)
+'use client';
+
+import { useState, useEffect } from 'react';
+import { createClient } from '@/utils/supabase/client';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
+import { RMAP, RUTA_INICIO } from '@/lib/roles';
+
+const ERROR_MSG: Record<string, string> = {
+  unauthorized:  'Este correo no tiene acceso a KitchenOps.',
+  link_expirado: 'El enlace expiró. Solicita uno nuevo.',
+  auth_failed:   'Error de autenticación. Intenta de nuevo.',
+};
+
+function LoginForm() {
+  const router       = useRouter();
+  const searchParams = useSearchParams();
+  const supabase     = createClient();
+
+  const [email,    setEmail]    = useState('');
+  const [password, setPassword] = useState('');
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState('');
+
+  useEffect(() => {
+    const e = searchParams.get('error');
+    if (e) setError(ERROR_MSG[e] ?? 'Error desconocido.');
+  }, [searchParams]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email.trim() || !password) return;
+
+    setLoading(true);
+    setError('');
+
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
+      email:    email.trim().toLowerCase(),
+      password,
+    });
+
+    if (authError || !data.user) {
+      setLoading(false);
+      setError('Correo o contraseña incorrectos.');
+      return;
+    }
+
+    const rol = RMAP[data.user.email ?? ''];
+    if (!rol) {
+      await supabase.auth.signOut();
+      setLoading(false);
+      setError('Este correo no tiene acceso a KitchenOps.');
+      return;
+    }
+
+    router.push(RUTA_INICIO[rol]);
+  }
+
+  return (
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '20px',
+      background: 'var(--bg)',
+    }}>
+      <div style={{
+        background: 'var(--sf)',
+        borderRadius: '20px',
+        border: '1px solid var(--bo)',
+        padding: '44px 36px',
+        width: '100%',
+        maxWidth: '400px',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
+      }}>
+
+        {/* Logo */}
+        <div style={{ marginBottom: '6px' }}>
+          <span style={{
+            fontFamily: 'Syne, sans-serif',
+            fontSize: '26px',
+            fontWeight: 800,
+            color: 'var(--tx)',
+          }}>
+            Kitchen<span style={{ color: 'var(--ac)' }}>Ops</span>
+          </span>
+        </div>
+        <p style={{ fontSize: '13px', color: 'var(--ts)', marginBottom: '28px' }}>
+          Cervecería Kunstmann · Torobayo
+        </p>
+
+        <form onSubmit={handleSubmit}>
+          <label style={{
+            display: 'block',
+            fontSize: '11px',
+            fontWeight: 500,
+            color: 'var(--ts)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.4px',
+            marginBottom: '5px',
+          }}>
+            Correo institucional
+          </label>
+          <input
+            type="email"
+            value={email}
+            onChange={e => { setEmail(e.target.value); setError(''); }}
+            placeholder="usuario@cerveceriakunstmann.cl"
+            required
+            autoComplete="email"
+            style={{
+              width: '100%',
+              border: `1.5px solid ${error ? 'var(--rd)' : 'var(--bo)'}`,
+              borderRadius: '9px',
+              padding: '11px 13px',
+              fontFamily: 'DM Sans, sans-serif',
+              fontSize: '14px',
+              background: 'var(--bg)',
+              color: 'var(--tx)',
+              outline: 'none',
+              marginBottom: '10px',
+              transition: 'border-color 0.15s',
+              boxSizing: 'border-box',
+            }}
+            onFocus={e => { e.target.style.borderColor = 'var(--ac)'; }}
+            onBlur={e => { e.target.style.borderColor = error ? 'var(--rd)' : 'var(--bo)'; }}
+          />
+
+          <label style={{
+            display: 'block',
+            fontSize: '11px',
+            fontWeight: 500,
+            color: 'var(--ts)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.4px',
+            marginBottom: '5px',
+          }}>
+            Contraseña
+          </label>
+          <input
+            type="password"
+            value={password}
+            onChange={e => { setPassword(e.target.value); setError(''); }}
+            placeholder="••••••••"
+            required
+            autoComplete="current-password"
+            style={{
+              width: '100%',
+              border: `1.5px solid ${error ? 'var(--rd)' : 'var(--bo)'}`,
+              borderRadius: '9px',
+              padding: '11px 13px',
+              fontFamily: 'DM Sans, sans-serif',
+              fontSize: '14px',
+              background: 'var(--bg)',
+              color: 'var(--tx)',
+              outline: 'none',
+              marginBottom: '12px',
+              transition: 'border-color 0.15s',
+              boxSizing: 'border-box',
+            }}
+            onFocus={e => { e.target.style.borderColor = 'var(--ac)'; }}
+            onBlur={e => { e.target.style.borderColor = error ? 'var(--rd)' : 'var(--bo)'; }}
+          />
+
+          {error && (
+            <p style={{
+              fontSize: '12px',
+              color: 'var(--rd)',
+              marginBottom: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}>
+              <span>⚠</span> {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading || !email.trim() || !password}
+            style={{
+              width: '100%',
+              background: loading || !email.trim() || !password ? '#ccc' : 'var(--ac)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '9px',
+              padding: '12px',
+              fontFamily: 'DM Sans, sans-serif',
+              fontSize: '14px',
+              fontWeight: 600,
+              cursor: loading || !email.trim() || !password ? 'default' : 'pointer',
+              transition: 'background 0.15s',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+            }}
+          >
+            {loading ? (
+              <>
+                <span style={{
+                  width: '14px', height: '14px',
+                  border: '2px solid rgba(255,255,255,0.3)',
+                  borderTopColor: '#fff',
+                  borderRadius: '50%',
+                  display: 'inline-block',
+                  animation: 'spin 0.7s linear infinite',
+                }} />
+                Ingresando...
+              </>
+            ) : 'Ingresar'}
+          </button>
+        </form>
+
+        <p style={{
+          fontSize: '11px',
+          color: 'var(--ts)',
+          textAlign: 'center',
+          marginTop: '20px',
+        }}>
+          Sistema interno · Cervecería Kunstmann
+        </p>
+      </div>
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        input { box-sizing: border-box; }
+      `}</style>
+    </div>
+  );
+}
+
 export default function LoginPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--bg)' }}>
-      <p style={{ fontFamily: 'Syne, sans-serif', color: 'var(--ac)' }}>
-        KitchenOps — Login (próximo paso)
-      </p>
-    </div>
+    <Suspense fallback={
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
+        <p style={{ color: 'var(--ts)' }}>Cargando...</p>
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }
