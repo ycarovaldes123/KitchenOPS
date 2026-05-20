@@ -39,7 +39,8 @@ function totalLabel(row: PPRow): string {
   const cant = parseFloat(row.cantidad) || 0;
   if (!cant || !row.pp_id) return '—';
   const total = calcTotalPP(cant, { tipo_pp: row.tipo_pp as TipoPP, gramos_por_pp: row.gramos_por_pp });
-  if (row.tipo_pp === 'CC' || row.tipo_pp === 'DIRECTO') return `${total} ${row._unidad_medida || 'un'}`;
+  if (row.tipo_pp === 'CC') return `${total} ${row._unidad_medida || 'un'}`;
+  if (row.tipo_pp === 'DIRECTO') return `${total} g`;
   return total >= 1000 ? `${(total / 1000).toFixed(2)} kg` : `${total} g`;
 }
 
@@ -79,7 +80,7 @@ const STATUS_CFG: Record<RowStatus, { label: string; color: string; bg: string }
 };
 
 const UNIT_LABEL: Record<string, string> = {
-  PORCION: 'porc.', CC: 'cc', UND: 'und.', DIRECTO: 'kg',
+  PORCION: 'porc.', CC: 'cc', UND: 'und.', DIRECTO: 'g',
 };
 
 // ─── StatusBadge ────────────────────────────────────────────────────────────

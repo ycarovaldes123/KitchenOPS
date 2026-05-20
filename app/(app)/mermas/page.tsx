@@ -448,7 +448,7 @@ export default function MermasPage() {
                                       onBlur={e => (e.currentTarget.style.borderColor = 'var(--bo)')}
                                     />
                                     {row.unidad_medida && (
-                                      <span style={{ fontSize: '10px', color: 'var(--ts)', whiteSpace: 'nowrap' }}>{row.unidad_medida.toLowerCase()}</span>
+                                      <span style={{ fontSize: '10px', color: 'var(--ts)', whiteSpace: 'nowrap' }}>{row.unidad_medida === 'KG' ? 'g' : row.unidad_medida.toLowerCase()}</span>
                                     )}
                                   </div>
                                 </td>
