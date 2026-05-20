@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { formatCLP } from '@/lib/calculos';
+import { useRol } from '@/components/RolProvider';
 import type { Responsable, Producto, MotivoMerma } from '@/types/database';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -194,6 +195,9 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function MermasPage() {
+  const { rol } = useRol();
+  const verCostos = rol !== 'cocina';
+
   const [maestros,      setMaestros]      = useState<Maestros | null>(null);
   const [cargando,      setCargando]      = useState(true);
   const [fecha,         setFecha]         = useState(hoyChile());
@@ -260,7 +264,8 @@ export default function MermasPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Error al guardar');
-      setOk(`Merma registrada — ${detalle.length} producto${detalle.length !== 1 ? 's' : ''} · ${formatCLP(detalle.reduce((s, d) => s + d.costo_total, 0))} pérdida estimada.`);
+      const totalCosto = detalle.reduce((s, d) => s + d.costo_total, 0);
+      setOk(`Merma registrada — ${detalle.length} producto${detalle.length !== 1 ? 's' : ''}${verCostos && totalCosto > 0 ? ` · ${formatCLP(totalCosto)} pérdida estimada` : ''}.`);
       setFecha(hoyChile()); setResponsableId(''); setObservacion(''); setRows([]);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e: unknown) {
@@ -324,7 +329,7 @@ export default function MermasPage() {
               {respActual && <> · <strong style={{ color: 'var(--tx)' }}>{respActual.nombre}</strong></>}
             </p>
           </div>
-          {costoTotal > 0 && (
+          {verCostos && costoTotal > 0 && (
             <span style={{ fontSize: '13px', fontWeight: 700, background: '#FEE2E2', border: '1px solid #FECACA', padding: '5px 14px', borderRadius: '20px', color: '#991B1B' }}>
               {formatCLP(costoTotal)} pérdida estimada
             </span>
@@ -416,7 +421,7 @@ export default function MermasPage() {
                       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
                         <thead>
                           <tr style={{ background: 'var(--bg)' }}>
-                            {['Producto', 'Cantidad', 'Motivo', 'Costo pérdida', 'Estado', ''].map((h, i) => (
+                            {['Producto', 'Cantidad', 'Motivo', ...(verCostos ? ['Costo pérdida'] : []), 'Estado', ''].map((h, i) => (
                               <th key={i} style={{ padding: '10px 12px', textAlign: i === 5 ? 'center' : 'left', fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: '1px solid var(--bo)', whiteSpace: 'nowrap' }}>{h}</th>
                             ))}
                           </tr>
@@ -473,9 +478,11 @@ export default function MermasPage() {
                                     </select>
                                   )}
                                 </td>
-                                <td style={{ padding: '9px 12px', fontSize: '13px', whiteSpace: 'nowrap', fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: costo > 0 ? '#DC2626' : 'var(--ts)', fontWeight: costo > 0 ? 600 : 400 }}>
-                                  {costo > 0 ? formatCLP(costo) : '—'}
-                                </td>
+                                {verCostos && (
+                                  <td style={{ padding: '9px 12px', fontSize: '13px', whiteSpace: 'nowrap', fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: costo > 0 ? '#DC2626' : 'var(--ts)', fontWeight: costo > 0 ? 600 : 400 }}>
+                                    {costo > 0 ? formatCLP(costo) : '—'}
+                                  </td>
+                                )}
                                 <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
                                   <StatusBadge status={status} />
                                 </td>
@@ -516,7 +523,7 @@ export default function MermasPage() {
                 </p>
               </div>
 
-              {costoTotal > 0 && (
+              {verCostos && costoTotal > 0 && (
                 <div>
                   <p style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 2px' }}>Pérdida estimada</p>
                   <p style={{ fontSize: '22px', fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: '#DC2626', margin: 0, lineHeight: 1.1 }}>
@@ -532,7 +539,7 @@ export default function MermasPage() {
                     <span style={{ fontSize: '12px', color: '#5B21B6', fontWeight: 600 }}>{sinMotivo} sin motivo</span>
                   </div>
                 )}
-                {sinCosto > 0 && (
+                {verCostos && sinCosto > 0 && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: '8px', padding: '5px 11px' }}>
                     <span style={{ fontSize: '13px' }}>⚠</span>
                     <span style={{ fontSize: '12px', color: '#92400E', fontWeight: 600 }}>{sinCosto} sin costo</span>

@@ -22,7 +22,6 @@ function labelFecha(s: string) {
 
 interface KPIData {
   total_informes:           number;
-  total_produccion_kg:      number;
   total_produccion_clp:     number | null;
   costo_por_orden:          number | null;
   total_mermas_clp:         number | null;
@@ -33,11 +32,11 @@ interface KPIData {
   total_mermas:             number;
 }
 interface DiaTendencia {
-  fecha:          string;
-  kg_produccion:  number;
-  clp_produccion: number;
-  clp_mermas:     number;
-  clp_colacion:   number;
+  fecha:           string;
+  informes_count:  number;
+  clp_produccion:  number | null;
+  clp_mermas:      number | null;
+  clp_colacion:    number | null;
 }
 interface TopMotivo { motivo: string; count: number }
 
@@ -75,12 +74,12 @@ function ChartCard({ title, children, style }: { title: string; children: React.
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function TooltipKg({ active, payload, label }: any) {
+function TooltipCount({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
     <div style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px' }}>
       <p style={{ margin: '0 0 4px', fontWeight: 600, color: 'var(--ts)' }}>{label}</p>
-      <p style={{ margin: 0, color: '#6366F1', fontWeight: 700 }}>{payload[0]?.value} kg</p>
+      <p style={{ margin: 0, color: '#6366F1', fontWeight: 700 }}>{payload[0]?.value} informe{payload[0]?.value !== 1 ? 's' : ''}</p>
     </div>
   );
 }
@@ -154,13 +153,13 @@ export default function DashboardPage() {
       const diff  = date.getDate() - day + (day === 0 ? -6 : 1);
       const mon   = new Date(date.setDate(diff));
       const key   = `${mon.getFullYear()}-${String(mon.getMonth() + 1).padStart(2, '0')}-${String(mon.getDate()).padStart(2, '0')}`;
-      const prev  = weeks.get(key) ?? { fecha: key, kg_produccion: 0, clp_produccion: 0, clp_mermas: 0, clp_colacion: 0 };
+      const prev  = weeks.get(key) ?? { fecha: key, informes_count: 0, clp_produccion: null, clp_mermas: null, clp_colacion: null };
       weeks.set(key, {
         fecha: key,
-        kg_produccion:  Math.round((prev.kg_produccion + d.kg_produccion) * 10) / 10,
-        clp_produccion: prev.clp_produccion + d.clp_produccion,
-        clp_mermas:     prev.clp_mermas + d.clp_mermas,
-        clp_colacion:   prev.clp_colacion + d.clp_colacion,
+        informes_count:  prev.informes_count + d.informes_count,
+        clp_produccion:  prev.clp_produccion != null && d.clp_produccion != null ? prev.clp_produccion + d.clp_produccion : (prev.clp_produccion ?? d.clp_produccion),
+        clp_mermas:      prev.clp_mermas != null && d.clp_mermas != null ? prev.clp_mermas + d.clp_mermas : (prev.clp_mermas ?? d.clp_mermas),
+        clp_colacion:    prev.clp_colacion != null && d.clp_colacion != null ? prev.clp_colacion + d.clp_colacion : (prev.clp_colacion ?? d.clp_colacion),
       });
     }
     return Array.from(weeks.values()).sort((a, b) => a.fecha.localeCompare(b.fecha));
@@ -199,11 +198,11 @@ export default function DashboardPage() {
           <div className="dash-kpi-row">
             <KpiCard label="Turnos producción" value={String(kpis.total_informes)} sub="informes registrados" accent="var(--ac)" />
             <KpiCard label="Costo de insumos" value={(kpis.total_produccion_clp ?? 0) > 0 ? formatCLP(kpis.total_produccion_clp!) : '—'} sub={(kpis.costo_por_orden ?? 0) > 0 ? `≈ ${formatCLP(kpis.costo_por_orden!)} / turno` : 'consumo materia prima'} color="var(--tl)" accent="var(--tl)" />
-            <KpiCard label="Costos hundidos" value={totalHundido > 0 ? formatCLP(totalHundido) : '—'} sub="mermas + colación" accent="#DC2626" color="#DC2626" />
+            <KpiCard label="Costos no productivos" value={totalHundido > 0 ? formatCLP(totalHundido) : '—'} sub="mermas + colación" accent="#DC2626" color="#DC2626" />
             <KpiCard
-              label="Merma promedio"
+              label="Rendimiento verduras"
               value={kpis.merma_pct_promedio != null ? `${kpis.merma_pct_promedio}%` : '—'}
-              sub={kpis.merma_pct_promedio != null ? (kpis.merma_pct_promedio > 25 ? 'Alto — revisar' : kpis.merma_pct_promedio > 15 ? 'Medio' : 'Óptimo') : 'sin registros'}
+              sub={kpis.merma_pct_promedio != null ? (kpis.merma_pct_promedio > 25 ? 'Alto — revisar' : kpis.merma_pct_promedio > 15 ? 'Medio' : 'Óptimo') : 'sin registros de rendimiento'}
               color={mermaColor}
               accent={mermaColor}
             />
@@ -212,21 +211,21 @@ export default function DashboardPage() {
           {/* Charts row */}
           <div className="dash-chart-row" style={{ marginBottom: '12px' }}>
 
-            {/* Área chart — Producción KG */}
-            <ChartCard title="Producción diaria (KG)">
+            {/* Área chart — Producción registrada */}
+            <ChartCard title="Producción registrada por día">
               {chartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={220}>
                   <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                     <defs>
-                      <linearGradient id="gradKg" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id="gradInformes" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%"  stopColor="#6366F1" stopOpacity={0.25} />
                         <stop offset="95%" stopColor="#6366F1" stopOpacity={0.02} />
                       </linearGradient>
                     </defs>
                     <XAxis dataKey="fecha" tickFormatter={labelFecha} tick={{ fontSize: 11, fill: 'var(--ts)' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: 'var(--ts)' }} axisLine={false} tickLine={false} width={40} unit=" kg" />
-                    <Tooltip content={<TooltipKg />} />
-                    <Area type="monotone" dataKey="kg_produccion" stroke="#6366F1" strokeWidth={2} fill="url(#gradKg)" dot={false} name="Producción" />
+                    <YAxis tick={{ fontSize: 11, fill: 'var(--ts)' }} axisLine={false} tickLine={false} width={32} allowDecimals={false} />
+                    <Tooltip content={<TooltipCount />} />
+                    <Area type="monotone" dataKey="informes_count" stroke="#6366F1" strokeWidth={2} fill="url(#gradInformes)" dot={false} name="Informes" />
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
@@ -236,8 +235,8 @@ export default function DashboardPage() {
               )}
             </ChartCard>
 
-            {/* Pie chart — Costos hundidos */}
-            <ChartCard title="Costos hundidos (mermas + colación)">
+            {/* Pie chart — Costos no productivos */}
+            <ChartCard title="Costos no productivos (mermas + colación)">
               {costoPie.length > 0 ? (
                 <>
                   <ResponsiveContainer width="100%" height={180}>
@@ -277,7 +276,7 @@ export default function DashboardPage() {
 
             {/* Stacked bar — Costos por día */}
             <ChartCard title="Costos del período (producción · colación · mermas)">
-              {chartData.some(d => d.clp_produccion + d.clp_mermas + d.clp_colacion > 0) ? (
+              {chartData.some(d => (d.clp_produccion ?? 0) + (d.clp_mermas ?? 0) + (d.clp_colacion ?? 0) > 0) ? (
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                     <XAxis dataKey="fecha" tickFormatter={labelFecha} tick={{ fontSize: 11, fill: 'var(--ts)' }} axisLine={false} tickLine={false} />

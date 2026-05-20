@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { calcTotalPP, calcMerma, formatCLP, formatPct } from '@/lib/calculos';
+import { useRol } from '@/components/RolProvider';
 import type { PP, Responsable, Verdura, Producto, TipoPP } from '@/types/database';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -18,6 +19,7 @@ interface PPRow {
   codigo_producto: string | null;
   costo_unitario:  number;
   _unidad_medida:  string;
+  unidad_base:     string;
 }
 
 interface RendRow {
@@ -39,9 +41,15 @@ function totalLabel(row: PPRow): string {
   const cant = parseFloat(row.cantidad) || 0;
   if (!cant || !row.pp_id) return '—';
   const total = calcTotalPP(cant, { tipo_pp: row.tipo_pp as TipoPP, gramos_por_pp: row.gramos_por_pp });
-  if (row.tipo_pp === 'CC') return `${total} ${row._unidad_medida || 'un'}`;
-  if (row.tipo_pp === 'DIRECTO') return `${total} g`;
+  if (row.tipo_pp === 'CC') return `${total} cc`;
+  if (row.tipo_pp === 'DIRECTO') return `${total} ${row.unidad_base.toLowerCase() || 'u.'}`;
   return total >= 1000 ? `${(total / 1000).toFixed(2)} kg` : `${total} g`;
+}
+
+function getInputLabel(row: PPRow): string {
+  if (!row.pp_id) return '';
+  if (row.tipo_pp === 'DIRECTO') return row.unidad_base.toLowerCase() || '—';
+  return UNIT_LABEL[row.tipo_pp] ?? 'u.';
 }
 
 function calcCostoFila(row: PPRow): number {
@@ -80,7 +88,7 @@ const STATUS_CFG: Record<RowStatus, { label: string; color: string; bg: string }
 };
 
 const UNIT_LABEL: Record<string, string> = {
-  PORCION: 'porc.', CC: 'cc', UND: 'und.', DIRECTO: 'g',
+  PORCION: 'porc.', CC: 'cc', UND: 'und.',
 };
 
 // ─── StatusBadge ────────────────────────────────────────────────────────────
@@ -271,6 +279,9 @@ function EmptyRend({ onAdd }: { onAdd: () => void }) {
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function ProduccionPage() {
+  const { rol } = useRol();
+  const verCostos = rol !== 'cocina';
+
   const [maestros,      setMaestros]      = useState<Maestros | null>(null);
   const [cargando,      setCargando]      = useState(true);
   const [fecha,         setFecha]         = useState(hoyChile());
@@ -298,17 +309,23 @@ export default function ProduccionPage() {
     setPPRows(rows => [...rows, {
       key: newKey(), pp_id: '', nombre_pp: '', tipo_pp: 'PORCION',
       cantidad: '', gramos_por_pp: null, codigo_producto: null,
-      costo_unitario: 0, _unidad_medida: '',
+      costo_unitario: 0, _unidad_medida: '', unidad_base: '',
     }]);
     setTab('pp');
   }
 
   function selectPP(key: number, pp: PP) {
     const prod = maestros?.productos.find(p => p.codigo === pp.codigo_producto);
+    const um   = prod?.unidad_medida ?? '';
+    const unidad_base =
+      pp.tipo_pp === 'PORCION' ? 'GR' :
+      pp.tipo_pp === 'CC'      ? 'CC' :
+      pp.tipo_pp === 'UND'     ? 'UN' :
+      /* DIRECTO */              um;
     setPPRows(rows => rows.map(r => r.key !== key ? r : {
       ...r, pp_id: pp.id, nombre_pp: pp.nombre, tipo_pp: pp.tipo_pp,
       gramos_por_pp: pp.gramos_por_pp, codigo_producto: pp.codigo_producto,
-      costo_unitario: prod?.costo_promedio ?? 0, _unidad_medida: prod?.unidad_medida ?? '',
+      costo_unitario: prod?.costo_promedio ?? 0, _unidad_medida: um, unidad_base,
     }));
   }
 
@@ -316,7 +333,7 @@ export default function ProduccionPage() {
     setPPRows(rows => rows.map(r => r.key !== key ? r : {
       ...r, pp_id: '', nombre_pp: '', tipo_pp: 'PORCION',
       cantidad: '', gramos_por_pp: null, codigo_producto: null,
-      costo_unitario: 0, _unidad_medida: '',
+      costo_unitario: 0, _unidad_medida: '', unidad_base: '',
     }));
   }
 
@@ -459,7 +476,7 @@ export default function ProduccionPage() {
               <span style={{ fontSize: '12px', background: 'var(--sf)', border: '1px solid var(--bo)', padding: '4px 12px', borderRadius: '20px', color: 'var(--ts)' }}>
                 {ppRows.length} PP
               </span>
-              {costoTotal > 0 && (
+              {verCostos && costoTotal > 0 && (
                 <span style={{ fontSize: '12px', fontWeight: 700, background: 'var(--al)', border: '1px solid var(--ac)', padding: '4px 12px', borderRadius: '20px', color: 'var(--ac)' }}>
                   {formatCLP(costoTotal)} est.
                 </span>
@@ -635,9 +652,9 @@ export default function ProduccionPage() {
                         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '620px' }}>
                           <thead>
                             <tr style={{ background: 'var(--bg)' }}>
-                              {['Producto en proceso', 'Cant.', 'Total prod.', 'Costo est.', 'Estado', ''].map((h, i) => (
+                              {['Producto en proceso', 'Cant.', 'Total prod.', ...(verCostos ? ['Costo est.'] : []), 'Estado', ''].map((h, i, arr) => (
                                 <th key={i} style={{
-                                  padding: '10px 12px', textAlign: i === 5 ? 'center' : 'left',
+                                  padding: '10px 12px', textAlign: i === arr.length - 1 ? 'center' : 'left',
                                   fontSize: '10px', fontWeight: 700, color: 'var(--ts)',
                                   textTransform: 'uppercase', letterSpacing: '0.5px',
                                   borderBottom: '1px solid var(--bo)', whiteSpace: 'nowrap',
@@ -675,7 +692,7 @@ export default function ProduccionPage() {
                                       />
                                       {row.pp_id && (
                                         <span style={{ fontSize: '10px', color: 'var(--ts)', whiteSpace: 'nowrap' }}>
-                                          {UNIT_LABEL[row.tipo_pp] ?? 'u.'}
+                                          {getInputLabel(row)}
                                         </span>
                                       )}
                                     </div>
@@ -684,10 +701,12 @@ export default function ProduccionPage() {
                                   <td style={{ padding: '9px 12px', fontSize: '13px', color: 'var(--tx)', whiteSpace: 'nowrap', fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums' }}>
                                     {totalLabel(row)}
                                   </td>
-                                  {/* Costo */}
-                                  <td style={{ padding: '9px 12px', fontSize: '13px', whiteSpace: 'nowrap', fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: costo > 0 ? 'var(--tx)' : 'var(--ts)' }}>
-                                    {costo > 0 ? formatCLP(costo) : '—'}
-                                  </td>
+                                  {/* Costo — solo visible para roles con permiso financiero */}
+                                  {verCostos && (
+                                    <td style={{ padding: '9px 12px', fontSize: '13px', whiteSpace: 'nowrap', fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: costo > 0 ? 'var(--tx)' : 'var(--ts)' }}>
+                                      {costo > 0 ? formatCLP(costo) : '—'}
+                                    </td>
+                                  )}
                                   {/* Status */}
                                   <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
                                     <StatusBadge status={status} />

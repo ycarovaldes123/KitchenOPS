@@ -18,7 +18,6 @@ function restarMeses(n: number) {
 
 interface KPIData {
   total_informes:           number;
-  total_produccion_kg:      number;
   total_produccion_clp:     number | null;
   costo_por_orden:          number | null;
   total_mermas_clp:         number | null;
@@ -112,7 +111,7 @@ export default function KpisPage() {
             <StatCard label="Colación personal" value={(data.total_colacion_clp ?? 0) > 0 ? formatCLP(data.total_colacion_clp!) : '—'} sub={`${data.total_colaciones} registro${data.total_colaciones !== 1 ? 's' : ''}`} />
             <StatCard label="Costo por plato" value={(data.costo_por_plato_promedio ?? 0) > 0 ? formatCLP(data.costo_por_plato_promedio!) : '—'} sub="promedio colación" color="#D97706" />
             <div style={{ background: 'var(--sf)', borderRadius: '12px', border: '1px solid var(--bo)', padding: '20px 22px' }}>
-              <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px' }}>Merma promedio</p>
+              <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px' }}>Rendimiento verduras</p>
               <p style={{ fontSize: '26px', fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.03em', margin: 0, lineHeight: 1.1 }}>
                 <Semaforo pct={data.merma_pct_promedio} />
               </p>

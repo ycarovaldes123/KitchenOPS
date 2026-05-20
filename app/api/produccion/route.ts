@@ -10,9 +10,14 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const fecha = searchParams.get('fecha');
 
+  const verCostos = s.rol !== 'cocina';
+  const detalleSelect = verCostos
+    ? 'id,nombre_pp,tipo_pp,cantidad,gramos_por_pp,total_producido,costo_unitario,costo_total'
+    : 'id,nombre_pp,tipo_pp,cantidad,gramos_por_pp,total_producido';
+
   let query = supabase
     .from('produccion')
-    .select('id,fecha,responsable_nombre,turno,observacion,estado,created_at,detalle_produccion(id,nombre_pp,tipo_pp,cantidad,gramos_por_pp,total_producido,costo_unitario,costo_total),rendimiento(id,verdura,kg_utilizados,rendimiento_kg)')
+    .select(`id,fecha,responsable_nombre,turno,observacion,estado,created_at,detalle_produccion(${detalleSelect}),rendimiento(id,verdura,kg_utilizados,rendimiento_kg)`)
     .order('created_at', { ascending: false });
 
   if (fecha) query = query.eq('fecha', fecha);

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { formatCLP, formatPct, calcMerma } from '@/lib/calculos';
+import { useRol } from '@/components/RolProvider';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -77,7 +78,7 @@ function MetaRow({ icon, label, value }: { icon: string; label: string; value: s
 
 // ─── TablaProduccion ────────────────────────────────────────────────────────
 
-function TablaProduccion({ datos }: { datos: Record<string, unknown>[] }) {
+function TablaProduccion({ datos, verCostos }: { datos: Record<string, unknown>[]; verCostos: boolean }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggle = (id: string) => setExpanded(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
@@ -88,7 +89,7 @@ function TablaProduccion({ datos }: { datos: Record<string, unknown>[] }) {
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '560px' }}>
         <thead>
           <tr>
-            {['Fecha', 'Turno', 'Qué se produjo', 'PP', 'Costo est.', ''].map(h => (
+            {['Fecha', 'Turno', 'Qué se produjo', 'PP', ...(verCostos ? ['Costo est.'] : []), ''].map(h => (
               <th key={h} style={thSt}>{h}</th>
             ))}
           </tr>
@@ -131,9 +132,11 @@ function TablaProduccion({ datos }: { datos: Record<string, unknown>[] }) {
                 <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums' }}>
                   {det.length}
                 </td>
-                <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: ct > 0 ? 'var(--ac)' : 'var(--ts)', fontWeight: ct > 0 ? 600 : 400 }}>
-                  {ct > 0 ? formatCLP(ct) : '—'}
-                </td>
+                {verCostos && (
+                  <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: ct > 0 ? 'var(--ac)' : 'var(--ts)', fontWeight: ct > 0 ? 600 : 400 }}>
+                    {ct > 0 ? formatCLP(ct) : '—'}
+                  </td>
+                )}
                 <td style={{ ...tdSt, textAlign: 'right', width: '48px' }}>
                   <ExpandBtn open={open} />
                 </td>
@@ -141,7 +144,7 @@ function TablaProduccion({ datos }: { datos: Record<string, unknown>[] }) {
 
               open && (
                 <tr key={`${id}-det`}>
-                  <td colSpan={6} style={{ background: 'var(--al)', padding: '0 0 2px' }}>
+                  <td colSpan={verCostos ? 6 : 5} style={{ background: 'var(--al)', padding: '0 0 2px' }}>
                     <div style={{ padding: '16px 20px', display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
 
                       {/* Meta secundaria */}
@@ -171,7 +174,7 @@ function TablaProduccion({ datos }: { datos: Record<string, unknown>[] }) {
                                   <span style={{ flex: 1, fontSize: '13px', fontWeight: 500, color: 'var(--tx)' }}>{d.nombre_pp as string}</span>
                                   <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{d.cantidad as number} × {(d.gramos_por_pp as number | null) ?? '—'}</span>
                                   <span style={{ fontSize: '12px', color: 'var(--tl)', fontWeight: 600, fontFamily: "'Space Grotesk', sans-serif" }}>{totalStr}</span>
-                                  {costo > 0 && <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(costo)}</span>}
+                                  {verCostos && costo > 0 && <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(costo)}</span>}
                                 </div>
                               );
                             })}
@@ -212,9 +215,33 @@ function TablaProduccion({ datos }: { datos: Record<string, unknown>[] }) {
 
 // ─── TablaColacion ──────────────────────────────────────────────────────────
 
-function TablaColacion({ datos }: { datos: Record<string, unknown>[] }) {
+function TablaColacion({ datos, canEdit, onRefresh, verCostos }: { datos: Record<string, unknown>[]; canEdit: boolean; onRefresh: () => void; verCostos: boolean }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const toggle = (id: string) => setExpanded(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<Record<string, number>>({});
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState('');
+
+  const toggle = (id: string) => {
+    setExpanded(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    if (editingId === id) { setEditingId(null); setEditValues({}); setSaveErr(''); }
+  };
+  const startEdit = (id: string, det: Record<string, unknown>[]) => {
+    const vals: Record<string, number> = {};
+    det.forEach(d => { vals[d.id as string] = d.cantidad as number; });
+    setEditingId(id); setEditValues(vals); setSaveErr('');
+  };
+  const cancelEdit = () => { setEditingId(null); setEditValues({}); setSaveErr(''); };
+  const saveEditCol = async (colId: string, det: Record<string, unknown>[]) => {
+    setSaving(true); setSaveErr('');
+    try {
+      const detalle = det.map(d => ({ id: d.id as string, cantidad: editValues[d.id as string] ?? (d.cantidad as number) }));
+      const res = await fetch('/api/colacion', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ colacion_id: colId, detalle }) });
+      if (!res.ok) { const j = await res.json(); throw new Error(j.error); }
+      setEditingId(null); setEditValues({}); onRefresh();
+    } catch (e: unknown) { setSaveErr(e instanceof Error ? e.message : 'Error guardando'); }
+    finally { setSaving(false); }
+  };
 
   if (!datos.length) return <Empty msg="No hay colaciones registradas en este período." />;
 
@@ -223,7 +250,7 @@ function TablaColacion({ datos }: { datos: Record<string, unknown>[] }) {
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '500px' }}>
         <thead>
           <tr>
-            {['Fecha', 'Menú', 'Inscritos', 'Costo total', 'Costo / plato', ''].map(h => (
+            {['Fecha', 'Menú', 'Inscritos', ...(verCostos ? ['Costo total', 'Costo / plato'] : []), ''].map(h => (
               <th key={h} style={thSt}>{h}</th>
             ))}
           </tr>
@@ -255,12 +282,16 @@ function TablaColacion({ datos }: { datos: Record<string, unknown>[] }) {
                     : <><strong>{ni}</strong> <span style={{ color: 'var(--ts)', fontSize: '12px' }}>personas</span></>
                   }
                 </td>
-                <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: ct > 0 ? 'var(--tx)' : 'var(--ts)' }}>
-                  {ct > 0 ? formatCLP(ct) : '—'}
-                </td>
-                <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: 'var(--ac)', fontWeight: cpp ? 700 : 400 }}>
-                  {cpp ? formatCLP(cpp) : <span style={{ color: 'var(--ts)' }}>—</span>}
-                </td>
+                {verCostos && (
+                  <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: ct > 0 ? 'var(--tx)' : 'var(--ts)' }}>
+                    {ct > 0 ? formatCLP(ct) : '—'}
+                  </td>
+                )}
+                {verCostos && (
+                  <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: 'var(--ac)', fontWeight: cpp ? 700 : 400 }}>
+                    {cpp ? formatCLP(cpp) : <span style={{ color: 'var(--ts)' }}>—</span>}
+                  </td>
+                )}
                 <td style={{ ...tdSt, textAlign: 'right', width: '48px' }}>
                   <ExpandBtn open={open} />
                 </td>
@@ -268,7 +299,7 @@ function TablaColacion({ datos }: { datos: Record<string, unknown>[] }) {
 
               open && (
                 <tr key={`${id}-det`}>
-                  <td colSpan={6} style={{ background: 'var(--al)', padding: '0 0 2px' }}>
+                  <td colSpan={verCostos ? 6 : 4} style={{ background: 'var(--al)', padding: '0 0 2px' }}>
                     <div style={{ padding: '16px 20px', display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
 
                       {/* Meta */}
@@ -281,17 +312,54 @@ function TablaColacion({ datos }: { datos: Record<string, unknown>[] }) {
                       {/* Ingredientes */}
                       {det.length > 0 && (
                         <div style={{ flex: 1, minWidth: '240px' }}>
-                          <DetailLabel>Ingredientes utilizados</DetailLabel>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Ingredientes utilizados</span>
+                            {canEdit && editingId !== id && (
+                              <button onClick={e => { e.stopPropagation(); startEdit(id, det); }}
+                                style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--ac)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                                Editar
+                              </button>
+                            )}
+                            {editingId === id && (
+                              <>
+                                <button onClick={e => { e.stopPropagation(); saveEditCol(id, det); }} disabled={saving}
+                                  style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#0D9373', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                                  {saving ? 'Guardando...' : 'Guardar'}
+                                </button>
+                                <button onClick={e => { e.stopPropagation(); cancelEdit(); }}
+                                  style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--bo)', color: 'var(--ts)', border: 'none', cursor: 'pointer' }}>
+                                  Cancelar
+                                </button>
+                              </>
+                            )}
+                          </div>
+                          {saveErr && <p style={{ color: 'var(--rd)', fontSize: '11px', margin: '0 0 6px' }}>{saveErr}</p>}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                            {det.map((d, i) => (
-                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--sf)', borderRadius: '7px', padding: '7px 12px' }}>
-                                <span style={{ flex: 1, fontSize: '13px', fontWeight: 500, color: 'var(--tx)' }}>{d.nombre_producto as string}</span>
-                                <span style={{ fontSize: '12px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{d.cantidad as number} {d.unidad_medida as string}</span>
-                                {(d.costo_total as number) > 0 && (
-                                  <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(d.costo_total as number)}</span>
-                                )}
-                              </div>
-                            ))}
+                            {det.map((d, i) => {
+                              const isEditing = editingId === id;
+                              const qty = isEditing ? (editValues[d.id as string] ?? (d.cantidad as number)) : (d.cantidad as number);
+                              return (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--sf)', borderRadius: '7px', padding: '7px 12px' }}>
+                                  <span style={{ flex: 1, fontSize: '13px', fontWeight: 500, color: 'var(--tx)' }}>{d.nombre_producto as string}</span>
+                                  {isEditing ? (
+                                    <>
+                                      <input type="number" value={qty} min={0} step="any"
+                                        onClick={e => e.stopPropagation()}
+                                        onChange={e => setEditValues(v => ({ ...v, [d.id as string]: parseFloat(e.target.value) || 0 }))}
+                                        style={{ width: '80px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }} />
+                                      <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{d.unidad_medida as string}</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span style={{ fontSize: '12px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{qty} {d.unidad_medida as string}</span>
+                                      {verCostos && (d.costo_total as number) > 0 && (
+                                        <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(d.costo_total as number)}</span>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
@@ -319,9 +387,33 @@ const MOTIVO_COLOR: Record<string, string> = {
   'Otro':               '#6B7280',
 };
 
-function TablaMermas({ datos }: { datos: Record<string, unknown>[] }) {
+function TablaMermas({ datos, canEdit, onRefresh, verCostos }: { datos: Record<string, unknown>[]; canEdit: boolean; onRefresh: () => void; verCostos: boolean }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const toggle = (id: string) => setExpanded(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<Record<string, number>>({});
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState('');
+
+  const toggle = (id: string) => {
+    setExpanded(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    if (editingId === id) { setEditingId(null); setEditValues({}); setSaveErr(''); }
+  };
+  const startEdit = (id: string, det: Record<string, unknown>[]) => {
+    const vals: Record<string, number> = {};
+    det.forEach(d => { vals[d.id as string] = d.cantidad as number; });
+    setEditingId(id); setEditValues(vals); setSaveErr('');
+  };
+  const cancelEdit = () => { setEditingId(null); setEditValues({}); setSaveErr(''); };
+  const saveEditMer = async (mermaId: string, det: Record<string, unknown>[]) => {
+    setSaving(true); setSaveErr('');
+    try {
+      const detalle = det.map(d => ({ id: d.id as string, cantidad: editValues[d.id as string] ?? (d.cantidad as number) }));
+      const res = await fetch('/api/mermas', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ merma_id: mermaId, detalle }) });
+      if (!res.ok) { const j = await res.json(); throw new Error(j.error); }
+      setEditingId(null); setEditValues({}); onRefresh();
+    } catch (e: unknown) { setSaveErr(e instanceof Error ? e.message : 'Error guardando'); }
+    finally { setSaving(false); }
+  };
 
   if (!datos.length) return <Empty msg="No hay mermas registradas en este período." />;
 
@@ -330,7 +422,7 @@ function TablaMermas({ datos }: { datos: Record<string, unknown>[] }) {
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '480px' }}>
         <thead>
           <tr>
-            {['Fecha', 'Qué se perdió', 'Motivos', 'Productos', 'Pérdida', ''].map(h => (
+            {['Fecha', 'Qué se perdió', 'Motivos', 'Productos', ...(verCostos ? ['Pérdida'] : []), ''].map(h => (
               <th key={h} style={thSt}>{h}</th>
             ))}
           </tr>
@@ -383,9 +475,11 @@ function TablaMermas({ datos }: { datos: Record<string, unknown>[] }) {
                 <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums' }}>
                   {det.length}
                 </td>
-                <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: ct > 0 ? '#DC2626' : 'var(--ts)', fontWeight: ct > 0 ? 700 : 400 }}>
-                  {ct > 0 ? formatCLP(ct) : '—'}
-                </td>
+                {verCostos && (
+                  <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: ct > 0 ? '#DC2626' : 'var(--ts)', fontWeight: ct > 0 ? 700 : 400 }}>
+                    {ct > 0 ? formatCLP(ct) : '—'}
+                  </td>
+                )}
                 <td style={{ ...tdSt, textAlign: 'right', width: '48px' }}>
                   <ExpandBtn open={open} />
                 </td>
@@ -393,7 +487,7 @@ function TablaMermas({ datos }: { datos: Record<string, unknown>[] }) {
 
               open && (
                 <tr key={`${id}-det`}>
-                  <td colSpan={6} style={{ background: '#FEF2F2', padding: '0 0 2px' }}>
+                  <td colSpan={verCostos ? 6 : 5} style={{ background: '#FEF2F2', padding: '0 0 2px' }}>
                     <div style={{ padding: '16px 20px', display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
 
                       {/* Meta */}
@@ -412,22 +506,57 @@ function TablaMermas({ datos }: { datos: Record<string, unknown>[] }) {
                       {/* Detalle */}
                       {det.length > 0 && (
                         <div style={{ flex: 1, minWidth: '240px' }}>
-                          <DetailLabel>Detalle de productos</DetailLabel>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Detalle de productos</span>
+                            {canEdit && editingId !== id && (
+                              <button onClick={e => { e.stopPropagation(); startEdit(id, det); }}
+                                style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--ac)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                                Editar
+                              </button>
+                            )}
+                            {editingId === id && (
+                              <>
+                                <button onClick={e => { e.stopPropagation(); saveEditMer(id, det); }} disabled={saving}
+                                  style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#0D9373', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                                  {saving ? 'Guardando...' : 'Guardar'}
+                                </button>
+                                <button onClick={e => { e.stopPropagation(); cancelEdit(); }}
+                                  style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--bo)', color: 'var(--ts)', border: 'none', cursor: 'pointer' }}>
+                                  Cancelar
+                                </button>
+                              </>
+                            )}
+                          </div>
+                          {saveErr && <p style={{ color: 'var(--rd)', fontSize: '11px', margin: '0 0 6px' }}>{saveErr}</p>}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                             {det.map((d, i) => {
+                              const isEditing = editingId === id;
+                              const qty = isEditing ? (editValues[d.id as string] ?? (d.cantidad as number)) : (d.cantidad as number);
                               const motivo = d.motivo as string | null;
                               const motivoColor = motivo ? (MOTIVO_COLOR[motivo] ?? '#6B7280') : null;
                               return (
                                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--sf)', borderRadius: '7px', padding: '7px 12px' }}>
                                   <span style={{ flex: 1, fontSize: '13px', fontWeight: 500, color: 'var(--tx)' }}>{d.nombre_producto as string}</span>
-                                  <span style={{ fontSize: '12px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{d.cantidad as number} {d.unidad_medida as string}</span>
-                                  {motivo && motivoColor && (
-                                    <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '4px', background: `${motivoColor}18`, color: motivoColor, border: `1px solid ${motivoColor}40`, whiteSpace: 'nowrap' }}>
-                                      {motivo}
-                                    </span>
-                                  )}
-                                  {(d.costo_total as number) > 0 && (
-                                    <span style={{ fontSize: '12px', color: '#DC2626', fontWeight: 600, fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(d.costo_total as number)}</span>
+                                  {isEditing ? (
+                                    <>
+                                      <input type="number" value={qty} min={0} step="any"
+                                        onClick={e => e.stopPropagation()}
+                                        onChange={e => setEditValues(v => ({ ...v, [d.id as string]: parseFloat(e.target.value) || 0 }))}
+                                        style={{ width: '80px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }} />
+                                      <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{d.unidad_medida as string}</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span style={{ fontSize: '12px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{qty} {d.unidad_medida as string}</span>
+                                      {!isEditing && motivo && motivoColor && (
+                                        <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '4px', background: `${motivoColor}18`, color: motivoColor, border: `1px solid ${motivoColor}40`, whiteSpace: 'nowrap' }}>
+                                          {motivo}
+                                        </span>
+                                      )}
+                                      {verCostos && (d.costo_total as number) > 0 && (
+                                        <span style={{ fontSize: '12px', color: '#DC2626', fontWeight: 600, fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(d.costo_total as number)}</span>
+                                      )}
+                                    </>
                                   )}
                                 </div>
                               );
@@ -482,6 +611,10 @@ function PeriodShortcuts({ onSelect }: { onSelect: (d: string, h: string) => voi
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function HistorialPage() {
+  const { puede, rol } = useRol();
+  const canEdit = puede('historial', 'editar');
+  const verCostos = rol !== 'cocina';
+
   const [tab,     setTab]     = useState<Tab>('produccion');
   const [desde,   setDesde]   = useState(mesInicio());
   const [hasta,   setHasta]   = useState(hoyChile());
@@ -504,6 +637,7 @@ export default function HistorialPage() {
   }, []);
 
   useEffect(() => { cargar(tab, desde, hasta); }, [tab, desde, hasta, cargar]);
+  const refresh = useCallback(() => cargar(tab, desde, hasta), [tab, desde, hasta, cargar]);
 
   const TAB_CFG: { id: Tab; label: string; color: string }[] = [
     { id: 'produccion', label: 'Producción',  color: 'var(--ac)' },
@@ -562,9 +696,9 @@ export default function HistorialPage() {
           </div>
         ) : (
           <>
-            {tab === 'produccion' && <TablaProduccion datos={datos} />}
-            {tab === 'colacion'   && <TablaColacion   datos={datos} />}
-            {tab === 'mermas'     && <TablaMermas     datos={datos} />}
+            {tab === 'produccion' && <TablaProduccion datos={datos} verCostos={verCostos} />}
+            {tab === 'colacion'   && <TablaColacion   datos={datos} canEdit={canEdit} onRefresh={refresh} verCostos={verCostos} />}
+            {tab === 'mermas'     && <TablaMermas     datos={datos} canEdit={canEdit} onRefresh={refresh} verCostos={verCostos} />}
           </>
         )}
       </div>

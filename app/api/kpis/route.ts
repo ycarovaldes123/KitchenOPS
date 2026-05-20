@@ -56,11 +56,6 @@ export async function GET(req: NextRequest) {
   const total_informes = producciones?.length ?? 0;
 
   type DetalleRow = { total_producido: number | null; costo_total: number | null };
-  const total_produccion_kg = (producciones ?? []).flatMap(p =>
-    ((p as { detalle_produccion: DetalleRow[] }).detalle_produccion ?? [])
-      .map(d => d.total_producido ?? 0)
-  ).reduce((s, v) => s + v, 0) / 1000;
-
   const total_produccion_clp = (producciones ?? []).flatMap(p =>
     ((p as { detalle_produccion: DetalleRow[] }).detalle_produccion ?? [])
       .map(d => d.costo_total ?? 0)
@@ -98,7 +93,6 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     total_informes,
-    total_produccion_kg:      Math.round(total_produccion_kg * 10) / 10,
     total_produccion_clp:     verCostos ? Math.round(total_produccion_clp) : null,
     costo_por_orden:          verCostos ? costo_por_orden : null,
     total_mermas_clp:         verCostos ? Math.round(total_mermas_clp) : null,

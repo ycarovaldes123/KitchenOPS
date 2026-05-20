@@ -10,9 +10,14 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const fecha = searchParams.get('fecha');
 
+  const verCostos = s.rol !== 'cocina';
+  const detalleSelect = verCostos
+    ? 'id,nombre_producto,cantidad,unidad_medida,motivo,costo_unitario,costo_total'
+    : 'id,nombre_producto,cantidad,unidad_medida,motivo';
+
   let query = supabase
     .from('mermas')
-    .select('id,fecha,responsable_nombre,observacion,estado,created_at,detalle_mermas(id,nombre_producto,cantidad,unidad_medida,motivo,costo_unitario,costo_total)')
+    .select(`id,fecha,responsable_nombre,observacion,estado,created_at,detalle_mermas(${detalleSelect})`)
     .order('created_at', { ascending: false });
 
   if (fecha) query = query.eq('fecha', fecha);
@@ -48,4 +53,43 @@ export async function POST(req: NextRequest) {
   if (dErr) return NextResponse.json({ error: dErr.message }, { status: 500 });
 
   return NextResponse.json({ id: mer.id }, { status: 201 });
+}
+
+export async function PATCH(req: NextRequest) {
+  const s = await requireRol(['admin']);
+  if (!s.ok) return s.response;
+
+  const supabase = await createClient();
+  const { merma_id, detalle } = await req.json();
+
+  if (!merma_id || !Array.isArray(detalle) || !detalle.length)
+    return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 });
+
+  const ids = detalle.map((d: { id: string }) => d.id);
+  const { data: rows, error: fetchErr } = await supabase
+    .from('detalle_mermas')
+    .select('id,costo_unitario')
+    .in('id', ids)
+    .eq('merma_id', merma_id);
+  if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+
+  const cuMap = new Map(rows?.map(r => [r.id, r.costo_unitario as number]) ?? []);
+
+  for (const d of detalle as { id: string; cantidad: number }[]) {
+    const cu = cuMap.get(d.id) ?? 0;
+    const { error } = await supabase
+      .from('detalle_mermas')
+      .update({
+        cantidad: d.cantidad,
+        costo_total: Math.round(d.cantidad * cu),
+        updated_at: new Date().toISOString(),
+        updated_by: s.email,
+        updated_by_rol: s.rol,
+      })
+      .eq('id', d.id)
+      .eq('merma_id', merma_id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
 }

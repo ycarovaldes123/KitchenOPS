@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { formatCLP } from '@/lib/calculos';
+import { useRol } from '@/components/RolProvider';
 import type { Responsable, Producto } from '@/types/database';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -208,6 +209,9 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function ColacionPage() {
+  const { rol } = useRol();
+  const verCostos = rol !== 'cocina';
+
   const [maestros,      setMaestros]      = useState<Maestros | null>(null);
   const [cargando,      setCargando]      = useState(true);
   const [fecha,         setFecha]         = useState(hoyChile());
@@ -351,7 +355,7 @@ export default function ColacionPage() {
               <span style={{ fontSize: '12px', background: 'var(--sf)', border: '1px solid var(--bo)', padding: '4px 12px', borderRadius: '20px', color: 'var(--ts)' }}>
                 {rows.length} ingrediente{rows.length !== 1 ? 's' : ''}
               </span>
-              {costoTotal > 0 && (
+              {verCostos && costoTotal > 0 && (
                 <span style={{ fontSize: '12px', fontWeight: 700, background: 'var(--al)', border: '1px solid var(--ac)', padding: '4px 12px', borderRadius: '20px', color: 'var(--ac)' }}>
                   {formatCLP(costoTotal)} total
                 </span>
@@ -428,7 +432,7 @@ export default function ColacionPage() {
                     onFocus={e => (e.currentTarget.style.borderColor = 'var(--ac)')}
                     onBlur={e => (e.currentTarget.style.borderColor = 'var(--bo)')}
                   />
-                  {ni > 0 && costoPorPlato && (
+                  {verCostos && ni > 0 && costoPorPlato && (
                     <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '11px', color: 'var(--ac)', fontWeight: 700, whiteSpace: 'nowrap' }}>
                       {formatCLP(costoPorPlato)}/plato
                     </span>
@@ -472,7 +476,7 @@ export default function ColacionPage() {
                       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '560px' }}>
                         <thead>
                           <tr style={{ background: 'var(--bg)' }}>
-                            {['Ingrediente', 'Cantidad', 'Unidad', 'Costo est.', 'Estado', ''].map((h, i) => (
+                            {['Ingrediente', 'Cantidad', 'Unidad', ...(verCostos ? ['Costo est.'] : []), 'Estado', ''].map((h, i) => (
                               <th key={i} style={{ padding: '10px 12px', textAlign: i === 5 ? 'center' : 'left', fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: '1px solid var(--bo)', whiteSpace: 'nowrap' }}>{h}</th>
                             ))}
                           </tr>
@@ -505,9 +509,11 @@ export default function ColacionPage() {
                                 <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)', whiteSpace: 'nowrap' }}>
                                   {row.unidad_medida === 'KG' ? 'g' : (row.unidad_medida?.toLowerCase() || '—')}
                                 </td>
-                                <td style={{ padding: '9px 12px', fontSize: '13px', whiteSpace: 'nowrap', fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: costo > 0 ? 'var(--tx)' : 'var(--ts)' }}>
-                                  {costo > 0 ? formatCLP(costo) : '—'}
-                                </td>
+                                {verCostos && (
+                                  <td style={{ padding: '9px 12px', fontSize: '13px', whiteSpace: 'nowrap', fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: costo > 0 ? 'var(--tx)' : 'var(--ts)' }}>
+                                    {costo > 0 ? formatCLP(costo) : '—'}
+                                  </td>
+                                )}
                                 <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
                                   <StatusBadge status={status} />
                                 </td>
@@ -548,7 +554,7 @@ export default function ColacionPage() {
                 </p>
               </div>
 
-              {costoTotal > 0 && (
+              {verCostos && costoTotal > 0 && (
                 <div>
                   <p style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 2px' }}>Costo total</p>
                   <p style={{ fontSize: '22px', fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: 'var(--ac)', margin: 0, lineHeight: 1.1 }}>
@@ -557,7 +563,7 @@ export default function ColacionPage() {
                 </div>
               )}
 
-              {costoPorPlato && (
+              {verCostos && costoPorPlato && (
                 <div>
                   <p style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 2px' }}>Costo / plato</p>
                   <p style={{ fontSize: '22px', fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: 'var(--tl)', margin: 0, lineHeight: 1.1 }}>
@@ -567,7 +573,7 @@ export default function ColacionPage() {
               )}
 
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                {warnings > 0 && (
+                {verCostos && warnings > 0 && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: '8px', padding: '5px 11px' }}>
                     <span style={{ fontSize: '13px' }}>⚠</span>
                     <span style={{ fontSize: '12px', color: '#92400E', fontWeight: 600 }}>{warnings} ingrediente{warnings !== 1 ? 's' : ''} sin costo</span>

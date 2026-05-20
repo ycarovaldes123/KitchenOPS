@@ -10,9 +10,17 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const fecha = searchParams.get('fecha');
 
+  const verCostos = s.rol !== 'cocina';
+  const detalleSelect = verCostos
+    ? 'id,nombre_producto,cantidad,unidad_medida,costo_unitario,costo_total'
+    : 'id,nombre_producto,cantidad,unidad_medida';
+  const parentSelect = verCostos
+    ? `id,fecha,responsable_nombre,menu,n_inscritos,costo_total,created_at,detalle_colacion(${detalleSelect})`
+    : `id,fecha,responsable_nombre,menu,n_inscritos,created_at,detalle_colacion(${detalleSelect})`;
+
   let query = supabase
     .from('colacion')
-    .select('id,fecha,responsable_nombre,menu,n_inscritos,costo_total,created_at,detalle_colacion(id,nombre_producto,cantidad,unidad_medida,costo_unitario,costo_total)')
+    .select(parentSelect)
     .order('created_at', { ascending: false });
 
   if (fecha) query = query.eq('fecha', fecha);
@@ -52,4 +60,51 @@ export async function POST(req: NextRequest) {
   if (dErr) return NextResponse.json({ error: dErr.message }, { status: 500 });
 
   return NextResponse.json({ id: col.id }, { status: 201 });
+}
+
+export async function PATCH(req: NextRequest) {
+  const s = await requireRol(['admin']);
+  if (!s.ok) return s.response;
+
+  const supabase = await createClient();
+  const { colacion_id, detalle } = await req.json();
+
+  if (!colacion_id || !Array.isArray(detalle) || !detalle.length)
+    return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 });
+
+  const ids = detalle.map((d: { id: string }) => d.id);
+  const { data: rows, error: fetchErr } = await supabase
+    .from('detalle_colacion')
+    .select('id,costo_unitario')
+    .in('id', ids)
+    .eq('colacion_id', colacion_id);
+  if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+
+  const cuMap = new Map(rows?.map(r => [r.id, r.costo_unitario as number]) ?? []);
+
+  for (const d of detalle as { id: string; cantidad: number }[]) {
+    const cu = cuMap.get(d.id) ?? 0;
+    const { error } = await supabase
+      .from('detalle_colacion')
+      .update({
+        cantidad: d.cantidad,
+        costo_total: Math.round(d.cantidad * cu),
+        updated_at: new Date().toISOString(),
+        updated_by: s.email,
+        updated_by_rol: s.rol,
+      })
+      .eq('id', d.id)
+      .eq('colacion_id', colacion_id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // Recalculate parent costo_total
+  const { data: allDet } = await supabase
+    .from('detalle_colacion')
+    .select('costo_total')
+    .eq('colacion_id', colacion_id);
+  const total = (allDet ?? []).reduce((s, r) => s + ((r.costo_total as number) ?? 0), 0);
+  await supabase.from('colacion').update({ costo_total: total }).eq('id', colacion_id);
+
+  return NextResponse.json({ ok: true });
 }
