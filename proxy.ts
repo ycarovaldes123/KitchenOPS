@@ -1,52 +1,48 @@
-﻿import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { updateSession } from '@/utils/supabase/middleware';
 import { RMAP, RUTAS_ROL, RUTA_INICIO } from '@/lib/roles';
 
-export async function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+const PUBLIC_PATHS = ['/login', '/auth', '/logout'];
 
-  const esPublica =
-    pathname === '/login' ||
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/api/') ||
-    pathname.startsWith('/auth/') ||
-    /\.(svg|png|jpg|jpeg|gif|webp|ico|css|js)$/.test(pathname);
+export async function proxy(req: NextRequest) {
+  const { pathname } = req.nextUrl;
 
-  if (esPublica) {
-    const { supabaseResponse } = await updateSession(request);
+  // API routes do their own auth validation
+  if (pathname.startsWith('/api/')) return NextResponse.next();
+
+  // Keep Supabase session fresh
+  const { supabaseResponse, user } = await updateSession(req);
+
+  // Public paths — redirect already-authed users to their home
+  if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) {
+    if (user) {
+      const rol = RMAP[user.email ?? ''];
+      if (rol) return NextResponse.redirect(new URL(RUTA_INICIO[rol], req.url));
+    }
     return supabaseResponse;
   }
 
-  const { supabaseResponse, user } = await updateSession(request);
-
+  // Not authenticated
   if (!user) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(new URL('/login', req.url));
   }
 
+  // Authenticated but no role in RMAP
   const rol = RMAP[user.email ?? ''];
   if (!rol) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    url.searchParams.set('error', 'unauthorized');
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(new URL('/login?error=unauthorized', req.url));
   }
 
+  // Root redirect
   if (pathname === '/') {
-    const url = request.nextUrl.clone();
-    url.pathname = RUTA_INICIO[rol] ?? '/login';
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(new URL(RUTA_INICIO[rol], req.url));
   }
 
-  const rutasPermitidas = RUTAS_ROL[rol] ?? [];
-  const tieneAcceso     = rutasPermitidas.some(ruta => pathname.startsWith(ruta));
-
-  if (!tieneAcceso) {
-    const url = request.nextUrl.clone();
-    url.pathname = RUTA_INICIO[rol] ?? '/login';
-    return NextResponse.redirect(url);
+  // Check module access
+  const segmento = '/' + pathname.split('/')[1];
+  const permitidas = RUTAS_ROL[rol];
+  if (segmento !== '/' && !permitidas.some(r => pathname.startsWith(r))) {
+    return NextResponse.redirect(new URL(RUTA_INICIO[rol], req.url));
   }
 
   return supabaseResponse;
@@ -54,6 +50,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };
