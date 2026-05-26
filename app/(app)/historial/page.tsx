@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { formatCLP, formatPct, calcMerma } from '@/lib/calculos';
 import { useRol } from '@/components/RolProvider';
 
@@ -26,6 +26,14 @@ function fmtHora(iso: string) {
   if (!iso) return null;
   const d = new Date(iso);
   return d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Santiago' });
+}
+
+function normalizarTexto(texto: string) {
+  return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 }
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -76,6 +84,119 @@ function MetaRow({ icon, label, value }: { icon: string; label: string; value: s
   );
 }
 
+type SearchOption = {
+  value: string;
+  label: string;
+  searchText: string;
+};
+
+function SearchablePicker({
+  value,
+  options,
+  placeholder,
+  width = '260px',
+  onChange,
+}: {
+  value: string;
+  options: SearchOption[];
+  placeholder: string;
+  width?: string;
+  onChange: (value: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const selectedLabel = options.find(opt => opt.value === value)?.label ?? '';
+
+  useEffect(() => {
+    setQuery(selectedLabel);
+  }, [selectedLabel]);
+
+  const matches = useMemo(() => {
+    const q = normalizarTexto(query);
+    const base = q
+      ? options.filter(opt => normalizarTexto(`${opt.label} ${opt.searchText}`).includes(q))
+      : options;
+    return base.slice(0, 12);
+  }, [options, query]);
+
+  return (
+    <div style={{ position: 'relative', width }}>
+      <input
+        type="text"
+        value={query}
+        placeholder={placeholder}
+        onFocus={() => setOpen(true)}
+        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+        onChange={e => {
+          setQuery(e.target.value);
+          setOpen(true);
+        }}
+        style={{
+          width: '100%',
+          padding: '4px 8px',
+          fontSize: '12px',
+          borderRadius: '4px',
+          border: '1px solid var(--bo)',
+          background: 'var(--bg)',
+          color: 'var(--tx)',
+        }}
+      />
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: 'calc(100% + 4px)',
+            zIndex: 20,
+            maxHeight: '220px',
+            overflowY: 'auto',
+            border: '1px solid var(--bo)',
+            borderRadius: '6px',
+            background: 'var(--bg)',
+            boxShadow: '0 10px 24px rgba(15, 23, 42, 0.12)',
+          }}
+        >
+          {matches.length === 0 ? (
+            <div style={{ padding: '10px 12px', fontSize: '12px', color: 'var(--ts)' }}>
+              Sin coincidencias
+            </div>
+          ) : (
+            matches.map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => {
+                  onChange(opt.value);
+                  setQuery(opt.label);
+                  setOpen(false);
+                }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '9px 12px',
+                  border: 'none',
+                  borderBottom: '1px solid var(--bo)',
+                  background: 'transparent',
+                  color: 'var(--tx)',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ fontSize: '12px', fontWeight: 600 }}>{opt.label}</div>
+                <div style={{ fontSize: '10px', color: 'var(--ts)', marginTop: '2px' }}>
+                  {opt.searchText}
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── TablaProduccion ────────────────────────────────────────────────────────
 
 function TablaProduccion({ datos, canEdit, onRefresh, verCostos, productos, pps }: { datos: Record<string, unknown>[]; canEdit: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[]; pps: Record<string, unknown>[] }) {
@@ -108,6 +229,11 @@ function TablaProduccion({ datos, canEdit, onRefresh, verCostos, productos, pps 
   };
   const productosMap = new Map(productos.map(p => [p.codigo as string, p]));
   const ppsMap = new Map(pps.map(pp => [pp.id as string, pp]));
+  const ppOptions = useMemo(() => pps.map(pp => ({
+    value: pp.id as string,
+    label: `${pp.id as string} · ${pp.nombre as string}`,
+    searchText: [pp.id, pp.nombre, pp.codigo_producto, pp.tipo_pp].filter(Boolean).join(' '),
+  })), [pps]);
   const saveEditProd = async (prodId: string, det: Record<string, unknown>[], rend: Record<string, unknown>[]) => {
     setSaving(true); setSaveErr('');
     try {
@@ -278,6 +404,7 @@ function TablaProduccion({ datos, canEdit, onRefresh, verCostos, productos, pps 
                                   ? qty
                                   : qty * ((d.gramos_por_pp as number | null) ?? 1))
                                 : d.total_producido as number | null;
+                              const costoUnitarioEdit = Number(d.costo_unitario) || (Number(d.cantidad) > 0 ? Number(d.costo_total) / Number(d.cantidad) : 0);
                               const totalStr = total == null ? '—' : total >= 1000 ? `${(total / 1000).toFixed(2)} kg` : `${total} g`;
                               const costo = d.costo_total as number;
                               return (
@@ -290,6 +417,11 @@ function TablaProduccion({ datos, canEdit, onRefresh, verCostos, productos, pps 
                                         onChange={e => setEditValues(v => ({ ...v, [d.id as string]: parseFloat(e.target.value) || 0 }))}
                                         style={{ width: '80px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }} />
                                       <span style={{ fontSize: '12px', color: 'var(--ts)' }}>PP</span>
+                                      {verCostos && (
+                                        <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>
+                                          {formatCLP(Math.round(qty * costoUnitarioEdit))}
+                                        </span>
+                                      )}
                                     </>
                                   ) : (
                                     <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{d.cantidad as number} × {(d.gramos_por_pp as number | null) ?? '—'}</span>
@@ -311,17 +443,13 @@ function TablaProduccion({ datos, canEdit, onRefresh, verCostos, productos, pps 
                                 : cantidad;
                               return (
                                 <div key={row.localId} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--al)', borderRadius: '7px', padding: '7px 12px', border: '1px dashed var(--bo)' }}>
-                                  <select
+                                  <SearchablePicker
                                     value={row.pp_id}
-                                    onClick={e => e.stopPropagation()}
-                                    onChange={e => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, pp_id: e.target.value } : x))}
-                                    style={{ width: '260px', padding: '4px 6px', fontSize: '12px', borderRadius: '4px', border: '1px solid var(--bo)', background: 'var(--bg)', color: 'var(--tx)' }}
-                                  >
-                                    <option value="">Selecciona PP</option>
-                                    {pps.map(ppItem => (
-                                      <option key={ppItem.id as string} value={ppItem.id as string}>{ppItem.nombre as string}</option>
-                                    ))}
-                                  </select>
+                                    options={ppOptions}
+                                    placeholder="Buscar PP o código"
+                                    width="300px"
+                                    onChange={value => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, pp_id: value } : x))}
+                                  />
                                   <input
                                     type="number"
                                     min={0}
@@ -330,7 +458,7 @@ function TablaProduccion({ datos, canEdit, onRefresh, verCostos, productos, pps 
                                     onClick={e => e.stopPropagation()}
                                     onChange={e => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, cantidad: parseFloat(e.target.value) || 0 } : x))}
                                     style={{ width: '80px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }}
-                                  />
+                                    />
                                   <span style={{ fontSize: '12px', color: 'var(--ts)' }}>PP</span>
                                   <span style={{ fontSize: '12px', color: 'var(--tl)', fontWeight: 600, fontFamily: "'Space Grotesk', sans-serif" }}>{totalProducido} g</span>
                                   <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(Math.round(costoUnitario * cantidad))}</span>
@@ -447,6 +575,11 @@ function TablaColacion({ datos, canEdit, onRefresh, verCostos, productos }: { da
   };
   const cancelEdit = () => { setEditingId(null); setEditValues({}); setEditInscritos(0); setNewRows([]); setSaveErr(''); };
   const addRow = () => setNewRows(rows => [...rows, { localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`, codigo_producto: '', cantidad: 1 }]);
+  const productoOptions = useMemo(() => productos.map(prod => ({
+    value: prod.codigo as string,
+    label: `${prod.codigo as string} · ${prod.nombre as string}`,
+    searchText: [prod.codigo, prod.nombre, prod.unidad_medida].filter(Boolean).join(' '),
+  })), [productos]);
   const saveEditCol = async (colId: string, det: Record<string, unknown>[]) => {
     setSaving(true); setSaveErr('');
     try {
@@ -604,6 +737,7 @@ function TablaColacion({ datos, canEdit, onRefresh, verCostos, productos }: { da
                             {det.map((d, i) => {
                               const isEditing = editingId === id;
                               const qty = isEditing ? (editValues[d.id as string] ?? (d.cantidad as number)) : (d.cantidad as number);
+                              const costoUnitarioEdit = Number(d.costo_unitario) || (Number(d.cantidad) > 0 ? Number(d.costo_total) / Number(d.cantidad) : 0);
                               return (
                                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--sf)', borderRadius: '7px', padding: '7px 12px' }}>
                                   <span style={{ flex: 1, fontSize: '13px', fontWeight: 500, color: 'var(--tx)' }}>{d.nombre_producto as string}</span>
@@ -614,6 +748,11 @@ function TablaColacion({ datos, canEdit, onRefresh, verCostos, productos }: { da
                                         onChange={e => setEditValues(v => ({ ...v, [d.id as string]: parseFloat(e.target.value) || 0 }))}
                                         style={{ width: '80px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }} />
                                       <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{d.unidad_medida as string}</span>
+                                      {verCostos && (
+                                        <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>
+                                          {formatCLP(Math.round(qty * costoUnitarioEdit))}
+                                        </span>
+                                      )}
                                     </>
                                   ) : (
                                     <>
@@ -632,17 +771,13 @@ function TablaColacion({ datos, canEdit, onRefresh, verCostos, productos }: { da
                               const costoUnitario = Number(p?.costo_promedio) || 0;
                               return (
                                 <div key={row.localId} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--al)', borderRadius: '7px', padding: '7px 12px', border: '1px dashed var(--bo)' }}>
-                                  <select
+                                  <SearchablePicker
                                     value={row.codigo_producto}
-                                    onClick={e => e.stopPropagation()}
-                                    onChange={e => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, codigo_producto: e.target.value } : x))}
-                                    style={{ width: '260px', padding: '4px 6px', fontSize: '12px', borderRadius: '4px', border: '1px solid var(--bo)', background: 'var(--bg)', color: 'var(--tx)' }}
-                                  >
-                                    <option value="">Selecciona producto</option>
-                                    {productos.map(prod => (
-                                      <option key={prod.codigo as string} value={prod.codigo as string}>{prod.nombre as string}</option>
-                                    ))}
-                                  </select>
+                                    options={productoOptions}
+                                    placeholder="Buscar por nombre o código"
+                                    width="300px"
+                                    onChange={value => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, codigo_producto: value } : x))}
+                                  />
                                   <input
                                     type="number"
                                     min={0}
@@ -705,6 +840,11 @@ function TablaMermas({ datos, canEdit, onRefresh, verCostos, productos }: { dato
   };
   const cancelEdit = () => { setEditingId(null); setEditValues({}); setNewRows([]); setSaveErr(''); };
   const addRow = () => setNewRows(rows => [...rows, { localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`, codigo_producto: '', cantidad: 1, motivo: 'Otro' }]);
+  const productoOptions = useMemo(() => productos.map(prod => ({
+    value: prod.codigo as string,
+    label: `${prod.codigo as string} · ${prod.nombre as string}`,
+    searchText: [prod.codigo, prod.nombre, prod.unidad_medida].filter(Boolean).join(' '),
+  })), [productos]);
   const saveEditMer = async (mermaId: string, det: Record<string, unknown>[]) => {
     setSaving(true); setSaveErr('');
     try {
@@ -869,6 +1009,7 @@ function TablaMermas({ datos, canEdit, onRefresh, verCostos, productos }: { dato
                               const qty = isEditing ? (editValues[d.id as string] ?? (d.cantidad as number)) : (d.cantidad as number);
                               const motivo = d.motivo as string | null;
                               const motivoColor = motivo ? (MOTIVO_COLOR[motivo] ?? '#6B7280') : null;
+                              const costoUnitarioEdit = Number(d.costo_unitario) || (Number(d.cantidad) > 0 ? Number(d.costo_total) / Number(d.cantidad) : 0);
                               return (
                                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--sf)', borderRadius: '7px', padding: '7px 12px' }}>
                                   <span style={{ flex: 1, fontSize: '13px', fontWeight: 500, color: 'var(--tx)' }}>{d.nombre_producto as string}</span>
@@ -879,6 +1020,11 @@ function TablaMermas({ datos, canEdit, onRefresh, verCostos, productos }: { dato
                                         onChange={e => setEditValues(v => ({ ...v, [d.id as string]: parseFloat(e.target.value) || 0 }))}
                                         style={{ width: '80px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }} />
                                       <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{d.unidad_medida as string}</span>
+                                      {verCostos && (
+                                        <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>
+                                          {formatCLP(Math.round(qty * costoUnitarioEdit))}
+                                        </span>
+                                      )}
                                     </>
                                   ) : (
                                     <>
@@ -902,17 +1048,13 @@ function TablaMermas({ datos, canEdit, onRefresh, verCostos, productos }: { dato
                               const costoUnitario = Number(p?.costo_promedio) || 0;
                               return (
                                 <div key={row.localId} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--al)', borderRadius: '7px', padding: '7px 12px', border: '1px dashed var(--bo)' }}>
-                                  <select
+                                  <SearchablePicker
                                     value={row.codigo_producto}
-                                    onClick={e => e.stopPropagation()}
-                                    onChange={e => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, codigo_producto: e.target.value } : x))}
-                                    style={{ width: '260px', padding: '4px 6px', fontSize: '12px', borderRadius: '4px', border: '1px solid var(--bo)', background: 'var(--bg)', color: 'var(--tx)' }}
-                                  >
-                                    <option value="">Selecciona producto</option>
-                                    {productos.map(prod => (
-                                      <option key={prod.codigo as string} value={prod.codigo as string}>{prod.nombre as string}</option>
-                                    ))}
-                                  </select>
+                                    options={productoOptions}
+                                    placeholder="Buscar por nombre o código"
+                                    width="300px"
+                                    onChange={value => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, codigo_producto: value } : x))}
+                                  />
                                   <input
                                     type="number"
                                     min={0}
