@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol, getSessionRol } from '@/lib/auth-server';
 
+function calcTotalPP(cantidad: number, tipoPP: string | null, gramosPorPP: number | null): number {
+  if (tipoPP === 'CC' || tipoPP === 'DIRECTO') return cantidad;
+  return cantidad * (gramosPorPP ?? 1);
+}
+
 export async function GET(req: NextRequest) {
   const s = await getSessionRol();
   if (!s.ok) return s.response;
@@ -61,4 +66,58 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ id: prod.id }, { status: 201 });
+}
+
+export async function PATCH(req: NextRequest) {
+  const s = await requireRol(['admin']);
+  if (!s.ok) return s.response;
+
+  const supabase = await createClient();
+  const { produccion_id, detalle } = await req.json();
+
+  if (!produccion_id || !Array.isArray(detalle) || !detalle.length)
+    return NextResponse.json({ error: 'Datos invalidos' }, { status: 400 });
+
+  const ids = detalle.map((d: { id: string }) => d.id);
+  const { data: rows, error: fetchErr } = await supabase
+    .from('detalle_produccion')
+    .select('id,cantidad,tipo_pp,gramos_por_pp,costo_unitario,costo_total')
+    .in('id', ids)
+    .eq('produccion_id', produccion_id);
+  if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+
+  const rowMap = new Map(rows?.map(r => [r.id, r]) ?? []);
+
+  for (const d of detalle as { id: string; cantidad: number }[]) {
+    const row = rowMap.get(d.id);
+    if (!row) return NextResponse.json({ error: 'Linea de produccion no encontrada' }, { status: 404 });
+
+    const cantidad = Number(d.cantidad);
+    if (!Number.isFinite(cantidad) || cantidad < 0)
+      return NextResponse.json({ error: 'Cantidad invalida' }, { status: 400 });
+
+    const total_producido = calcTotalPP(
+      cantidad,
+      row.tipo_pp as string | null,
+      row.gramos_por_pp as number | null
+    );
+    const cantidadAnterior = Number(row.cantidad) || 0;
+    const costoAnterior = Number(row.costo_total) || 0;
+    const costoPorCantidad = cantidadAnterior > 0 && costoAnterior > 0
+      ? costoAnterior / cantidadAnterior
+      : Number(row.costo_unitario) || 0;
+
+    const { error } = await supabase
+      .from('detalle_produccion')
+      .update({
+        cantidad,
+        total_producido,
+        costo_total: Math.round(cantidad * costoPorCantidad),
+      })
+      .eq('id', d.id)
+      .eq('produccion_id', produccion_id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
 }

@@ -24,12 +24,11 @@ INSERT INTO responsables (nombre, email, rol, color_hex, iniciales, activo) VALU
   ('FELIPE VIDAL',       NULL,                                     'cocina',    '#6366F1', 'FV', true),
   ('PAMELA COLIHUINCA',  NULL,                                     'cocina',    '#059669', 'PC', true)
 ON CONFLICT (nombre) DO UPDATE SET
-  activo     = true,
-  color_hex  = EXCLUDED.color_hex,
-  iniciales  = EXCLUDED.iniciales,
-  email      = COALESCE(EXCLUDED.email, responsables.email),
-  rol        = EXCLUDED.rol,
-  updated_at = NOW();
+  activo    = true,
+  color_hex = EXCLUDED.color_hex,
+  iniciales = EXCLUDED.iniciales,
+  email     = COALESCE(EXCLUDED.email, responsables.email),
+  rol       = EXCLUDED.rol;
 
 -- ── Verificación ────────────────────────────────────────────
 SELECT nombre, iniciales, rol, color_hex, activo

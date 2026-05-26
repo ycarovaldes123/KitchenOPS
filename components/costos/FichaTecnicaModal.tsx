@@ -32,9 +32,10 @@ interface FichaData {
 interface Props {
   plato:    FichaData;
   onClose:  () => void;
+  onEdit?:  () => void;
 }
 
-export default function FichaTecnicaModal({ plato, onClose }: Props) {
+export default function FichaTecnicaModal({ plato, onClose, onEdit }: Props) {
   const ref = useRef<HTMLDivElement>(null);
 
   // Cerrar con Escape o click fuera
@@ -95,6 +96,14 @@ export default function FichaTecnicaModal({ plato, onClose }: Props) {
               {plato.nombre}
             </h2>
           </div>
+          {onEdit && (
+            <button
+              onClick={onEdit}
+              style={{ background: 'var(--ac)', border: 'none', cursor: 'pointer', color: '#fff', fontSize: '12px', fontWeight: 700, padding: '7px 11px', borderRadius: '7px', whiteSpace: 'nowrap' }}
+            >
+              Editar
+            </button>
+          )}
           <Semaforo color={plato.semaforo} margen={plato.margen_pct} />
           {!plato.foto_url && (
             <button

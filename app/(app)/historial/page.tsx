@@ -78,9 +78,32 @@ function MetaRow({ icon, label, value }: { icon: string; label: string; value: s
 
 // ─── TablaProduccion ────────────────────────────────────────────────────────
 
-function TablaProduccion({ datos, verCostos }: { datos: Record<string, unknown>[]; verCostos: boolean }) {
+function TablaProduccion({ datos, canEdit, onRefresh, verCostos }: { datos: Record<string, unknown>[]; canEdit: boolean; onRefresh: () => void; verCostos: boolean }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const toggle = (id: string) => setExpanded(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<Record<string, number>>({});
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState('');
+  const toggle = (id: string) => {
+    setExpanded(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+    if (editingId === id) { setEditingId(null); setEditValues({}); setSaveErr(''); }
+  };
+  const startEdit = (id: string, det: Record<string, unknown>[]) => {
+    const vals: Record<string, number> = {};
+    det.forEach(d => { vals[d.id as string] = d.cantidad as number; });
+    setEditingId(id); setEditValues(vals); setSaveErr('');
+  };
+  const cancelEdit = () => { setEditingId(null); setEditValues({}); setSaveErr(''); };
+  const saveEditProd = async (prodId: string, det: Record<string, unknown>[]) => {
+    setSaving(true); setSaveErr('');
+    try {
+      const detalle = det.map(d => ({ id: d.id as string, cantidad: editValues[d.id as string] ?? (d.cantidad as number) }));
+      const res = await fetch('/api/produccion', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ produccion_id: prodId, detalle }) });
+      if (!res.ok) { const j = await res.json(); throw new Error(j.error); }
+      setEditingId(null); setEditValues({}); onRefresh();
+    } catch (e: unknown) { setSaveErr(e instanceof Error ? e.message : 'Error guardando'); }
+    finally { setSaving(false); }
+  };
 
   if (!datos.length) return <Empty msg="No hay informes de producción en este período." />;
 
@@ -163,16 +186,53 @@ function TablaProduccion({ datos, verCostos }: { datos: Record<string, unknown>[
                       {/* PP detalle */}
                       {det.length > 0 && (
                         <div style={{ flex: 1, minWidth: '240px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                            {canEdit && editingId !== id && (
+                              <button onClick={e => { e.stopPropagation(); startEdit(id, det); }}
+                                style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--ac)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                                Editar PP
+                              </button>
+                            )}
+                            {editingId === id && (
+                              <>
+                                <button onClick={e => { e.stopPropagation(); saveEditProd(id, det); }} disabled={saving}
+                                  style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#0D9373', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                                  {saving ? 'Guardando...' : 'Guardar'}
+                                </button>
+                                <button onClick={e => { e.stopPropagation(); cancelEdit(); }}
+                                  style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--bo)', color: 'var(--ts)', border: 'none', cursor: 'pointer' }}>
+                                  Cancelar
+                                </button>
+                              </>
+                            )}
+                          </div>
+                          {saveErr && <p style={{ color: 'var(--rd)', fontSize: '11px', margin: '0 0 6px' }}>{saveErr}</p>}
                           <DetailLabel>Producción PP</DetailLabel>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                             {det.map((d, i) => {
-                              const total = d.total_producido as number | null;
+                              const isEditing = editingId === id;
+                              const qty = isEditing ? (editValues[d.id as string] ?? (d.cantidad as number)) : (d.cantidad as number);
+                              const total = isEditing
+                                ? ((d.tipo_pp as string) === 'CC' || (d.tipo_pp as string) === 'DIRECTO'
+                                  ? qty
+                                  : qty * ((d.gramos_por_pp as number | null) ?? 1))
+                                : d.total_producido as number | null;
                               const totalStr = total == null ? '—' : total >= 1000 ? `${(total / 1000).toFixed(2)} kg` : `${total} g`;
                               const costo = d.costo_total as number;
                               return (
                                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--sf)', borderRadius: '7px', padding: '7px 12px' }}>
                                   <span style={{ flex: 1, fontSize: '13px', fontWeight: 500, color: 'var(--tx)' }}>{d.nombre_pp as string}</span>
-                                  <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{d.cantidad as number} × {(d.gramos_por_pp as number | null) ?? '—'}</span>
+                                  {isEditing ? (
+                                    <>
+                                      <input type="number" value={qty} min={0} step="any"
+                                        onClick={e => e.stopPropagation()}
+                                        onChange={e => setEditValues(v => ({ ...v, [d.id as string]: parseFloat(e.target.value) || 0 }))}
+                                        style={{ width: '80px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }} />
+                                      <span style={{ fontSize: '12px', color: 'var(--ts)' }}>PP</span>
+                                    </>
+                                  ) : (
+                                    <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{d.cantidad as number} × {(d.gramos_por_pp as number | null) ?? '—'}</span>
+                                  )}
                                   <span style={{ fontSize: '12px', color: 'var(--tl)', fontWeight: 600, fontFamily: "'Space Grotesk', sans-serif" }}>{totalStr}</span>
                                   {verCostos && costo > 0 && <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(costo)}</span>}
                                 </div>
@@ -219,26 +279,27 @@ function TablaColacion({ datos, canEdit, onRefresh, verCostos }: { datos: Record
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, number>>({});
+  const [editInscritos, setEditInscritos] = useState<number>(0);
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState('');
 
   const toggle = (id: string) => {
-    setExpanded(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
-    if (editingId === id) { setEditingId(null); setEditValues({}); setSaveErr(''); }
+    setExpanded(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+    if (editingId === id) { setEditingId(null); setEditValues({}); setEditInscritos(0); setSaveErr(''); }
   };
-  const startEdit = (id: string, det: Record<string, unknown>[]) => {
+  const startEdit = (id: string, det: Record<string, unknown>[], nInscritos: number) => {
     const vals: Record<string, number> = {};
     det.forEach(d => { vals[d.id as string] = d.cantidad as number; });
-    setEditingId(id); setEditValues(vals); setSaveErr('');
+    setEditingId(id); setEditValues(vals); setEditInscritos(nInscritos); setSaveErr('');
   };
-  const cancelEdit = () => { setEditingId(null); setEditValues({}); setSaveErr(''); };
+  const cancelEdit = () => { setEditingId(null); setEditValues({}); setEditInscritos(0); setSaveErr(''); };
   const saveEditCol = async (colId: string, det: Record<string, unknown>[]) => {
     setSaving(true); setSaveErr('');
     try {
       const detalle = det.map(d => ({ id: d.id as string, cantidad: editValues[d.id as string] ?? (d.cantidad as number) }));
-      const res = await fetch('/api/colacion', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ colacion_id: colId, detalle }) });
+      const res = await fetch('/api/colacion', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ colacion_id: colId, n_inscritos: editInscritos, detalle }) });
       if (!res.ok) { const j = await res.json(); throw new Error(j.error); }
-      setEditingId(null); setEditValues({}); onRefresh();
+      setEditingId(null); setEditValues({}); setEditInscritos(0); onRefresh();
     } catch (e: unknown) { setSaveErr(e instanceof Error ? e.message : 'Error guardando'); }
     finally { setSaving(false); }
   };
@@ -307,6 +368,24 @@ function TablaColacion({ datos, canEdit, onRefresh, verCostos }: { datos: Record
                         <DetailLabel>Quién / cuándo</DetailLabel>
                         <MetaRow icon="👤" label="Responsable" value={c.responsable_nombre as string} />
                         {!!c.created_at && <MetaRow icon="🕐" label="Hora registro" value={fmtHora(c.created_at as string) ?? '—'} />}
+                        <div style={{ marginTop: '10px' }}>
+                          <DetailLabel>Inscritos</DetailLabel>
+                          {editingId === id ? (
+                            <input
+                              type="number"
+                              min={1}
+                              step={1}
+                              value={editInscritos}
+                              onClick={e => e.stopPropagation()}
+                              onChange={e => setEditInscritos(parseInt(e.target.value, 10) || 0)}
+                              style={{ width: '110px', padding: '5px 8px', fontSize: '13px', borderRadius: '5px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', fontFamily: "'Space Grotesk', sans-serif" }}
+                            />
+                          ) : (
+                            <p style={{ fontSize: '13px', color: 'var(--tx)', margin: 0, fontWeight: 600 }}>
+                              {ni > 0 ? `${ni} personas` : 'Histórico'}
+                            </p>
+                          )}
+                        </div>
                       </div>
 
                       {/* Ingredientes */}
@@ -315,7 +394,7 @@ function TablaColacion({ datos, canEdit, onRefresh, verCostos }: { datos: Record
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                             <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Ingredientes utilizados</span>
                             {canEdit && editingId !== id && (
-                              <button onClick={e => { e.stopPropagation(); startEdit(id, det); }}
+                              <button onClick={e => { e.stopPropagation(); startEdit(id, det, ni); }}
                                 style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--ac)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
                                 Editar
                               </button>
@@ -395,7 +474,7 @@ function TablaMermas({ datos, canEdit, onRefresh, verCostos }: { datos: Record<s
   const [saveErr, setSaveErr] = useState('');
 
   const toggle = (id: string) => {
-    setExpanded(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setExpanded(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
     if (editingId === id) { setEditingId(null); setEditValues({}); setSaveErr(''); }
   };
   const startEdit = (id: string, det: Record<string, unknown>[]) => {
@@ -619,7 +698,7 @@ export default function HistorialPage() {
   const [desde,   setDesde]   = useState(mesInicio());
   const [hasta,   setHasta]   = useState(hoyChile());
   const [datos,   setDatos]   = useState<Record<string, unknown>[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [err,     setErr]     = useState('');
 
   const cargar = useCallback(async (t: Tab, d: string, h: string) => {
@@ -636,7 +715,26 @@ export default function HistorialPage() {
     }
   }, []);
 
-  useEffect(() => { cargar(tab, desde, hasta); }, [tab, desde, hasta, cargar]);
+  useEffect(() => {
+    let alive = true;
+    async function run() {
+      await Promise.resolve();
+      if (!alive) return;
+      setLoading(true); setErr(''); setDatos([]);
+      try {
+        const res  = await fetch(`/api/historial?tipo=${tab}&desde=${desde}&hasta=${hasta}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        if (alive) setDatos(data);
+      } catch (e: unknown) {
+        if (alive) setErr(e instanceof Error ? e.message : 'Error cargando datos');
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+    void run();
+    return () => { alive = false; };
+  }, [tab, desde, hasta]);
   const refresh = useCallback(() => cargar(tab, desde, hasta), [tab, desde, hasta, cargar]);
 
   const TAB_CFG: { id: Tab; label: string; color: string }[] = [
@@ -696,7 +794,7 @@ export default function HistorialPage() {
           </div>
         ) : (
           <>
-            {tab === 'produccion' && <TablaProduccion datos={datos} verCostos={verCostos} />}
+            {tab === 'produccion' && <TablaProduccion datos={datos} canEdit={canEdit} onRefresh={refresh} verCostos={verCostos} />}
             {tab === 'colacion'   && <TablaColacion   datos={datos} canEdit={canEdit} onRefresh={refresh} verCostos={verCostos} />}
             {tab === 'mermas'     && <TablaMermas     datos={datos} canEdit={canEdit} onRefresh={refresh} verCostos={verCostos} />}
           </>

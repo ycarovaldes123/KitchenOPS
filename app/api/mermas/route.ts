@@ -76,12 +76,16 @@ export async function PATCH(req: NextRequest) {
   const cuMap = new Map(rows?.map(r => [r.id, r.costo_unitario as number]) ?? []);
 
   for (const d of detalle as { id: string; cantidad: number }[]) {
+    const cantidad = Number(d.cantidad);
+    if (!Number.isFinite(cantidad) || cantidad < 0)
+      return NextResponse.json({ error: 'Cantidad invalida' }, { status: 400 });
+
     const cu = cuMap.get(d.id) ?? 0;
     const { error } = await supabase
       .from('detalle_mermas')
       .update({
-        cantidad: d.cantidad,
-        costo_total: Math.round(d.cantidad * cu),
+        cantidad,
+        costo_total: Math.round(cantidad * cu),
         updated_at: new Date().toISOString(),
         updated_by: s.email,
         updated_by_rol: s.rol,

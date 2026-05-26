@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import { formatCLP } from '@/lib/calculos';
 import Semaforo from '@/components/costos/Semaforo';
 import FichaTecnicaModal from '@/components/costos/FichaTecnicaModal';
+import PlatoEditorModal from '@/components/costos/PlatoEditorModal';
 import type { ColorSemaforo } from '@/types/database';
 
 interface Ingrediente {
@@ -19,9 +20,11 @@ interface Ingrediente {
 
 interface Plato {
   id:                 string;
+  cod_softland:       string | null;
   nombre:             string;
   categoria:          string;
   precio_carta:       number | null;
+  activo:             boolean;
   costo_neto:         number;
   costo_bruto:        number;
   margen_pct:         number | null;
@@ -112,9 +115,12 @@ export default function CostosPage() {
   const [catFiltro, setCatFiltro] = useState('all');
   const [semFiltro, setSemFiltro] = useState<ColorSemaforo | 'all'>('all');
   const [modal,     setModal]     = useState<Plato | null>(null);
+  const [editor,    setEditor]    = useState<Plato | 'new' | null>(null);
   const [vista,     setVista]     = useState<Vista>('lista');
 
-  useEffect(() => {
+  const cargarCarta = useCallback(() => {
+    setLoading(true);
+    setError('');
     fetch('/api/carta')
       .then(r => r.json())
       .then(data => {
@@ -123,6 +129,20 @@ export default function CostosPage() {
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/carta')
+      .then(r => r.json())
+      .then(data => {
+        if (!alive) return;
+        if (data.error) throw new Error(data.error);
+        setPlatos(data);
+      })
+      .catch(e => alive && setError(e.message))
+      .finally(() => alive && setLoading(false));
+    return () => { alive = false; };
   }, []);
 
   const categorias = useMemo(() => {
@@ -177,8 +197,16 @@ export default function CostosPage() {
             Semáforo de rentabilidad por plato · {platos.length} platos activos
           </p>
         </div>
-        {/* Vista toggle */}
-        <div style={{ display: 'flex', background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={() => setEditor('new')}
+            style={{ border: 'none', background: 'var(--ac)', color: '#fff', borderRadius: '8px', padding: '8px 13px', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'DM Sans, sans-serif', whiteSpace: 'nowrap' }}
+          >
+            + Nuevo plato
+          </button>
+          {/* Vista toggle */}
+          <div style={{ display: 'flex', background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '8px', overflow: 'hidden' }}>
           {([
             { v: 'lista'   as Vista, icon: '☰', label: 'Lista' },
             { v: 'mosaico' as Vista, icon: '⊞', label: 'Mosaico' },
@@ -198,6 +226,7 @@ export default function CostosPage() {
               <span style={{ fontSize: '14px' }}>{icon}</span> {label}
             </button>
           ))}
+          </div>
         </div>
       </div>
 
@@ -359,7 +388,20 @@ export default function CostosPage() {
         </div>
       ))}
 
-      {modal && <FichaTecnicaModal plato={modal} onClose={() => setModal(null)} />}
+      {modal && (
+        <FichaTecnicaModal
+          plato={modal}
+          onClose={() => setModal(null)}
+          onEdit={() => { setEditor(modal); setModal(null); }}
+        />
+      )}
+      {editor && (
+        <PlatoEditorModal
+          plato={editor === 'new' ? null : editor}
+          onClose={() => setEditor(null)}
+          onSaved={() => { setEditor(null); setModal(null); cargarCarta(); }}
+        />
+      )}
     </div>
   );
 }

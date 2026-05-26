@@ -67,35 +67,47 @@ export async function PATCH(req: NextRequest) {
   if (!s.ok) return s.response;
 
   const supabase = await createClient();
-  const { colacion_id, detalle } = await req.json();
+  const { colacion_id, detalle, n_inscritos } = await req.json();
 
-  if (!colacion_id || !Array.isArray(detalle) || !detalle.length)
+  const hasDetalle = Array.isArray(detalle) && detalle.length > 0;
+  const hasInscritos = n_inscritos !== undefined && n_inscritos !== null;
+
+  if (!colacion_id || (!hasDetalle && !hasInscritos))
     return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 });
 
-  const ids = detalle.map((d: { id: string }) => d.id);
-  const { data: rows, error: fetchErr } = await supabase
-    .from('detalle_colacion')
-    .select('id,costo_unitario')
-    .in('id', ids)
-    .eq('colacion_id', colacion_id);
-  if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+  if (hasInscritos && (!Number.isFinite(Number(n_inscritos)) || Number(n_inscritos) <= 0))
+    return NextResponse.json({ error: 'Nro. inscritos debe ser mayor que 0' }, { status: 400 });
 
-  const cuMap = new Map(rows?.map(r => [r.id, r.costo_unitario as number]) ?? []);
-
-  for (const d of detalle as { id: string; cantidad: number }[]) {
-    const cu = cuMap.get(d.id) ?? 0;
-    const { error } = await supabase
+  if (hasDetalle) {
+    const ids = detalle.map((d: { id: string }) => d.id);
+    const { data: rows, error: fetchErr } = await supabase
       .from('detalle_colacion')
-      .update({
-        cantidad: d.cantidad,
-        costo_total: Math.round(d.cantidad * cu),
-        updated_at: new Date().toISOString(),
-        updated_by: s.email,
-        updated_by_rol: s.rol,
-      })
-      .eq('id', d.id)
+      .select('id,costo_unitario')
+      .in('id', ids)
       .eq('colacion_id', colacion_id);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+
+    const cuMap = new Map(rows?.map(r => [r.id, r.costo_unitario as number]) ?? []);
+
+    for (const d of detalle as { id: string; cantidad: number }[]) {
+      const cantidad = Number(d.cantidad);
+      if (!Number.isFinite(cantidad) || cantidad < 0)
+        return NextResponse.json({ error: 'Cantidad invalida' }, { status: 400 });
+
+      const cu = cuMap.get(d.id) ?? 0;
+      const { error } = await supabase
+        .from('detalle_colacion')
+        .update({
+          cantidad,
+          costo_total: Math.round(cantidad * cu),
+          updated_at: new Date().toISOString(),
+          updated_by: s.email,
+          updated_by_rol: s.rol,
+        })
+        .eq('id', d.id)
+        .eq('colacion_id', colacion_id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
   }
 
   // Recalculate parent costo_total
@@ -104,7 +116,10 @@ export async function PATCH(req: NextRequest) {
     .select('costo_total')
     .eq('colacion_id', colacion_id);
   const total = (allDet ?? []).reduce((s, r) => s + ((r.costo_total as number) ?? 0), 0);
-  await supabase.from('colacion').update({ costo_total: total }).eq('id', colacion_id);
+  const parentUpdate: Record<string, number> = { costo_total: total };
+  if (hasInscritos) parentUpdate.n_inscritos = Number(n_inscritos);
+  const { error: parentErr } = await supabase.from('colacion').update(parentUpdate).eq('id', colacion_id);
+  if (parentErr) return NextResponse.json({ error: parentErr.message }, { status: 500 });
 
   return NextResponse.json({ ok: true });
 }

@@ -1,7 +1,85 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { semaforo, calcMargen } from '@/lib/calculos';
 import { requireRol } from '@/lib/auth-server';
+import { auditLog } from '@/lib/audit';
+
+type IngredientePayload = {
+  id?: string;
+  codigo_producto?: string | null;
+  nombre?: string | null;
+  cantidad: number;
+  unidad_medida?: string | null;
+  precio_unitario?: number | null;
+  pp_id?: string | null;
+};
+
+function normalizarUM(um: string | null | undefined) {
+  const val = (um ?? '').trim().toUpperCase();
+  return val === 'UND' ? 'UN' : val;
+}
+
+function precioUnitarioPorUnidad(
+  unidadIngrediente: string,
+  unidadProducto: string,
+  costoPromedio: number,
+) {
+  const iUM = normalizarUM(unidadIngrediente);
+  const pUM = normalizarUM(unidadProducto);
+  if (iUM === pUM) return costoPromedio;
+  if (iUM === 'GR' && pUM === 'KG') return costoPromedio / 1000;
+  if (iUM === 'CC' && pUM === 'LT') return costoPromedio / 1000;
+  if (iUM === 'KG' && pUM === 'GR') return costoPromedio * 1000;
+  if (iUM === 'LT' && pUM === 'CC') return costoPromedio * 1000;
+  return costoPromedio;
+}
+
+async function prepararIngredientes(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  cartaId: string,
+  ingredientes: IngredientePayload[] | undefined,
+) {
+  const rows = (ingredientes ?? [])
+    .map(i => ({
+      ...i,
+      codigo_producto: i.codigo_producto?.trim() || null,
+      nombre: i.nombre?.trim() || null,
+      unidad_medida: normalizarUM(i.unidad_medida),
+      cantidad: Number(i.cantidad),
+      precio_unitario: i.precio_unitario == null ? null : Number(i.precio_unitario),
+    }))
+    .filter(i => i.cantidad > 0 && (i.codigo_producto || i.nombre));
+
+  const codigos = [...new Set(rows.map(i => i.codigo_producto).filter(Boolean))] as string[];
+  const { data: productos, error } = codigos.length
+    ? await supabase
+        .from('productos')
+        .select('codigo,nombre,unidad_medida,costo_promedio')
+        .in('codigo', codigos)
+    : { data: [], error: null };
+  if (error) throw new Error(error.message);
+
+  const prodMap = new Map((productos ?? []).map(p => [p.codigo, p]));
+
+  return rows.map(i => {
+    const prod = i.codigo_producto ? prodMap.get(i.codigo_producto) : null;
+    const unidad = i.unidad_medida || prod?.unidad_medida || null;
+    const precioUnitario = prod
+      ? precioUnitarioPorUnidad(unidad ?? prod.unidad_medida, prod.unidad_medida, prod.costo_promedio ?? 0)
+      : (i.precio_unitario ?? 0);
+
+    return {
+      carta_id: cartaId,
+      codigo_producto: i.codigo_producto,
+      pp_id: i.pp_id ?? null,
+      nombre: prod?.nombre ?? i.nombre,
+      cantidad: i.cantidad,
+      unidad_medida: unidad,
+      precio_unitario: precioUnitario,
+      costo_total: i.cantidad * precioUnitario,
+    };
+  });
+}
 
 // GET /api/carta — todos los platos activos con costos calculados
 export async function GET() {
@@ -34,4 +112,103 @@ export async function GET() {
   });
 
   return NextResponse.json(resultado);
+}
+
+export async function POST(req: NextRequest) {
+  const s = await requireRol(['admin', 'finanzas']);
+  if (!s.ok) return s.response;
+
+  const supabase = await createClient();
+  const body = await req.json();
+  const { cod_softland, nombre, categoria, precio_carta, foto_url, ingredientes } = body;
+
+  if (!nombre?.trim() || !categoria?.trim())
+    return NextResponse.json({ error: 'Nombre y categoria son requeridos' }, { status: 400 });
+
+  const { data: plato, error: platoErr } = await supabase
+    .from('carta')
+    .insert({
+      cod_softland: cod_softland?.trim() || null,
+      nombre: nombre.trim().toUpperCase(),
+      categoria: categoria.trim().toUpperCase(),
+      precio_carta: precio_carta == null || precio_carta === '' ? null : Number(precio_carta),
+      foto_url: foto_url?.trim() || null,
+      activo: true,
+      updated_at: new Date().toISOString(),
+    })
+    .select('id')
+    .single();
+
+  if (platoErr) return NextResponse.json({ error: platoErr.message }, { status: 500 });
+
+  try {
+    const ingRows = await prepararIngredientes(supabase, plato.id, ingredientes);
+    if (ingRows.length) {
+      const { error: ingErr } = await supabase.from('carta_ingredientes').insert(ingRows);
+      if (ingErr) return NextResponse.json({ error: ingErr.message }, { status: 500 });
+    }
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Error preparando ingredientes' }, { status: 500 });
+  }
+
+  await auditLog(supabase, {
+    usuario_email: s.email,
+    rol_usuario: s.rol,
+    accion: 'crear_plato_carta',
+    tabla: 'carta',
+    registro_id: plato.id,
+    datos_nuevos: { nombre, categoria, ingredientes: ingredientes?.length ?? 0 },
+  });
+
+  return NextResponse.json({ id: plato.id }, { status: 201 });
+}
+
+export async function PATCH(req: NextRequest) {
+  const s = await requireRol(['admin', 'finanzas']);
+  if (!s.ok) return s.response;
+
+  const supabase = await createClient();
+  const body = await req.json();
+  const { id, cod_softland, nombre, categoria, precio_carta, foto_url, activo, ingredientes } = body;
+
+  if (!id || !nombre?.trim() || !categoria?.trim())
+    return NextResponse.json({ error: 'Datos invalidos' }, { status: 400 });
+
+  const { error: platoErr } = await supabase
+    .from('carta')
+    .update({
+      cod_softland: cod_softland?.trim() || null,
+      nombre: nombre.trim().toUpperCase(),
+      categoria: categoria.trim().toUpperCase(),
+      precio_carta: precio_carta == null || precio_carta === '' ? null : Number(precio_carta),
+      foto_url: foto_url?.trim() || null,
+      activo: activo === false ? false : true,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+
+  if (platoErr) return NextResponse.json({ error: platoErr.message }, { status: 500 });
+
+  try {
+    const ingRows = await prepararIngredientes(supabase, id, ingredientes);
+    const { error: delErr } = await supabase.from('carta_ingredientes').delete().eq('carta_id', id);
+    if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
+    if (ingRows.length) {
+      const { error: ingErr } = await supabase.from('carta_ingredientes').insert(ingRows);
+      if (ingErr) return NextResponse.json({ error: ingErr.message }, { status: 500 });
+    }
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Error preparando ingredientes' }, { status: 500 });
+  }
+
+  await auditLog(supabase, {
+    usuario_email: s.email,
+    rol_usuario: s.rol,
+    accion: 'editar_plato_carta',
+    tabla: 'carta',
+    registro_id: id,
+    datos_nuevos: { nombre, categoria, activo, ingredientes: ingredientes?.length ?? 0 },
+  });
+
+  return NextResponse.json({ ok: true });
 }
