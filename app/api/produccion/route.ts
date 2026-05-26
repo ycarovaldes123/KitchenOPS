@@ -82,7 +82,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Datos invalidos' }, { status: 400 });
 
   if (hasDetalle) {
-    const ids = detalle.map((d: { id: string }) => d.id);
+    const ids = detalle.filter((d: { id?: string }) => d.id).map((d: { id: string }) => d.id);
     const { data: rows, error: fetchErr } = await supabase
       .from('detalle_produccion')
       .select('id,cantidad,tipo_pp,gramos_por_pp,costo_unitario,costo_total')
@@ -92,7 +92,8 @@ export async function PATCH(req: NextRequest) {
 
     const rowMap = new Map(rows?.map(r => [r.id, r]) ?? []);
 
-    for (const d of detalle as { id: string; cantidad: number }[]) {
+    for (const d of detalle as Array<{ id?: string; cantidad: number; pp_id?: string | null; nombre_pp?: string | null; tipo_pp?: string | null; gramos_por_pp?: number | null; codigo_producto?: string | null; costo_unitario?: number | null }>) {
+      if (!d.id) continue;
       const row = rowMap.get(d.id);
       if (!row) return NextResponse.json({ error: 'Linea de produccion no encontrada' }, { status: 404 });
 
@@ -121,6 +122,35 @@ export async function PATCH(req: NextRequest) {
         .eq('id', d.id)
         .eq('produccion_id', produccion_id);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+  }
+
+  const nuevos = (detalle as Array<{ id?: string; cantidad: number; pp_id?: string | null; nombre_pp?: string | null; tipo_pp?: string | null; gramos_por_pp?: number | null; codigo_producto?: string | null; costo_unitario?: number | null; costo_total?: number | null; total_producido?: number | null }>)
+    .filter(d => !d.id);
+  if (nuevos.length) {
+    const rows = nuevos.map(d => {
+      const cantidad = Number(d.cantidad);
+      if (!Number.isFinite(cantidad) || cantidad < 0) throw new Error('Cantidad invalida');
+      const costoUnitario = Number(d.costo_unitario) || 0;
+      const totalProducido = Number(d.total_producido) || 0;
+      return {
+        produccion_id,
+        pp_id: d.pp_id ?? null,
+        nombre_pp: d.nombre_pp ?? '',
+        tipo_pp: d.tipo_pp ?? null,
+        cantidad,
+        gramos_por_pp: d.gramos_por_pp ?? null,
+        total_producido: totalProducido,
+        codigo_producto: d.codigo_producto ?? null,
+        costo_unitario: costoUnitario,
+        costo_total: Number.isFinite(Number(d.costo_total)) ? Number(d.costo_total) : Math.round(cantidad * costoUnitario),
+      };
+    });
+    try {
+      const { error } = await supabase.from('detalle_produccion').insert(rows);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : 'Error insertando lineas nuevas' }, { status: 500 });
     }
   }
 
@@ -158,5 +188,18 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
+  return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(req: NextRequest) {
+  const s = await requireRol(['admin']);
+  if (!s.ok) return s.response;
+
+  const supabase = await createClient();
+  const { produccion_id } = await req.json();
+  if (!produccion_id) return NextResponse.json({ error: 'Datos invalidos' }, { status: 400 });
+
+  const { error } = await supabase.from('produccion').delete().eq('id', produccion_id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }

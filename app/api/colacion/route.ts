@@ -79,7 +79,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Nro. inscritos debe ser mayor que 0' }, { status: 400 });
 
   if (hasDetalle) {
-    const ids = detalle.map((d: { id: string }) => d.id);
+    const ids = detalle.filter((d: { id?: string }) => d.id).map((d: { id: string }) => d.id);
     const { data: rows, error: fetchErr } = await supabase
       .from('detalle_colacion')
       .select('id,costo_unitario')
@@ -89,7 +89,8 @@ export async function PATCH(req: NextRequest) {
 
     const cuMap = new Map(rows?.map(r => [r.id, r.costo_unitario as number]) ?? []);
 
-    for (const d of detalle as { id: string; cantidad: number }[]) {
+    for (const d of detalle as Array<{ id?: string; cantidad: number; codigo_producto?: string | null; nombre_producto?: string | null; unidad_medida?: string | null; costo_unitario?: number | null; costo_total?: number | null }>) {
+      if (!d.id) continue;
       const cantidad = Number(d.cantidad);
       if (!Number.isFinite(cantidad) || cantidad < 0)
         return NextResponse.json({ error: 'Cantidad invalida' }, { status: 400 });
@@ -110,6 +111,31 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
+  const nuevos = (detalle as Array<{ id?: string; cantidad: number; codigo_producto?: string | null; nombre_producto?: string | null; unidad_medida?: string | null; costo_unitario?: number | null; costo_total?: number | null }>)
+    .filter(d => !d.id);
+  if (nuevos.length) {
+    const rows = nuevos.map(d => {
+      const cantidad = Number(d.cantidad);
+      if (!Number.isFinite(cantidad) || cantidad < 0) throw new Error('Cantidad invalida');
+      const costoUnitario = Number(d.costo_unitario) || 0;
+      return {
+        colacion_id,
+        codigo_producto: d.codigo_producto ?? null,
+        nombre_producto: d.nombre_producto ?? null,
+        cantidad,
+        unidad_medida: d.unidad_medida ?? null,
+        costo_unitario: costoUnitario,
+        costo_total: Number.isFinite(Number(d.costo_total)) ? Number(d.costo_total) : Math.round(cantidad * costoUnitario),
+      };
+    });
+    try {
+      const { error } = await supabase.from('detalle_colacion').insert(rows);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : 'Error insertando nuevas lineas' }, { status: 500 });
+    }
+  }
+
   // Recalculate parent costo_total
   const { data: allDet } = await supabase
     .from('detalle_colacion')
@@ -121,5 +147,18 @@ export async function PATCH(req: NextRequest) {
   const { error: parentErr } = await supabase.from('colacion').update(parentUpdate).eq('id', colacion_id);
   if (parentErr) return NextResponse.json({ error: parentErr.message }, { status: 500 });
 
+  return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(req: NextRequest) {
+  const s = await requireRol(['admin']);
+  if (!s.ok) return s.response;
+
+  const supabase = await createClient();
+  const { colacion_id } = await req.json();
+  if (!colacion_id) return NextResponse.json({ error: 'Datos invalidos' }, { status: 400 });
+
+  const { error } = await supabase.from('colacion').delete().eq('id', colacion_id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }
