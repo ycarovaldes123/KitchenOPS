@@ -82,25 +82,38 @@ function TablaProduccion({ datos, canEdit, onRefresh, verCostos }: { datos: Reco
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, number>>({});
+  const [editRendValues, setEditRendValues] = useState<Record<string, { kg_utilizados: number; rendimiento_kg: number }>>({});
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState('');
   const toggle = (id: string) => {
     setExpanded(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-    if (editingId === id) { setEditingId(null); setEditValues({}); setSaveErr(''); }
+    if (editingId === id) { setEditingId(null); setEditValues({}); setEditRendValues({}); setSaveErr(''); }
   };
   const startEdit = (id: string, det: Record<string, unknown>[]) => {
     const vals: Record<string, number> = {};
     det.forEach(d => { vals[d.id as string] = d.cantidad as number; });
-    setEditingId(id); setEditValues(vals); setSaveErr('');
+    const rendVals: Record<string, { kg_utilizados: number; rendimiento_kg: number }> = {};
+    (datos.find(p => (p.id as string) === id)?.rendimiento as Record<string, unknown>[] | undefined)?.forEach(r => {
+      rendVals[r.id as string] = {
+        kg_utilizados: Number(r.kg_utilizados) || 0,
+        rendimiento_kg: Number(r.rendimiento_kg) || 0,
+      };
+    });
+    setEditingId(id); setEditValues(vals); setEditRendValues(rendVals); setSaveErr('');
   };
-  const cancelEdit = () => { setEditingId(null); setEditValues({}); setSaveErr(''); };
-  const saveEditProd = async (prodId: string, det: Record<string, unknown>[]) => {
+  const cancelEdit = () => { setEditingId(null); setEditValues({}); setEditRendValues({}); setSaveErr(''); };
+  const saveEditProd = async (prodId: string, det: Record<string, unknown>[], rend: Record<string, unknown>[]) => {
     setSaving(true); setSaveErr('');
     try {
       const detalle = det.map(d => ({ id: d.id as string, cantidad: editValues[d.id as string] ?? (d.cantidad as number) }));
-      const res = await fetch('/api/produccion', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ produccion_id: prodId, detalle }) });
+      const rendimiento = rend.map(r => ({
+        id: r.id as string,
+        kg_utilizados: editRendValues[r.id as string]?.kg_utilizados ?? (r.kg_utilizados as number),
+        rendimiento_kg: editRendValues[r.id as string]?.rendimiento_kg ?? (r.rendimiento_kg as number),
+      }));
+      const res = await fetch('/api/produccion', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ produccion_id: prodId, detalle, rendimiento }) });
       if (!res.ok) { const j = await res.json(); throw new Error(j.error); }
-      setEditingId(null); setEditValues({}); onRefresh();
+      setEditingId(null); setEditValues({}); setEditRendValues({}); onRefresh();
     } catch (e: unknown) { setSaveErr(e instanceof Error ? e.message : 'Error guardando'); }
     finally { setSaving(false); }
   };
@@ -190,12 +203,12 @@ function TablaProduccion({ datos, canEdit, onRefresh, verCostos }: { datos: Reco
                             {canEdit && editingId !== id && (
                               <button onClick={e => { e.stopPropagation(); startEdit(id, det); }}
                                 style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--ac)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
-                                Editar PP
+                                Editar PP y verduras
                               </button>
                             )}
                             {editingId === id && (
                               <>
-                                <button onClick={e => { e.stopPropagation(); saveEditProd(id, det); }} disabled={saving}
+                                <button onClick={e => { e.stopPropagation(); saveEditProd(id, det, rend); }} disabled={saving}
                                   style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#0D9373', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
                                   {saving ? 'Guardando...' : 'Guardar'}
                                 </button>
@@ -250,11 +263,56 @@ function TablaProduccion({ datos, canEdit, onRefresh, verCostos }: { datos: Reco
                             {rend.map((r, i) => {
                               const m   = calcMerma(r.kg_utilizados as number, r.rendimiento_kg as number);
                               const col = m.estado === 'alto' ? 'var(--rd)' : m.estado === 'medio' ? 'var(--am)' : 'var(--tl)';
+                              const isEditing = editingId === id;
+                              const rv = editRendValues[r.id as string] ?? {
+                                kg_utilizados: r.kg_utilizados as number,
+                                rendimiento_kg: r.rendimiento_kg as number,
+                              };
                               return (
                                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--sf)', borderRadius: '7px', padding: '7px 12px' }}>
                                   <span style={{ flex: 1, fontSize: '13px', fontWeight: 500, color: 'var(--tx)' }}>{r.verdura as string}</span>
-                                  <span style={{ fontSize: '11px', color: 'var(--ts)' }}>{r.kg_utilizados as number} kg → {r.rendimiento_kg as number} kg</span>
-                                  <span style={{ fontSize: '12px', fontWeight: 700, color: col, fontFamily: "'Space Grotesk', sans-serif" }}>{formatPct(m.mermaPct)} merma</span>
+                                  {isEditing ? (
+                                    <>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        step="any"
+                                        value={rv.kg_utilizados}
+                                        onClick={e => e.stopPropagation()}
+                                        onChange={e => setEditRendValues(v => ({
+                                          ...v,
+                                          [r.id as string]: {
+                                            kg_utilizados: parseFloat(e.target.value) || 0,
+                                            rendimiento_kg: v[r.id as string]?.rendimiento_kg ?? rv.rendimiento_kg,
+                                          },
+                                        }))}
+                                        style={{ width: '82px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }}
+                                      />
+                                      <span style={{ fontSize: '12px', color: 'var(--ts)' }}>kg</span>
+                                      <span style={{ fontSize: '12px', color: 'var(--ts)' }}>→</span>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        step="any"
+                                        value={rv.rendimiento_kg}
+                                        onClick={e => e.stopPropagation()}
+                                        onChange={e => setEditRendValues(v => ({
+                                          ...v,
+                                          [r.id as string]: {
+                                            kg_utilizados: v[r.id as string]?.kg_utilizados ?? rv.kg_utilizados,
+                                            rendimiento_kg: parseFloat(e.target.value) || 0,
+                                          },
+                                        }))}
+                                        style={{ width: '82px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }}
+                                      />
+                                      <span style={{ fontSize: '12px', color: 'var(--ts)' }}>kg</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span style={{ fontSize: '11px', color: 'var(--ts)' }}>{r.kg_utilizados as number} kg → {r.rendimiento_kg as number} kg</span>
+                                      <span style={{ fontSize: '12px', fontWeight: 700, color: col, fontFamily: "'Space Grotesk', sans-serif" }}>{formatPct(m.mermaPct)} merma</span>
+                                    </>
+                                  )}
                                 </div>
                               );
                             })}

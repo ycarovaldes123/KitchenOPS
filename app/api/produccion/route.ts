@@ -73,50 +73,89 @@ export async function PATCH(req: NextRequest) {
   if (!s.ok) return s.response;
 
   const supabase = await createClient();
-  const { produccion_id, detalle } = await req.json();
+  const { produccion_id, detalle, rendimiento } = await req.json();
 
-  if (!produccion_id || !Array.isArray(detalle) || !detalle.length)
+  const hasDetalle = Array.isArray(detalle) && detalle.length > 0;
+  const hasRendimiento = Array.isArray(rendimiento) && rendimiento.length > 0;
+
+  if (!produccion_id || (!hasDetalle && !hasRendimiento))
     return NextResponse.json({ error: 'Datos invalidos' }, { status: 400 });
 
-  const ids = detalle.map((d: { id: string }) => d.id);
-  const { data: rows, error: fetchErr } = await supabase
-    .from('detalle_produccion')
-    .select('id,cantidad,tipo_pp,gramos_por_pp,costo_unitario,costo_total')
-    .in('id', ids)
-    .eq('produccion_id', produccion_id);
-  if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
-
-  const rowMap = new Map(rows?.map(r => [r.id, r]) ?? []);
-
-  for (const d of detalle as { id: string; cantidad: number }[]) {
-    const row = rowMap.get(d.id);
-    if (!row) return NextResponse.json({ error: 'Linea de produccion no encontrada' }, { status: 404 });
-
-    const cantidad = Number(d.cantidad);
-    if (!Number.isFinite(cantidad) || cantidad < 0)
-      return NextResponse.json({ error: 'Cantidad invalida' }, { status: 400 });
-
-    const total_producido = calcTotalPP(
-      cantidad,
-      row.tipo_pp as string | null,
-      row.gramos_por_pp as number | null
-    );
-    const cantidadAnterior = Number(row.cantidad) || 0;
-    const costoAnterior = Number(row.costo_total) || 0;
-    const costoPorCantidad = cantidadAnterior > 0 && costoAnterior > 0
-      ? costoAnterior / cantidadAnterior
-      : Number(row.costo_unitario) || 0;
-
-    const { error } = await supabase
+  if (hasDetalle) {
+    const ids = detalle.map((d: { id: string }) => d.id);
+    const { data: rows, error: fetchErr } = await supabase
       .from('detalle_produccion')
-      .update({
-        cantidad,
-        total_producido,
-        costo_total: Math.round(cantidad * costoPorCantidad),
-      })
-      .eq('id', d.id)
+      .select('id,cantidad,tipo_pp,gramos_por_pp,costo_unitario,costo_total')
+      .in('id', ids)
       .eq('produccion_id', produccion_id);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+
+    const rowMap = new Map(rows?.map(r => [r.id, r]) ?? []);
+
+    for (const d of detalle as { id: string; cantidad: number }[]) {
+      const row = rowMap.get(d.id);
+      if (!row) return NextResponse.json({ error: 'Linea de produccion no encontrada' }, { status: 404 });
+
+      const cantidad = Number(d.cantidad);
+      if (!Number.isFinite(cantidad) || cantidad < 0)
+        return NextResponse.json({ error: 'Cantidad invalida' }, { status: 400 });
+
+      const total_producido = calcTotalPP(
+        cantidad,
+        row.tipo_pp as string | null,
+        row.gramos_por_pp as number | null
+      );
+      const cantidadAnterior = Number(row.cantidad) || 0;
+      const costoAnterior = Number(row.costo_total) || 0;
+      const costoPorCantidad = cantidadAnterior > 0 && costoAnterior > 0
+        ? costoAnterior / cantidadAnterior
+        : Number(row.costo_unitario) || 0;
+
+      const { error } = await supabase
+        .from('detalle_produccion')
+        .update({
+          cantidad,
+          total_producido,
+          costo_total: Math.round(cantidad * costoPorCantidad),
+        })
+        .eq('id', d.id)
+        .eq('produccion_id', produccion_id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+  }
+
+  if (hasRendimiento) {
+    const ids = rendimiento.map((r: { id: string }) => r.id);
+    const { data: rows, error: fetchErr } = await supabase
+      .from('rendimiento')
+      .select('id,kg_utilizados,rendimiento_kg')
+      .in('id', ids)
+      .eq('produccion_id', produccion_id);
+    if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+
+    const rowMap = new Map(rows?.map(r => [r.id, r]) ?? []);
+
+    for (const r of rendimiento as { id: string; kg_utilizados?: number; rendimiento_kg?: number }[]) {
+      const row = rowMap.get(r.id);
+      if (!row) return NextResponse.json({ error: 'Linea de rendimiento no encontrada' }, { status: 404 });
+
+      const kgUtilizados = Number(r.kg_utilizados);
+      const rendimientoKg = Number(r.rendimiento_kg);
+      if (!Number.isFinite(kgUtilizados) || kgUtilizados < 0 || !Number.isFinite(rendimientoKg) || rendimientoKg < 0)
+        return NextResponse.json({ error: 'Valores de rendimiento invalidos' }, { status: 400 });
+      if (rendimientoKg > kgUtilizados)
+        return NextResponse.json({ error: 'El rendimiento no puede ser mayor que los kilos utilizados' }, { status: 400 });
+
+      const { error } = await supabase
+        .from('rendimiento')
+        .update({
+          kg_utilizados: kgUtilizados,
+          rendimiento_kg: rendimientoKg,
+        })
+        .eq('id', r.id)
+        .eq('produccion_id', produccion_id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ ok: true });
