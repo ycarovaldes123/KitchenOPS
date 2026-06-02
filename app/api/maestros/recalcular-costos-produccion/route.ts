@@ -122,7 +122,7 @@ export async function POST() {
   // ── 2. Rellenar costos históricos en detalle_produccion ───────────────────
   const { data: lineas, error: lErr } = await supabase
     .from('detalle_produccion')
-    .select('id, nombre_pp, cantidad')
+    .select('id, nombre_pp, cantidad, total_producido')
     .eq('costo_unitario', 0);
 
   if (lErr) return NextResponse.json({ error: lErr.message }, { status: 500 });
@@ -136,7 +136,11 @@ export async function POST() {
     if (!receta || receta.costo <= 0) { detalleSinReceta++; continue; }
 
     const costoUnitario = receta.costo;
-    const costoTotal    = Math.round(linea.cantidad * costoUnitario);
+    // Usar total_producido (gramos o unidades totales) en lugar de cantidad (porciones).
+    // Para PORCION: total_producido=2400gr, costo=0.856/gr → 2054 correcto.
+    // Para UND: total_producido=cantidad*1=cantidad → mismo resultado que antes.
+    const base       = Number(linea.total_producido) > 0 ? Number(linea.total_producido) : Number(linea.cantidad);
+    const costoTotal = Math.round(base * costoUnitario);
 
     const { error } = await supabase
       .from('detalle_produccion')

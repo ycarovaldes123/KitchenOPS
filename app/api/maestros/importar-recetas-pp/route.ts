@@ -15,6 +15,7 @@ interface RecetaRow {
   nombre: string;
   rendimiento: number;
   unidad_rendimiento: string;
+  costo_pp: number;       // col K del Excel: costo por unidad de rendimiento
   ingredientes: IngredienteRow[];
 }
 
@@ -57,13 +58,12 @@ function parseProduccionSheet(buffer: Buffer): RecetaRow[] {
   let current: RecetaRow | null = null;
   let isFirstIngredient = false;
   let pendingRendimiento = 0;
+  let pendingCostoPP = 0;
 
   function finalise() {
-    if (current && current.ingredientes.length > 0 && pendingRendimiento > 0) {
-      current.rendimiento = pendingRendimiento;
-      recetas.push(current);
-    } else if (current && current.ingredientes.length > 0) {
-      current.rendimiento = 1;
+    if (current && current.ingredientes.length > 0) {
+      if (pendingRendimiento > 0) current.rendimiento = pendingRendimiento;
+      if (pendingCostoPP > 0) current.costo_pp = pendingCostoPP;
       recetas.push(current);
     }
   }
@@ -102,10 +102,12 @@ function parseProduccionSheet(buffer: Buffer): RecetaRow[] {
         nombre,
         rendimiento: 1,
         unidad_rendimiento: rendUnit,
+        costo_pp: 0,
         ingredientes: [],
       };
       isFirstIngredient = true;
       pendingRendimiento = 0;
+      pendingCostoPP = 0;
       continue;
     }
 
@@ -115,8 +117,10 @@ function parseProduccionSheet(buffer: Buffer): RecetaRow[] {
       const um        = colD ? String(colD).trim().toUpperCase().replace('UND', 'UN') : 'KG';
       const cantidad  = typeof colE === 'number' ? colE : parseFloat(String(colE ?? '0')) || 0;
 
-      if (isFirstIngredient && typeof colJ === 'number' && colJ > 0) {
-        pendingRendimiento = colJ;
+      if (isFirstIngredient) {
+        if (typeof colJ === 'number' && colJ > 0) pendingRendimiento = colJ;
+        const colK = r[10];
+        if (typeof colK === 'number' && colK > 0) pendingCostoPP = colK;
       }
       isFirstIngredient = false;
 
@@ -215,6 +219,23 @@ export async function POST(req: NextRequest) {
         }))
       );
       if (ingErr) errores.push(`${receta.codigo_receta} ingredientes: ${ingErr.message}`);
+    }
+
+    // Usar directamente el COSTO PP del Excel (col K) como fuente de verdad.
+    // Esto evita depender de que los precios de ingredientes estén en la DB.
+    if (receta.costo_pp > 0) {
+      await supabase.from('pp_recetas').update({
+        costo_unitario_calculado: receta.costo_pp,
+        costo_total_calculado:    Math.round(receta.costo_pp * receta.rendimiento),
+        estado:                   'ACTIVO',
+        calculado_at:             new Date().toISOString(),
+      }).eq('id', recetaId);
+
+      if (receta.codigo_pp) {
+        await supabase.from('productos')
+          .update({ costo_promedio: receta.costo_pp })
+          .eq('codigo', receta.codigo_pp);
+      }
     }
   }
 
