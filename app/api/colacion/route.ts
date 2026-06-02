@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const s = await requireRol(['admin', 'jefatura', 'cocina']);
+  const s = await requireRol(['admin', 'jefatura', 'cocina', 'economo']);
   if (!s.ok) return s.response;
 
   const supabase = await createClient();
@@ -67,16 +67,38 @@ export async function PATCH(req: NextRequest) {
   if (!s.ok) return s.response;
 
   const supabase = await createClient();
-  const { colacion_id, detalle, n_inscritos } = await req.json();
+  const { colacion_id, fecha, detalle, n_inscritos, delete_ids } = await req.json();
 
   const hasDetalle = Array.isArray(detalle) && detalle.length > 0;
   const hasInscritos = n_inscritos !== undefined && n_inscritos !== null;
+  const hasDeletes = Array.isArray(delete_ids) && delete_ids.length > 0;
+  const hasFecha = typeof fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fecha);
 
-  if (!colacion_id || (!hasDetalle && !hasInscritos))
+  if (!colacion_id || (!hasDetalle && !hasInscritos && !hasDeletes && !hasFecha))
     return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 });
 
   if (hasInscritos && (!Number.isFinite(Number(n_inscritos)) || Number(n_inscritos) <= 0))
     return NextResponse.json({ error: 'Nro. inscritos debe ser mayor que 0' }, { status: 400 });
+
+  if (hasFecha) {
+    const { error } = await supabase
+      .from('colacion')
+      .update({ fecha })
+      .eq('id', colacion_id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  if (hasDeletes) {
+    const ids = (delete_ids as string[]).filter(Boolean);
+    if (ids.length) {
+      const { error } = await supabase
+        .from('detalle_colacion')
+        .delete()
+        .eq('colacion_id', colacion_id)
+        .in('id', ids);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+  }
 
   if (hasDetalle) {
     const ids = detalle.filter((d: { id?: string }) => d.id).map((d: { id: string }) => d.id);

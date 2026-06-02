@@ -61,6 +61,7 @@ export default function ExportPage() {
     }
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- carga el preview al cambiar el rango seleccionado
   useEffect(() => { cargarPreview(desde, hasta); }, [desde, hasta, cargarPreview]);
 
   async function descargar() {

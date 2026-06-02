@@ -1,47 +1,72 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { createClient } from '@/utils/supabase/client';
+import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
+import { createClient } from '@/utils/supabase/client';
 import { RMAP, RUTA_INICIO } from '@/lib/roles';
 
 const ERROR_MSG: Record<string, string> = {
-  unauthorized:  'Este correo no tiene acceso a KitchenOps.',
-  link_expirado: 'El enlace expiró. Solicita uno nuevo.',
-  auth_failed:   'Error de autenticación. Intenta de nuevo.',
+  unauthorized: 'Este correo no tiene acceso a KitchenOps.',
+  link_expirado: 'El enlace expiro. Solicita uno nuevo.',
+  auth_failed: 'Error de autenticacion. Intenta de nuevo.',
 };
 
+type LoginMode = 'login' | 'reset';
+
 function LoginForm() {
-  const router       = useRouter();
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase     = createClient();
+  const supabase = createClient();
 
-  const [email,    setEmail]    = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading,  setLoading]  = useState(false);
-  const [error,    setError]    = useState('');
+  const [mode, setMode] = useState<LoginMode>('login');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    const e = searchParams.get('error');
-    if (e) setError(ERROR_MSG[e] ?? 'Error desconocido.');
-  }, [searchParams]);
+  const queryError = searchParams.get('error');
+  const queryStatus =
+    searchParams.get('updated') === '1'
+      ? 'Contrasena actualizada. Inicia sesion nuevamente.'
+      : searchParams.get('reset') === '1'
+        ? 'Te enviamos un correo para restablecer tu contrasena.'
+        : '';
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!email.trim() || !password) return;
+    if (!email.trim()) return;
 
     setLoading(true);
     setError('');
 
+    if (mode === 'reset') {
+      const redirectTo = `${window.location.origin}/auth/callback?next=/auth/update-password`;
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        email.trim().toLowerCase(),
+        { redirectTo }
+      );
+
+      setLoading(false);
+      if (resetError) {
+        setError('No se pudo enviar el correo de recuperacion.');
+        return;
+      }
+      return;
+    }
+
+    if (!password) {
+      setLoading(false);
+      return;
+    }
+
     const { data, error: authError } = await supabase.auth.signInWithPassword({
-      email:    email.trim().toLowerCase(),
+      email: email.trim().toLowerCase(),
       password,
     });
 
     if (authError || !data.user) {
       setLoading(false);
-      setError('Correo o contraseña incorrectos.');
+      setError('Correo o contrasena incorrectos.');
       return;
     }
 
@@ -74,8 +99,6 @@ function LoginForm() {
         maxWidth: '400px',
         boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
       }}>
-
-        {/* Logo */}
         <div style={{ marginBottom: '6px' }}>
           <span style={{
             fontFamily: 'Syne, sans-serif',
@@ -87,7 +110,7 @@ function LoginForm() {
           </span>
         </div>
         <p style={{ fontSize: '13px', color: 'var(--ts)', marginBottom: '28px' }}>
-          Cervecería Kunstmann · Torobayo
+          Cerveceria Kunstmann · Torobayo
         </p>
 
         <form onSubmit={handleSubmit}>
@@ -127,43 +150,63 @@ function LoginForm() {
             onBlur={e => { e.target.style.borderColor = error ? 'var(--rd)' : 'var(--bo)'; }}
           />
 
-          <label style={{
-            display: 'block',
-            fontSize: '11px',
-            fontWeight: 500,
-            color: 'var(--ts)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.4px',
-            marginBottom: '5px',
-          }}>
-            Contraseña
-          </label>
-          <input
-            type="password"
-            value={password}
-            onChange={e => { setPassword(e.target.value); setError(''); }}
-            placeholder="••••••••"
-            required
-            autoComplete="current-password"
-            style={{
-              width: '100%',
-              border: `1.5px solid ${error ? 'var(--rd)' : 'var(--bo)'}`,
-              borderRadius: '9px',
-              padding: '11px 13px',
-              fontFamily: 'DM Sans, sans-serif',
-              fontSize: '14px',
-              background: 'var(--bg)',
-              color: 'var(--tx)',
-              outline: 'none',
-              marginBottom: '12px',
-              transition: 'border-color 0.15s',
-              boxSizing: 'border-box',
-            }}
-            onFocus={e => { e.target.style.borderColor = 'var(--ac)'; }}
-            onBlur={e => { e.target.style.borderColor = error ? 'var(--rd)' : 'var(--bo)'; }}
-          />
+          {mode === 'login' && (
+            <>
+              <label style={{
+                display: 'block',
+                fontSize: '11px',
+                fontWeight: 500,
+                color: 'var(--ts)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.4px',
+                marginBottom: '5px',
+              }}>
+                Contrasena
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={e => { setPassword(e.target.value); setError(''); }}
+                placeholder="••••••••"
+                required
+                autoComplete="current-password"
+                style={{
+                  width: '100%',
+                  border: `1.5px solid ${error ? 'var(--rd)' : 'var(--bo)'}`,
+                  borderRadius: '9px',
+                  padding: '11px 13px',
+                  fontFamily: 'DM Sans, sans-serif',
+                  fontSize: '14px',
+                  background: 'var(--bg)',
+                  color: 'var(--tx)',
+                  outline: 'none',
+                  marginBottom: '8px',
+                  transition: 'border-color 0.15s',
+                  boxSizing: 'border-box',
+                }}
+                onFocus={e => { e.target.style.borderColor = 'var(--ac)'; }}
+                onBlur={e => { e.target.style.borderColor = error ? 'var(--rd)' : 'var(--bo)'; }}
+              />
+              <button
+                type="button"
+                onClick={() => { setMode('reset'); setError(''); setPassword(''); }}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--ac)',
+                  padding: 0,
+                  margin: '0 0 12px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Olvidaste tu contrasena?
+              </button>
+            </>
+          )}
 
-          {error && (
+          {error || queryError ? (
             <p style={{
               fontSize: '12px',
               color: 'var(--rd)',
@@ -172,16 +215,25 @@ function LoginForm() {
               alignItems: 'center',
               gap: '4px',
             }}>
-              <span>⚠</span> {error}
+              <span>⚠</span> {error || (queryError ? (ERROR_MSG[queryError] ?? 'Error desconocido.') : 'Error desconocido.')}
+            </p>
+          ) : null}
+          {!error && queryStatus && (
+            <p style={{
+              fontSize: '12px',
+              color: 'var(--tl)',
+              marginBottom: '10px',
+            }}>
+              {queryStatus}
             </p>
           )}
 
           <button
             type="submit"
-            disabled={loading || !email.trim() || !password}
+            disabled={loading || !email.trim() || (mode === 'login' && !password)}
             style={{
               width: '100%',
-              background: loading || !email.trim() || !password ? '#ccc' : 'var(--ac)',
+              background: loading || !email.trim() || (mode === 'login' && !password) ? '#ccc' : 'var(--ac)',
               color: '#fff',
               border: 'none',
               borderRadius: '9px',
@@ -189,7 +241,7 @@ function LoginForm() {
               fontFamily: 'DM Sans, sans-serif',
               fontSize: '14px',
               fontWeight: 600,
-              cursor: loading || !email.trim() || !password ? 'default' : 'pointer',
+              cursor: loading || !email.trim() || (mode === 'login' && !password) ? 'default' : 'pointer',
               transition: 'background 0.15s',
               display: 'flex',
               alignItems: 'center',
@@ -207,11 +259,33 @@ function LoginForm() {
                   display: 'inline-block',
                   animation: 'spin 0.7s linear infinite',
                 }} />
-                Ingresando...
+                {mode === 'login' ? 'Ingresando...' : 'Enviando...'}
               </>
-            ) : 'Ingresar'}
+            ) : mode === 'login' ? 'Ingresar' : 'Enviar enlace'}
           </button>
         </form>
+
+        {mode === 'reset' && (
+          <button
+            type="button"
+            onClick={() => { setMode('login'); setError(''); }}
+            style={{
+              width: '100%',
+              marginTop: '10px',
+              border: '1px solid var(--bo)',
+              background: 'var(--bg)',
+              color: 'var(--ts)',
+              borderRadius: '9px',
+              padding: '12px',
+              fontFamily: 'DM Sans, sans-serif',
+              fontSize: '14px',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Volver al login
+          </button>
+        )}
 
         <p style={{
           fontSize: '11px',
@@ -219,7 +293,7 @@ function LoginForm() {
           textAlign: 'center',
           marginTop: '20px',
         }}>
-          Sistema interno · Cervecería Kunstmann
+          Sistema interno · Cerveceria Kunstmann
         </p>
       </div>
 

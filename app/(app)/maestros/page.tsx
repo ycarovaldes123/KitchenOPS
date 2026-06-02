@@ -505,7 +505,7 @@ export default function MaestrosPage() {
               ) : recetas.length === 0 ? (
                 <div style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '12px', padding: '48px 24px', textAlign: 'center' }}>
                   <p style={{ color: 'var(--ts)', fontSize: '14px', marginBottom: '8px' }}>No hay recetas importadas</p>
-                  <p style={{ color: 'var(--ts)', fontSize: '12px' }}>Usa "↑ Importar recetas PP" para cargar el archivo Recetas Torobayo Actualizadas.xlsx</p>
+                  <p style={{ color: 'var(--ts)', fontSize: '12px' }}>Usa &quot;↑ Importar recetas PP&quot; para cargar el archivo Recetas Torobayo Actualizadas.xlsx</p>
                 </div>
               ) : (
                 <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
@@ -677,7 +677,7 @@ export default function MaestrosPage() {
               </thead>
               <tbody>
                 {filteredProd.length === 0 && (
-                  <tr><td colSpan={5} style={emptyCell}>Sin resultados. Usa "+ Nuevo producto" o importa desde Softland.</td></tr>
+                  <tr><td colSpan={5} style={emptyCell}>Sin resultados. Usa &quot;+ Nuevo producto&quot; o importa desde Softland.</td></tr>
                 )}
                 {filteredProd.map(p => {
                   const sinCosto = p.costo_promedio === 0 || p.costo_promedio == null;
@@ -959,5 +959,5 @@ const tipoBadge: Record<TipoPP, string> = {
   PORCION: 'var(--ac)', UND: '#6366F1', CC: '#0D9373', DIRECTO: '#D97706',
 };
 const rolBadge: Record<string, string> = {
-  admin: '#8B5CF6', finanzas: '#3B82F6', jefatura: 'var(--ac)', cocina: '#D97706',
+  admin: '#8B5CF6', finanzas: '#3B82F6', jefatura: 'var(--ac)', economo: '#0EA5E9', cocina: '#D97706',
 };

@@ -15,7 +15,9 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const tipo  = searchParams.get('tipo')  ?? 'produccion';
   let desde = searchParams.get('desde') ?? '';
-  let hasta  = searchParams.get('hasta') ?? '';
+  let hasta = searchParams.get('hasta') ?? '';
+  const limit = Math.min(100, Math.max(1, Number(searchParams.get('limit') ?? '50') || 50));
+  const offset = Math.max(0, Number(searchParams.get('offset') ?? '0') || 0);
 
   // Cocina solo puede ver el historial de hoy
   if (s.rol === 'cocina') {
@@ -32,14 +34,19 @@ export async function GET(req: NextRequest) {
       : 'id,nombre_pp,tipo_pp,cantidad,gramos_por_pp,total_producido';
     let q = supabase
       .from('produccion')
-      .select(`id,fecha,responsable_nombre,turno,observacion,estado,created_at,detalle_produccion(${detalleSelect}),rendimiento(id,verdura,kg_utilizados,rendimiento_kg)`)
+      .select(`id,fecha,responsable_nombre,turno,observacion,estado,created_at,detalle_produccion(${detalleSelect}),rendimiento(id,verdura,kg_utilizados,rendimiento_kg)`, { count: 'exact' })
       .order('fecha', { ascending: false })
       .order('created_at', { ascending: false });
     if (desde) q = q.gte('fecha', desde);
     if (hasta) q = q.lte('fecha', hasta);
-    const { data, error } = await q.limit(200);
+    const { data, error, count } = await q.range(offset, offset + limit - 1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json(data ?? []);
+    return NextResponse.json({
+      items: data ?? [],
+      count: count ?? 0,
+      hasMore: offset + (data?.length ?? 0) < (count ?? 0),
+      nextOffset: offset + (data?.length ?? 0),
+    });
   }
 
   if (tipo === 'colacion') {
@@ -51,14 +58,19 @@ export async function GET(req: NextRequest) {
       : `id,fecha,responsable_nombre,menu,n_inscritos,created_at,detalle_colacion(${detalleSelect})`;
     let q = supabase
       .from('colacion')
-      .select(parentSelect)
+      .select(parentSelect, { count: 'exact' })
       .order('fecha', { ascending: false })
       .order('created_at', { ascending: false });
     if (desde) q = q.gte('fecha', desde);
     if (hasta) q = q.lte('fecha', hasta);
-    const { data, error } = await q.limit(200);
+    const { data, error, count } = await q.range(offset, offset + limit - 1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json(data ?? []);
+    return NextResponse.json({
+      items: data ?? [],
+      count: count ?? 0,
+      hasMore: offset + (data?.length ?? 0) < (count ?? 0),
+      nextOffset: offset + (data?.length ?? 0),
+    });
   }
 
   if (tipo === 'mermas') {
@@ -67,14 +79,19 @@ export async function GET(req: NextRequest) {
       : 'id,nombre_producto,cantidad,unidad_medida,motivo';
     let q = supabase
       .from('mermas')
-      .select(`id,fecha,responsable_nombre,observacion,estado,created_at,detalle_mermas(${detalleSelect})`)
+      .select(`id,fecha,responsable_nombre,observacion,estado,created_at,detalle_mermas(${detalleSelect})`, { count: 'exact' })
       .order('fecha', { ascending: false })
       .order('created_at', { ascending: false });
     if (desde) q = q.gte('fecha', desde);
     if (hasta) q = q.lte('fecha', hasta);
-    const { data, error } = await q.limit(200);
+    const { data, error, count } = await q.range(offset, offset + limit - 1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json(data ?? []);
+    return NextResponse.json({
+      items: data ?? [],
+      count: count ?? 0,
+      hasMore: offset + (data?.length ?? 0) < (count ?? 0),
+      nextOffset: offset + (data?.length ?? 0),
+    });
   }
 
   return NextResponse.json({ error: 'Tipo inválido' }, { status: 400 });

@@ -36,9 +36,28 @@ function normalizarTexto(texto: string) {
     .trim();
 }
 
+function calcCostoProduccion(
+  cantidad: number,
+  tipoPP: string | null | undefined,
+  gramosPorPP: number | null | undefined,
+  unidadProducto: string | null | undefined,
+  costoUnitario: number,
+) {
+  if (!cantidad || !costoUnitario) return 0;
+  const total = tipoPP === 'CC' || tipoPP === 'DIRECTO'
+    ? cantidad
+    : cantidad * (Number(gramosPorPP) || 1);
+  const um = String(unidadProducto ?? '').toUpperCase();
+
+  if (tipoPP === 'DIRECTO') return Math.round(total * costoUnitario);
+  if (um === 'KG' || um === 'LT') return Math.round((total / 1000) * costoUnitario);
+  return Math.round(total * costoUnitario);
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 type Tab = 'produccion' | 'colacion' | 'mermas';
+const PAGE_SIZE = 50;
 
 // ─── Shared styles ──────────────────────────────────────────────────────────
 
@@ -106,10 +125,7 @@ function SearchablePicker({
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const selectedLabel = options.find(opt => opt.value === value)?.label ?? '';
-
-  useEffect(() => {
-    setQuery(selectedLabel);
-  }, [selectedLabel]);
+  const displayValue = open ? query : selectedLabel;
 
   const matches = useMemo(() => {
     const q = normalizarTexto(query);
@@ -123,9 +139,12 @@ function SearchablePicker({
     <div style={{ position: 'relative', width }}>
       <input
         type="text"
-        value={query}
+        value={displayValue}
         placeholder={placeholder}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          setQuery(selectedLabel);
+          setOpen(true);
+        }}
         onBlur={() => window.setTimeout(() => setOpen(false), 120)}
         onChange={e => {
           setQuery(e.target.value);
@@ -199,17 +218,19 @@ function SearchablePicker({
 
 // ─── TablaProduccion ────────────────────────────────────────────────────────
 
-function TablaProduccion({ datos, canEdit, onRefresh, verCostos, productos, pps }: { datos: Record<string, unknown>[]; canEdit: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[]; pps: Record<string, unknown>[] }) {
+function TablaProduccion({ datos, canEdit, isAdmin, onRefresh, verCostos, productos, pps }: { datos: Record<string, unknown>[]; canEdit: boolean; isAdmin: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[]; pps: Record<string, unknown>[] }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, number>>({});
   const [editRendValues, setEditRendValues] = useState<Record<string, { kg_utilizados: number; rendimiento_kg: number }>>({});
   const [newRows, setNewRows] = useState<Array<{ localId: string; pp_id: string; cantidad: number }>>([]);
+  const [editFecha, setEditFecha] = useState('');
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState('');
   const toggle = (id: string) => {
     setExpanded(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-    if (editingId === id) { setEditingId(null); setEditValues({}); setEditRendValues({}); setNewRows([]); setSaveErr(''); }
+    if (editingId === id) { setEditingId(null); setEditValues({}); setEditRendValues({}); setNewRows([]); setEditFecha(''); setDeletedIds(new Set()); setSaveErr(''); }
   };
   const startEdit = (id: string, det: Record<string, unknown>[]) => {
     const vals: Record<string, number> = {};
@@ -221,11 +242,19 @@ function TablaProduccion({ datos, canEdit, onRefresh, verCostos, productos, pps 
         rendimiento_kg: Number(r.rendimiento_kg) || 0,
       };
     });
-    setEditingId(id); setEditValues(vals); setEditRendValues(rendVals); setNewRows([]); setSaveErr('');
+    const fechaActual = String(datos.find(p => (p.id as string) === id)?.fecha ?? '');
+    setEditingId(id); setEditValues(vals); setEditRendValues(rendVals); setNewRows([]); setEditFecha(fechaActual); setDeletedIds(new Set()); setSaveErr('');
   };
-  const cancelEdit = () => { setEditingId(null); setEditValues({}); setEditRendValues({}); setNewRows([]); setSaveErr(''); };
+  const cancelEdit = () => { setEditingId(null); setEditValues({}); setEditRendValues({}); setNewRows([]); setEditFecha(''); setDeletedIds(new Set()); setSaveErr(''); };
   const addRow = () => {
     setNewRows(rows => [...rows, { localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`, pp_id: '', cantidad: 1 }]);
+  };
+  const removeDetalle = (id: string) => {
+    setDeletedIds(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
   };
   const productosMap = new Map(productos.map(p => [p.codigo as string, p]));
   const ppsMap = new Map(pps.map(pp => [pp.id as string, pp]));
@@ -237,27 +266,31 @@ function TablaProduccion({ datos, canEdit, onRefresh, verCostos, productos, pps 
   const saveEditProd = async (prodId: string, det: Record<string, unknown>[], rend: Record<string, unknown>[]) => {
     setSaving(true); setSaveErr('');
     try {
-      const detalle = det.map(d => ({ id: d.id as string, cantidad: editValues[d.id as string] ?? (d.cantidad as number) }));
+      const detalle = det
+        .filter(d => !deletedIds.has(d.id as string))
+        .map(d => ({ id: d.id as string, cantidad: editValues[d.id as string] ?? (d.cantidad as number) }));
       const nuevos = newRows.map(r => {
         const pp = ppsMap.get(r.pp_id);
         const producto = pp?.codigo_producto ? productosMap.get(pp.codigo_producto as string) : null;
         const costoUnitario = Number(producto?.costo_promedio) || 0;
         const cantidad = Number(r.cantidad) || 0;
+        const tipoPP = pp?.tipo_pp as string | null | undefined;
+        const gramosPorPP = Number(pp?.gramos_por_pp) || null;
         const total_producido = pp
-          ? (((pp.tipo_pp as string) === 'CC' || (pp.tipo_pp as string) === 'DIRECTO')
+          ? ((tipoPP === 'CC' || tipoPP === 'DIRECTO')
             ? cantidad
-            : cantidad * (Number(pp.gramos_por_pp) || 1))
+            : cantidad * (gramosPorPP || 1))
           : cantidad;
         return {
           pp_id: r.pp_id,
           nombre_pp: pp?.nombre ?? '',
-          tipo_pp: pp?.tipo_pp ?? null,
+          tipo_pp: tipoPP ?? null,
           cantidad,
-          gramos_por_pp: pp?.gramos_por_pp ?? null,
+          gramos_por_pp: gramosPorPP,
           total_producido,
           codigo_producto: pp?.codigo_producto ?? null,
           costo_unitario: costoUnitario,
-          costo_total: Math.round(cantidad * costoUnitario),
+          costo_total: calcCostoProduccion(cantidad, tipoPP, gramosPorPP, producto?.unidad_medida as string | null | undefined, costoUnitario),
         };
       }).filter(r => r.pp_id);
       const rendimiento = rend.map(r => ({
@@ -265,9 +298,9 @@ function TablaProduccion({ datos, canEdit, onRefresh, verCostos, productos, pps 
         kg_utilizados: editRendValues[r.id as string]?.kg_utilizados ?? (r.kg_utilizados as number),
         rendimiento_kg: editRendValues[r.id as string]?.rendimiento_kg ?? (r.rendimiento_kg as number),
       }));
-      const res = await fetch('/api/produccion', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ produccion_id: prodId, detalle: [...detalle, ...nuevos], rendimiento }) });
+      const res = await fetch('/api/produccion', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ produccion_id: prodId, fecha: isAdmin ? editFecha : undefined, delete_ids: [...deletedIds], detalle: [...detalle, ...nuevos], rendimiento }) });
       if (!res.ok) { const j = await res.json(); throw new Error(j.error); }
-      setEditingId(null); setEditValues({}); setEditRendValues({}); setNewRows([]); onRefresh();
+      setEditingId(null); setEditValues({}); setEditRendValues({}); setNewRows([]); setEditFecha(''); setDeletedIds(new Set()); onRefresh();
     } catch (e: unknown) { setSaveErr(e instanceof Error ? e.message : 'Error guardando'); }
     finally { setSaving(false); }
   };
@@ -352,6 +385,18 @@ function TablaProduccion({ datos, canEdit, onRefresh, verCostos, productos, pps 
                         <DetailLabel>Quién / cuándo</DetailLabel>
                         <MetaRow icon="👤" label="Responsable" value={p.responsable_nombre as string} />
                         {!!p.created_at && <MetaRow icon="🕐" label="Hora registro" value={fmtHora(p.created_at as string) ?? '—'} />}
+                        {editingId === id && isAdmin && (
+                          <div style={{ marginTop: '10px' }}>
+                            <DetailLabel>Fecha registro</DetailLabel>
+                            <input
+                              type="date"
+                              value={editFecha}
+                              onClick={e => e.stopPropagation()}
+                              onChange={e => setEditFecha(e.target.value)}
+                              style={{ width: '140px', padding: '5px 8px', fontSize: '13px', borderRadius: '5px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', fontFamily: "'Space Grotesk', sans-serif" }}
+                            />
+                          </div>
+                        )}
                         {(p.observacion as string) && (
                           <div style={{ marginTop: '10px' }}>
                             <DetailLabel>Observación</DetailLabel>
@@ -396,7 +441,7 @@ function TablaProduccion({ datos, canEdit, onRefresh, verCostos, productos, pps 
                           {saveErr && <p style={{ color: 'var(--rd)', fontSize: '11px', margin: '0 0 6px' }}>{saveErr}</p>}
                           <DetailLabel>Producción PP</DetailLabel>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                            {det.map((d, i) => {
+                            {det.filter(d => !deletedIds.has(d.id as string)).map((d, i) => {
                               const isEditing = editingId === id;
                               const qty = isEditing ? (editValues[d.id as string] ?? (d.cantidad as number)) : (d.cantidad as number);
                               const total = isEditing
@@ -428,6 +473,16 @@ function TablaProduccion({ datos, canEdit, onRefresh, verCostos, productos, pps 
                                   )}
                                   <span style={{ fontSize: '12px', color: 'var(--tl)', fontWeight: 600, fontFamily: "'Space Grotesk', sans-serif" }}>{totalStr}</span>
                                   {verCostos && costo > 0 && <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(costo)}</span>}
+                                  {isEditing && isAdmin && (
+                                    <button
+                                      type="button"
+                                      onClick={e => { e.stopPropagation(); removeDetalle(d.id as string); }}
+                                      title="Quitar linea"
+                                      style={{ border: 'none', background: 'transparent', color: '#B91C1C', cursor: 'pointer', fontSize: '16px', lineHeight: 1, fontWeight: 700, padding: '0 2px' }}
+                                    >
+                                      ×
+                                    </button>
+                                  )}
                                 </div>
                               );
                             })}
@@ -436,11 +491,14 @@ function TablaProduccion({ datos, canEdit, onRefresh, verCostos, productos, pps 
                               const producto = pp?.codigo_producto ? productosMap.get(pp.codigo_producto as string) : undefined;
                               const costoUnitario = Number(producto?.costo_promedio) || 0;
                               const cantidad = Number(row.cantidad) || 0;
+                              const tipoPP = pp?.tipo_pp as string | null | undefined;
+                              const gramosPorPP = Number(pp?.gramos_por_pp) || null;
                               const totalProducido = pp
-                                ? (((pp.tipo_pp as string) === 'CC' || (pp.tipo_pp as string) === 'DIRECTO')
+                                ? ((tipoPP === 'CC' || tipoPP === 'DIRECTO')
                                   ? cantidad
-                                  : cantidad * (Number(pp.gramos_por_pp) || 1))
+                                  : cantidad * (gramosPorPP || 1))
                                 : cantidad;
+                              const costoProduccion = calcCostoProduccion(cantidad, tipoPP, gramosPorPP, producto?.unidad_medida as string | null | undefined, costoUnitario);
                               return (
                                 <div key={row.localId} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--al)', borderRadius: '7px', padding: '7px 12px', border: '1px dashed var(--bo)' }}>
                                   <SearchablePicker
@@ -461,7 +519,7 @@ function TablaProduccion({ datos, canEdit, onRefresh, verCostos, productos, pps 
                                     />
                                   <span style={{ fontSize: '12px', color: 'var(--ts)' }}>PP</span>
                                   <span style={{ fontSize: '12px', color: 'var(--tl)', fontWeight: 600, fontFamily: "'Space Grotesk', sans-serif" }}>{totalProducido} g</span>
-                                  <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(Math.round(costoUnitario * cantidad))}</span>
+                                  <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(costoProduccion)}</span>
                                   <button
                                     type="button"
                                     onClick={e => { e.stopPropagation(); setNewRows(v => v.filter(x => x.localId !== row.localId)); }}
@@ -554,27 +612,37 @@ function TablaProduccion({ datos, canEdit, onRefresh, verCostos, productos, pps 
 
 // ─── TablaColacion ──────────────────────────────────────────────────────────
 
-function TablaColacion({ datos, canEdit, onRefresh, verCostos, productos }: { datos: Record<string, unknown>[]; canEdit: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[] }) {
+function TablaColacion({ datos, canEdit, isAdmin, onRefresh, verCostos, productos }: { datos: Record<string, unknown>[]; canEdit: boolean; isAdmin: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[] }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, number>>({});
   const [editInscritos, setEditInscritos] = useState<number>(0);
+  const [editFecha, setEditFecha] = useState('');
   const [newRows, setNewRows] = useState<Array<{ localId: string; codigo_producto: string; cantidad: number }>>([]);
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState('');
   const productosMap = new Map(productos.map(p => [p.codigo as string, p]));
 
   const toggle = (id: string) => {
     setExpanded(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-    if (editingId === id) { setEditingId(null); setEditValues({}); setEditInscritos(0); setNewRows([]); setSaveErr(''); }
+    if (editingId === id) { setEditingId(null); setEditValues({}); setEditInscritos(0); setEditFecha(''); setNewRows([]); setDeletedIds(new Set()); setSaveErr(''); }
   };
   const startEdit = (id: string, det: Record<string, unknown>[], nInscritos: number) => {
     const vals: Record<string, number> = {};
     det.forEach(d => { vals[d.id as string] = d.cantidad as number; });
-    setEditingId(id); setEditValues(vals); setEditInscritos(nInscritos); setNewRows([]); setSaveErr('');
+    const fechaActual = String(datos.find(c => (c.id as string) === id)?.fecha ?? '');
+    setEditingId(id); setEditValues(vals); setEditInscritos(nInscritos); setEditFecha(fechaActual); setNewRows([]); setDeletedIds(new Set()); setSaveErr('');
   };
-  const cancelEdit = () => { setEditingId(null); setEditValues({}); setEditInscritos(0); setNewRows([]); setSaveErr(''); };
+  const cancelEdit = () => { setEditingId(null); setEditValues({}); setEditInscritos(0); setEditFecha(''); setNewRows([]); setDeletedIds(new Set()); setSaveErr(''); };
   const addRow = () => setNewRows(rows => [...rows, { localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`, codigo_producto: '', cantidad: 1 }]);
+  const removeDetalle = (id: string) => {
+    setDeletedIds(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  };
   const productoOptions = useMemo(() => productos.map(prod => ({
     value: prod.codigo as string,
     label: `${prod.codigo as string} · ${prod.nombre as string}`,
@@ -583,7 +651,9 @@ function TablaColacion({ datos, canEdit, onRefresh, verCostos, productos }: { da
   const saveEditCol = async (colId: string, det: Record<string, unknown>[]) => {
     setSaving(true); setSaveErr('');
     try {
-      const detalle = det.map(d => ({ id: d.id as string, cantidad: editValues[d.id as string] ?? (d.cantidad as number) }));
+      const detalle = det
+        .filter(d => !deletedIds.has(d.id as string))
+        .map(d => ({ id: d.id as string, cantidad: editValues[d.id as string] ?? (d.cantidad as number) }));
       const nuevos = newRows.map(r => {
         const p = productosMap.get(r.codigo_producto);
         const costoUnitario = Number(p?.costo_promedio) || 0;
@@ -597,9 +667,9 @@ function TablaColacion({ datos, canEdit, onRefresh, verCostos, productos }: { da
           costo_total: Math.round(cantidad * costoUnitario),
         };
       }).filter(r => r.codigo_producto);
-      const res = await fetch('/api/colacion', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ colacion_id: colId, n_inscritos: editInscritos, detalle: [...detalle, ...nuevos] }) });
+      const res = await fetch('/api/colacion', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ colacion_id: colId, fecha: isAdmin ? editFecha : undefined, n_inscritos: editInscritos, delete_ids: [...deletedIds], detalle: [...detalle, ...nuevos] }) });
       if (!res.ok) { const j = await res.json(); throw new Error(j.error); }
-      setEditingId(null); setEditValues({}); setEditInscritos(0); setNewRows([]); onRefresh();
+      setEditingId(null); setEditValues({}); setEditInscritos(0); setEditFecha(''); setNewRows([]); setDeletedIds(new Set()); onRefresh();
     } catch (e: unknown) { setSaveErr(e instanceof Error ? e.message : 'Error guardando'); }
     finally { setSaving(false); }
   };
@@ -678,6 +748,18 @@ function TablaColacion({ datos, canEdit, onRefresh, verCostos, productos }: { da
                         <DetailLabel>Quién / cuándo</DetailLabel>
                         <MetaRow icon="👤" label="Responsable" value={c.responsable_nombre as string} />
                         {!!c.created_at && <MetaRow icon="🕐" label="Hora registro" value={fmtHora(c.created_at as string) ?? '—'} />}
+                        {editingId === id && isAdmin && (
+                          <div style={{ marginTop: '10px' }}>
+                            <DetailLabel>Fecha registro</DetailLabel>
+                            <input
+                              type="date"
+                              value={editFecha}
+                              onClick={e => e.stopPropagation()}
+                              onChange={e => setEditFecha(e.target.value)}
+                              style={{ width: '140px', padding: '5px 8px', fontSize: '13px', borderRadius: '5px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', fontFamily: "'Space Grotesk', sans-serif" }}
+                            />
+                          </div>
+                        )}
                         <div style={{ marginTop: '10px' }}>
                           <DetailLabel>Inscritos</DetailLabel>
                           {editingId === id ? (
@@ -734,7 +816,7 @@ function TablaColacion({ datos, canEdit, onRefresh, verCostos, productos }: { da
                           </div>
                           {saveErr && <p style={{ color: 'var(--rd)', fontSize: '11px', margin: '0 0 6px' }}>{saveErr}</p>}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                            {det.map((d, i) => {
+                            {det.filter(d => !deletedIds.has(d.id as string)).map((d, i) => {
                               const isEditing = editingId === id;
                               const qty = isEditing ? (editValues[d.id as string] ?? (d.cantidad as number)) : (d.cantidad as number);
                               const costoUnitarioEdit = Number(d.costo_unitario) || (Number(d.cantidad) > 0 ? Number(d.costo_total) / Number(d.cantidad) : 0);
@@ -752,6 +834,16 @@ function TablaColacion({ datos, canEdit, onRefresh, verCostos, productos }: { da
                                         <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>
                                           {formatCLP(Math.round(qty * costoUnitarioEdit))}
                                         </span>
+                                      )}
+                                      {isEditing && isAdmin && (
+                                        <button
+                                          type="button"
+                                          onClick={e => { e.stopPropagation(); removeDetalle(d.id as string); }}
+                                          title="Quitar linea"
+                                          style={{ border: 'none', background: 'transparent', color: '#B91C1C', cursor: 'pointer', fontSize: '16px', lineHeight: 1, fontWeight: 700, padding: '0 2px' }}
+                                        >
+                                          ×
+                                        </button>
                                       )}
                                     </>
                                   ) : (
@@ -820,26 +912,36 @@ const MOTIVO_COLOR: Record<string, string> = {
   'Otro':               '#6B7280',
 };
 
-function TablaMermas({ datos, canEdit, onRefresh, verCostos, productos }: { datos: Record<string, unknown>[]; canEdit: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[] }) {
+function TablaMermas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos }: { datos: Record<string, unknown>[]; canEdit: boolean; isAdmin: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[] }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editFecha, setEditFecha] = useState('');
   const [editValues, setEditValues] = useState<Record<string, number>>({});
   const [newRows, setNewRows] = useState<Array<{ localId: string; codigo_producto: string; cantidad: number; motivo: string }>>([]);
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState('');
   const productosMap = new Map(productos.map(p => [p.codigo as string, p]));
 
   const toggle = (id: string) => {
     setExpanded(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-    if (editingId === id) { setEditingId(null); setEditValues({}); setNewRows([]); setSaveErr(''); }
+    if (editingId === id) { setEditingId(null); setEditValues({}); setEditFecha(''); setNewRows([]); setDeletedIds(new Set()); setSaveErr(''); }
   };
   const startEdit = (id: string, det: Record<string, unknown>[]) => {
     const vals: Record<string, number> = {};
     det.forEach(d => { vals[d.id as string] = d.cantidad as number; });
-    setEditingId(id); setEditValues(vals); setNewRows([]); setSaveErr('');
+    const fechaActual = String(datos.find(m => (m.id as string) === id)?.fecha ?? '');
+    setEditingId(id); setEditValues(vals); setEditFecha(fechaActual); setNewRows([]); setDeletedIds(new Set()); setSaveErr('');
   };
-  const cancelEdit = () => { setEditingId(null); setEditValues({}); setNewRows([]); setSaveErr(''); };
+  const cancelEdit = () => { setEditingId(null); setEditValues({}); setEditFecha(''); setNewRows([]); setDeletedIds(new Set()); setSaveErr(''); };
   const addRow = () => setNewRows(rows => [...rows, { localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`, codigo_producto: '', cantidad: 1, motivo: 'Otro' }]);
+  const removeDetalle = (id: string) => {
+    setDeletedIds(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  };
   const productoOptions = useMemo(() => productos.map(prod => ({
     value: prod.codigo as string,
     label: `${prod.codigo as string} · ${prod.nombre as string}`,
@@ -848,7 +950,9 @@ function TablaMermas({ datos, canEdit, onRefresh, verCostos, productos }: { dato
   const saveEditMer = async (mermaId: string, det: Record<string, unknown>[]) => {
     setSaving(true); setSaveErr('');
     try {
-      const detalle = det.map(d => ({ id: d.id as string, cantidad: editValues[d.id as string] ?? (d.cantidad as number) }));
+      const detalle = det
+        .filter(d => !deletedIds.has(d.id as string))
+        .map(d => ({ id: d.id as string, cantidad: editValues[d.id as string] ?? (d.cantidad as number) }));
       const nuevos = newRows.map(r => {
         const p = productosMap.get(r.codigo_producto);
         const costoUnitario = Number(p?.costo_promedio) || 0;
@@ -863,9 +967,9 @@ function TablaMermas({ datos, canEdit, onRefresh, verCostos, productos }: { dato
           costo_total: Math.round(cantidad * costoUnitario),
         };
       }).filter(r => r.codigo_producto);
-      const res = await fetch('/api/mermas', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ merma_id: mermaId, detalle: [...detalle, ...nuevos] }) });
+      const res = await fetch('/api/mermas', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ merma_id: mermaId, fecha: isAdmin ? editFecha : undefined, delete_ids: [...deletedIds], detalle: [...detalle, ...nuevos] }) });
       if (!res.ok) { const j = await res.json(); throw new Error(j.error); }
-      setEditingId(null); setEditValues({}); setNewRows([]); onRefresh();
+      setEditingId(null); setEditValues({}); setEditFecha(''); setNewRows([]); setDeletedIds(new Set()); onRefresh();
     } catch (e: unknown) { setSaveErr(e instanceof Error ? e.message : 'Error guardando'); }
     finally { setSaving(false); }
   };
@@ -960,6 +1064,18 @@ function TablaMermas({ datos, canEdit, onRefresh, verCostos, productos }: { dato
                         <DetailLabel>Quién / cuándo</DetailLabel>
                         <MetaRow icon="👤" label="Responsable" value={m.responsable_nombre as string} />
                         {!!m.created_at && <MetaRow icon="🕐" label="Hora registro" value={fmtHora(m.created_at as string) ?? '—'} />}
+                        {editingId === id && isAdmin && (
+                          <div style={{ marginTop: '10px' }}>
+                            <DetailLabel>Fecha registro</DetailLabel>
+                            <input
+                              type="date"
+                              value={editFecha}
+                              onClick={e => e.stopPropagation()}
+                              onChange={e => setEditFecha(e.target.value)}
+                              style={{ width: '140px', padding: '5px 8px', fontSize: '13px', borderRadius: '5px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', fontFamily: "'Space Grotesk', sans-serif" }}
+                            />
+                          </div>
+                        )}
                         {(m.observacion as string) && (
                           <div style={{ marginTop: '10px' }}>
                             <DetailLabel>Observación</DetailLabel>
@@ -1004,7 +1120,7 @@ function TablaMermas({ datos, canEdit, onRefresh, verCostos, productos }: { dato
                           </div>
                           {saveErr && <p style={{ color: 'var(--rd)', fontSize: '11px', margin: '0 0 6px' }}>{saveErr}</p>}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                            {det.map((d, i) => {
+                            {det.filter(d => !deletedIds.has(d.id as string)).map((d, i) => {
                               const isEditing = editingId === id;
                               const qty = isEditing ? (editValues[d.id as string] ?? (d.cantidad as number)) : (d.cantidad as number);
                               const motivo = d.motivo as string | null;
@@ -1035,7 +1151,19 @@ function TablaMermas({ datos, canEdit, onRefresh, verCostos, productos }: { dato
                                         </span>
                                       )}
                                       {verCostos && (d.costo_total as number) > 0 && (
-                                        <span style={{ fontSize: '12px', color: '#DC2626', fontWeight: 600, fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(d.costo_total as number)}</span>
+                                        <span style={{ fontSize: '12px', color: '#DC2626', fontWeight: 600, fontFamily: "'Space Grotesk', sans-serif" }}>
+                                          {formatCLP(d.costo_total as number)}
+                                        </span>
+                                      )}
+                                      {isEditing && isAdmin && (
+                                        <button
+                                          type="button"
+                                          onClick={e => { e.stopPropagation(); removeDetalle(d.id as string); }}
+                                          title="Quitar linea"
+                                          style={{ border: 'none', background: 'transparent', color: '#B91C1C', cursor: 'pointer', fontSize: '16px', lineHeight: 1, fontWeight: 700, padding: '0 2px' }}
+                                        >
+                                          ×
+                                        </button>
                                       )}
                                     </>
                                   )}
@@ -1122,6 +1250,7 @@ function PeriodShortcuts({ onSelect }: { onSelect: (d: string, h: string) => voi
 export default function HistorialPage() {
   const { puede, rol } = useRol();
   const canEdit = puede('historial', 'editar');
+  const isAdmin = rol === 'admin';
   const verCostos = rol !== 'cocina';
 
   const [tab,     setTab]     = useState<Tab>('produccion');
@@ -1129,20 +1258,32 @@ export default function HistorialPage() {
   const [hasta,   setHasta]   = useState(hoyChile());
   const [datos,   setDatos]   = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [err,     setErr]     = useState('');
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextOffset, setNextOffset] = useState(0);
   const [maestros, setMaestros] = useState<{ productos: Record<string, unknown>[]; pps: Record<string, unknown>[] }>({ productos: [], pps: [] });
 
-  const cargar = useCallback(async (t: Tab, d: string, h: string) => {
-    setLoading(true); setErr(''); setDatos([]);
+  const cargar = useCallback(async (t: Tab, d: string, h: string, opts?: { append?: boolean; offset?: number }) => {
+    const append = opts?.append ?? false;
+    const offset = opts?.offset ?? 0;
+    if (append) setLoadingMore(true);
+    else { setLoading(true); setErr(''); setDatos([]); }
     try {
-      const res  = await fetch(`/api/historial?tipo=${t}&desde=${d}&hasta=${h}`);
+      const res = await fetch(`/api/historial?tipo=${t}&desde=${d}&hasta=${h}&limit=${PAGE_SIZE}&offset=${offset}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setDatos(data);
+      const items = data.items ?? [];
+      setDatos(prev => append ? [...prev, ...items] : items);
+      setTotal(data.count ?? items.length);
+      setHasMore(Boolean(data.hasMore));
+      setNextOffset(data.nextOffset ?? (offset + items.length));
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : 'Error cargando datos');
     } finally {
-      setLoading(false);
+      if (append) setLoadingMore(false);
+      else setLoading(false);
     }
   }, []);
 
@@ -1162,26 +1303,16 @@ export default function HistorialPage() {
   }, []);
 
   useEffect(() => {
-    let alive = true;
-    async function run() {
-      await Promise.resolve();
-      if (!alive) return;
-      setLoading(true); setErr(''); setDatos([]);
-      try {
-        const res  = await fetch(`/api/historial?tipo=${tab}&desde=${desde}&hasta=${hasta}`);
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-        if (alive) setDatos(data);
-      } catch (e: unknown) {
-        if (alive) setErr(e instanceof Error ? e.message : 'Error cargando datos');
-      } finally {
-        if (alive) setLoading(false);
-      }
-    }
-    void run();
-    return () => { alive = false; };
-  }, [tab, desde, hasta]);
+    const timer = window.setTimeout(() => {
+      void cargar(tab, desde, hasta);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [tab, desde, hasta, cargar]);
   const refresh = useCallback(() => cargar(tab, desde, hasta), [tab, desde, hasta, cargar]);
+  const cargarMas = useCallback(() => {
+    if (!hasMore || loadingMore) return;
+    void cargar(tab, desde, hasta, { append: true, offset: nextOffset });
+  }, [cargar, hasMore, loadingMore, nextOffset, tab, desde, hasta]);
 
   const TAB_CFG: { id: Tab; label: string; color: string }[] = [
     { id: 'produccion', label: 'Producción',  color: 'var(--ac)' },
@@ -1206,7 +1337,7 @@ export default function HistorialPage() {
         <PeriodShortcuts onSelect={(d, h) => { setDesde(d); setHasta(h); }} />
         {!loading && datos.length > 0 && (
           <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--ts)', background: 'var(--bg)', border: '1px solid var(--bo)', padding: '3px 10px', borderRadius: '20px' }}>
-            {datos.length} registro{datos.length !== 1 ? 's' : ''}
+            {datos.length} de {total} registro{total !== 1 ? 's' : ''}
           </span>
         )}
       </div>
@@ -1240,9 +1371,21 @@ export default function HistorialPage() {
           </div>
         ) : (
           <>
-            {tab === 'produccion' && <TablaProduccion datos={datos} canEdit={canEdit} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} pps={maestros.pps} />}
-            {tab === 'colacion'   && <TablaColacion   datos={datos} canEdit={canEdit} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} />}
-            {tab === 'mermas'     && <TablaMermas     datos={datos} canEdit={canEdit} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} />}
+            {tab === 'produccion' && <TablaProduccion datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} pps={maestros.pps} />}
+            {tab === 'colacion'   && <TablaColacion   datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} />}
+            {tab === 'mermas'     && <TablaMermas     datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} />}
+            {hasMore && (
+              <div style={{ padding: '0 20px 20px', display: 'flex', justifyContent: 'center' }}>
+                <button
+                  type="button"
+                  onClick={cargarMas}
+                  disabled={loadingMore}
+                  className="btn btn-outline"
+                >
+                  {loadingMore ? 'Cargando...' : 'Cargar mas'}
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

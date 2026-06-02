@@ -65,6 +65,7 @@ export default function KpisPage() {
     }
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- carga KPIs al cambiar el rango seleccionado
   useEffect(() => { cargar(desde, hasta); }, [desde, hasta, cargar]);
 
   const shortcuts = [

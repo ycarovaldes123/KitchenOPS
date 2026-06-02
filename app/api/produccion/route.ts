@@ -7,6 +7,18 @@ function calcTotalPP(cantidad: number, tipoPP: string | null, gramosPorPP: numbe
   return cantidad * (gramosPorPP ?? 1);
 }
 
+function calcCostoProduccion(
+  totalProducido: number,
+  tipoPP: string | null,
+  unidadProducto: string | null | undefined,
+  costoUnitario: number,
+): number {
+  const um = String(unidadProducto ?? '').toUpperCase();
+  if (tipoPP === 'DIRECTO') return Math.round(totalProducido * costoUnitario);
+  if (um === 'KG' || um === 'LT') return Math.round((totalProducido / 1000) * costoUnitario);
+  return Math.round(totalProducido * costoUnitario);
+}
+
 export async function GET(req: NextRequest) {
   const s = await getSessionRol();
   if (!s.ok) return s.response;
@@ -73,13 +85,35 @@ export async function PATCH(req: NextRequest) {
   if (!s.ok) return s.response;
 
   const supabase = await createClient();
-  const { produccion_id, detalle, rendimiento } = await req.json();
+  const { produccion_id, fecha, detalle, rendimiento, delete_ids } = await req.json();
 
   const hasDetalle = Array.isArray(detalle) && detalle.length > 0;
   const hasRendimiento = Array.isArray(rendimiento) && rendimiento.length > 0;
+  const hasDeletes = Array.isArray(delete_ids) && delete_ids.length > 0;
+  const hasFecha = typeof fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fecha);
 
-  if (!produccion_id || (!hasDetalle && !hasRendimiento))
+  if (!produccion_id || (!hasDetalle && !hasRendimiento && !hasDeletes && !hasFecha))
     return NextResponse.json({ error: 'Datos invalidos' }, { status: 400 });
+
+  if (hasFecha) {
+    const { error } = await supabase
+      .from('produccion')
+      .update({ fecha })
+      .eq('id', produccion_id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  if (hasDeletes) {
+    const ids = (delete_ids as string[]).filter(Boolean);
+    if (ids.length) {
+      const { error } = await supabase
+        .from('detalle_produccion')
+        .delete()
+        .eq('produccion_id', produccion_id)
+        .in('id', ids);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+  }
 
   if (hasDetalle) {
     const ids = detalle.filter((d: { id?: string }) => d.id).map((d: { id: string }) => d.id);
@@ -128,11 +162,23 @@ export async function PATCH(req: NextRequest) {
   const nuevos = (detalle as Array<{ id?: string; cantidad: number; pp_id?: string | null; nombre_pp?: string | null; tipo_pp?: string | null; gramos_por_pp?: number | null; codigo_producto?: string | null; costo_unitario?: number | null; costo_total?: number | null; total_producido?: number | null }>)
     .filter(d => !d.id);
   if (nuevos.length) {
+    const codigos = [...new Set(nuevos.map(d => d.codigo_producto).filter(Boolean))] as string[];
+    const { data: productos, error: prodErr } = codigos.length
+      ? await supabase
+          .from('productos')
+          .select('codigo,unidad_medida')
+          .in('codigo', codigos)
+      : { data: [], error: null };
+    if (prodErr) return NextResponse.json({ error: prodErr.message }, { status: 500 });
+
+    const unidadPorCodigo = new Map((productos ?? []).map(p => [p.codigo as string, p.unidad_medida as string | null]));
+
     const rows = nuevos.map(d => {
       const cantidad = Number(d.cantidad);
       if (!Number.isFinite(cantidad) || cantidad < 0) throw new Error('Cantidad invalida');
       const costoUnitario = Number(d.costo_unitario) || 0;
-      const totalProducido = Number(d.total_producido) || 0;
+      const totalProducido = Number(d.total_producido) || calcTotalPP(cantidad, d.tipo_pp ?? null, d.gramos_por_pp ?? null);
+      const unidadProducto = d.codigo_producto ? unidadPorCodigo.get(d.codigo_producto) : null;
       return {
         produccion_id,
         pp_id: d.pp_id ?? null,
@@ -143,7 +189,7 @@ export async function PATCH(req: NextRequest) {
         total_producido: totalProducido,
         codigo_producto: d.codigo_producto ?? null,
         costo_unitario: costoUnitario,
-        costo_total: Number.isFinite(Number(d.costo_total)) ? Number(d.costo_total) : Math.round(cantidad * costoUnitario),
+        costo_total: calcCostoProduccion(totalProducido, d.tipo_pp ?? null, unidadProducto, costoUnitario),
       };
     });
     try {

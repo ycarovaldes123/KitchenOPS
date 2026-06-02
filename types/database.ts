@@ -9,12 +9,13 @@
 
 export type TipoPP        = 'PORCION' | 'CC' | 'UND' | 'DIRECTO';
 export type TurnoType     = 'AM' | 'PM';
-export type RolType       = 'cocina' | 'jefatura' | 'finanzas' | 'admin';
+export type RolType       = 'cocina' | 'economo' | 'jefatura' | 'finanzas' | 'admin';
 export type EstadoType    = 'REGISTRADO';
 export type MotivoMerma   =
   // Nuevos (desde may-2026):
   | 'Vencimiento' | 'Mala manipulación' | 'Sobreproducción'
   | 'Devolución' | 'Corte / limpieza' | 'Error de producción' | 'Otro'
+  | 'Caida' | 'Pelo / contaminacion' | 'Mal preparado' | 'Cliente no recibe'
   // Históricos (registros anteriores):
   | 'Daño físico' | 'Sobra producción' | 'Contaminación';
 export type CategoriaCarta = 'PICADAS' | 'CLÁSICOS' | 'SANDWICH & BURGERS' | 'ENSALADAS' | 'POSTRES' | 'CATERING';
@@ -159,6 +160,34 @@ export interface DetalleMerma {
   costo_total:     number;           // snapshot
 }
 
+export interface DetalleMermaPlato {
+  id:             string;
+  merma_id:       string;
+  carta_id:       string | null;
+  nombre_plato:   string;
+  cantidad:       number;
+  motivo:         MotivoMerma | null;
+  costo_unitario: number;
+  costo_total:    number;
+  observacion:    string | null;
+  created_at:     string;
+}
+
+export interface DetalleMermaPlatoInsumo {
+  id:                       string;
+  detalle_merma_plato_id:   string;
+  carta_ingrediente_id:     string | null;
+  codigo_producto:          string | null;
+  pp_id:                    string | null;
+  nombre:                   string;
+  cantidad_unitaria:        number;
+  cantidad_total:           number;
+  unidad_medida:            string | null;
+  precio_unitario:          number;
+  costo_total:              number;
+  created_at:               string;
+}
+
 // ─── Carta / Costos ──────────────────────────────────────────
 
 export interface Carta {
@@ -197,6 +226,7 @@ export interface ColacionConDetalle extends Colacion {
 
 export interface MermaConDetalle extends Merma {
   detalle_mermas: DetalleMerma[];
+  detalle_mermas_platos?: DetalleMermaPlato[];
 }
 
 export interface CartaConCostos extends Carta {
@@ -234,6 +264,7 @@ export interface MermaPayload {
   responsable_nombre: string;
   observacion:        string;
   detalle:            Omit<DetalleMerma, 'id' | 'merma_id'>[];
+  platos?:            Omit<DetalleMermaPlato, 'id' | 'merma_id' | 'costo_unitario' | 'costo_total' | 'created_at'>[];
 }
 
 // ─── KPIs ────────────────────────────────────────────────────

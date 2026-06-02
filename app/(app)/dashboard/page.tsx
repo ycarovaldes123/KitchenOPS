@@ -3,12 +3,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { formatCLP } from '@/lib/calculos';
 import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+  AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 
 function hoyChile() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago' }).format(new Date());
+}
+function mesInicio() {
+  const d = new Date(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Santiago' }));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
 }
 function restarDias(n: number) {
   const d = new Date(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Santiago' }));
@@ -39,13 +43,27 @@ interface DiaTendencia {
   clp_colacion:    number | null;
 }
 interface TopMotivo { motivo: string; count: number }
+type VistaCosto = 'todos' | 'produccion' | 'colacion' | 'mermas';
 
-type Periodo = '7d' | '30d' | '90d';
-const PERIODOS: { id: Periodo; label: string; dias: number }[] = [
-  { id: '7d',  label: '7 días',  dias: 7 },
-  { id: '30d', label: '30 días', dias: 30 },
-  { id: '90d', label: '90 días', dias: 90 },
+const PRESETS: { label: string; desde: () => string; hasta: () => string }[] = [
+  { label: '7 días',  desde: () => restarDias(7),  hasta: () => hoyChile() },
+  { label: '30 días', desde: () => restarDias(30), hasta: () => hoyChile() },
+  { label: '90 días', desde: () => restarDias(90), hasta: () => hoyChile() },
+  { label: 'Mes',     desde: () => mesInicio(),    hasta: () => hoyChile() },
 ];
+
+const VISTAS_COSTO: { id: VistaCosto; label: string }[] = [
+  { id: 'todos',      label: 'Todos' },
+  { id: 'produccion', label: 'Producción' },
+  { id: 'colacion',   label: 'Colación' },
+  { id: 'mermas',     label: 'Mermas' },
+];
+
+const COSTO_COLORS = {
+  produccion: '#6366F1',
+  colacion: '#CA8A04',
+  mermas: '#DC2626',
+};
 
 const PIE_COLORS = ['#DC2626', '#CA8A04'];
 
@@ -74,17 +92,6 @@ function ChartCard({ title, children, style }: { title: string; children: React.
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function TooltipCount({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px' }}>
-      <p style={{ margin: '0 0 4px', fontWeight: 600, color: 'var(--ts)' }}>{label}</p>
-      <p style={{ margin: 0, color: '#6366F1', fontWeight: 700 }}>{payload[0]?.value} informe{payload[0]?.value !== 1 ? 's' : ''}</p>
-    </div>
-  );
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function TooltipCLP({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
@@ -100,34 +107,31 @@ function TooltipCLP({ active, payload, label }: any) {
 }
 
 export default function DashboardPage() {
-  const [periodo,   setPeriodo]   = useState<Periodo>('30d');
+  const [desde,     setDesde]     = useState(restarDias(30));
+  const [hasta,     setHasta]     = useState(hoyChile());
+  const [vistaCosto, setVistaCosto] = useState<VistaCosto>('todos');
   const [kpis,      setKpis]      = useState<KPIData | null>(null);
   const [tendencia, setTendencia] = useState<DiaTendencia[]>([]);
   const [motivos,   setMotivos]   = useState<TopMotivo[]>([]);
   const [loading,   setLoading]   = useState(false);
 
-  const cargar = useCallback(async (p: Periodo) => {
-    const dias  = PERIODOS.find(x => x.id === p)?.dias ?? 30;
-    const desde = restarDias(dias);
-    const hasta = hoyChile();
+  const cargar = useCallback(async (d: string, h: string) => {
+    if (!d || !h || d > h) return;
     setLoading(true);
     try {
-      const [resKpis, resTend] = await Promise.all([
-        fetch(`/api/kpis?desde=${desde}&hasta=${hasta}`),
-        fetch(`/api/tendencia?desde=${desde}&hasta=${hasta}`),
-      ]);
-      if (resKpis.ok) setKpis(await resKpis.json());
-      if (resTend.ok) {
-        const td = await resTend.json();
-        setTendencia(td.dias ?? []);
-        setMotivos(td.top_motivos ?? []);
-      }
+      const res = await fetch(`/api/dashboard?desde=${d}&hasta=${h}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Error cargando dashboard');
+      setKpis(data.kpis ?? null);
+      setTendencia(data.dias ?? []);
+      setMotivos(data.top_motivos ?? []);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { cargar(periodo); }, [periodo, cargar]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- este efecto sincroniza el rango con la carga de datos
+  useEffect(() => { cargar(desde, hasta); }, [desde, hasta, cargar]);
 
   const mermaColor = kpis?.merma_pct_promedio == null ? 'var(--ts)'
     : kpis.merma_pct_promedio > 25 ? 'var(--rd)'
@@ -142,10 +146,13 @@ export default function DashboardPage() {
 
   const totalHundido = costoPie.reduce((s, x) => s + x.value, 0);
 
-  // Aggregate trend data by week if period > 14 days to avoid overcrowding
-  const chartData = periodo === '7d' ? tendencia : (() => {
+  const rangoDias = desde && hasta
+    ? Math.max(1, Math.round((Date.parse(hasta) - Date.parse(desde)) / 86400000) + 1)
+    : 0;
+
+  // Aggregate trend data by week if the selected range is wide enough to avoid overcrowding
+  const chartData = rangoDias <= 14 ? tendencia : (() => {
     if (tendencia.length <= 20) return tendencia;
-    // Group by week
     const weeks = new Map<string, DiaTendencia>();
     for (const d of tendencia) {
       const date  = new Date(d.fecha);
@@ -165,28 +172,76 @@ export default function DashboardPage() {
     return Array.from(weeks.values()).sort((a, b) => a.fecha.localeCompare(b.fecha));
   })();
 
+  const costoDiarioReal = tendencia.map(d => ({
+    fecha: d.fecha,
+    costo_produccion: d.clp_produccion ?? 0,
+    costo_colacion: d.clp_colacion ?? 0,
+    costo_mermas: d.clp_mermas ?? 0,
+    costo_total: (d.clp_produccion ?? 0) + (d.clp_colacion ?? 0) + (d.clp_mermas ?? 0),
+  }));
+
+  const chartDataCosto = chartData.map(d => ({
+    ...d,
+    costo_produccion: d.clp_produccion ?? 0,
+    costo_colacion: d.clp_colacion ?? 0,
+    costo_mermas: d.clp_mermas ?? 0,
+    costo_total: (d.clp_produccion ?? 0) + (d.clp_colacion ?? 0) + (d.clp_mermas ?? 0),
+  }));
+
+  const totalDiario = chartDataCosto.map(d => ({
+    fecha: d.fecha,
+    costo_total: d.costo_total,
+  }));
+
+  const costoPeriodoTotal = costoDiarioReal.reduce((s, d) => s + d.costo_total, 0);
+  const costoPromedioDiario = rangoDias > 0 ? costoPeriodoTotal / rangoDias : 0;
+  const costoPicoDiario = costoDiarioReal.reduce((max, d) => Math.max(max, d.costo_total), 0);
+
   return (
     <div className="page">
-
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
         <div>
           <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '22px', fontWeight: 800, margin: '0 0 2px' }}>Dashboard</h1>
           <p style={{ color: 'var(--ts)', fontSize: '13px', margin: 0 }}>Vista ejecutiva · tendencias y distribución de costos</p>
         </div>
-        <div style={{ display: 'flex', gap: '6px' }}>
-          {PERIODOS.map(p => (
-            <button key={p.id} type="button" onClick={() => setPeriodo(p.id)}
-              style={{
-                padding: '7px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '13px',
-                fontFamily: 'DM Sans, sans-serif', fontWeight: periodo === p.id ? 700 : 400,
-                border: `2px solid ${periodo === p.id ? 'var(--ac)' : 'var(--bo)'}`,
-                background: periodo === p.id ? 'var(--al)' : 'var(--bg)',
-                color: periodo === p.id ? 'var(--ac)' : 'var(--ts)',
-                transition: 'all 0.15s',
+        <div className="page-header-controls">
+          <div className="date-row">
+            <input
+              type="date"
+              value={desde}
+              onChange={e => {
+                const next = e.target.value;
+                setDesde(next);
+                if (hasta && next > hasta) setHasta(next);
               }}
-            >{p.label}</button>
-          ))}
+              className="field-input"
+              style={{ padding: '6px 10px', fontSize: '13px', minHeight: 'unset' }}
+            />
+            <span style={{ color: 'var(--ts)', fontSize: '13px' }}>→</span>
+            <input
+              type="date"
+              value={hasta}
+              onChange={e => {
+                const next = e.target.value;
+                setHasta(next);
+                if (desde && next < desde) setDesde(next);
+              }}
+              className="field-input"
+              style={{ padding: '6px 10px', fontSize: '13px', minHeight: 'unset' }}
+            />
+          </div>
+          <div className="tab-row">
+            {PRESETS.map(p => (
+              <button
+                key={p.label}
+                type="button"
+                onClick={() => { setDesde(p.desde()); setHasta(p.hasta()); }}
+                className="pill-btn"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -194,11 +249,13 @@ export default function DashboardPage() {
         <div style={{ padding: '80px', textAlign: 'center', color: 'var(--ts)', fontSize: '14px' }}>Cargando...</div>
       ) : kpis ? (
         <>
-          {/* KPI summary row */}
           <div className="dash-kpi-row">
             <KpiCard label="Turnos producción" value={String(kpis.total_informes)} sub="informes registrados" accent="var(--ac)" />
             <KpiCard label="Costo de insumos" value={(kpis.total_produccion_clp ?? 0) > 0 ? formatCLP(kpis.total_produccion_clp!) : '—'} sub={(kpis.costo_por_orden ?? 0) > 0 ? `≈ ${formatCLP(kpis.costo_por_orden!)} / turno` : 'consumo materia prima'} color="var(--tl)" accent="var(--tl)" />
             <KpiCard label="Costos no productivos" value={totalHundido > 0 ? formatCLP(totalHundido) : '—'} sub="mermas + colación" accent="#DC2626" color="#DC2626" />
+            <KpiCard label="Costo total período" value={costoPeriodoTotal > 0 ? formatCLP(costoPeriodoTotal) : '—'} sub={rangoDias > 0 ? `acumulado en ${rangoDias} día${rangoDias !== 1 ? 's' : ''}` : 'sin rango'} color="var(--ac)" accent="var(--ac)" />
+            <KpiCard label="Promedio diario" value={costoPromedioDiario > 0 ? formatCLP(costoPromedioDiario) : '—'} sub="costo total / día seleccionado" color="#0F766E" accent="#0F766E" />
+            <KpiCard label="Pico diario" value={costoPicoDiario > 0 ? formatCLP(costoPicoDiario) : '—'} sub="día de mayor costo total" color="#7C3AED" accent="#7C3AED" />
             <KpiCard
               label="Rendimiento verduras"
               value={kpis.merma_pct_promedio != null ? `${kpis.merma_pct_promedio}%` : '—'}
@@ -208,25 +265,64 @@ export default function DashboardPage() {
             />
           </div>
 
-          {/* Charts row */}
           <div className="dash-chart-row" style={{ marginBottom: '12px' }}>
-
-            {/* Área chart — Producción registrada */}
-            <ChartCard title="Producción registrada por día">
-              {chartData.length > 0 ? (
+            <ChartCard title="Costos diarios por tipo">
+              <div className="tab-row" style={{ marginBottom: '12px' }}>
+                {VISTAS_COSTO.map(v => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => setVistaCosto(v.id)}
+                    className="pill-btn"
+                    style={{
+                      borderColor: vistaCosto === v.id ? 'var(--ac)' : 'var(--bo)',
+                      background: vistaCosto === v.id ? 'var(--al)' : 'var(--bg)',
+                      color: vistaCosto === v.id ? 'var(--ac)' : 'var(--ts)',
+                      fontWeight: vistaCosto === v.id ? 700 : 500,
+                    }}
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+              {chartDataCosto.length > 0 ? (
                 <ResponsiveContainer width="100%" height={220}>
-                  <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="gradInformes" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%"  stopColor="#6366F1" stopOpacity={0.25} />
-                        <stop offset="95%" stopColor="#6366F1" stopOpacity={0.02} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="fecha" tickFormatter={labelFecha} tick={{ fontSize: 11, fill: 'var(--ts)' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: 'var(--ts)' }} axisLine={false} tickLine={false} width={32} allowDecimals={false} />
-                    <Tooltip content={<TooltipCount />} />
-                    <Area type="monotone" dataKey="informes_count" stroke="#6366F1" strokeWidth={2} fill="url(#gradInformes)" dot={false} name="Informes" />
-                  </AreaChart>
+                  {vistaCosto === 'todos' ? (
+                    <BarChart data={chartDataCosto} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                      <XAxis dataKey="fecha" tickFormatter={labelFecha} tick={{ fontSize: 11, fill: 'var(--ts)' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11, fill: 'var(--ts)' }} axisLine={false} tickLine={false} width={60}
+                        tickFormatter={(v: number) => v >= 1000000 ? `$${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `$${(v / 1000).toFixed(0)}K` : `$${v}`}
+                      />
+                      <Tooltip content={<TooltipCLP />} />
+                      <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '12px' }} />
+                      <Bar dataKey="costo_produccion" name="Producción" stackId="a" fill={COSTO_COLORS.produccion} radius={[0, 0, 0, 0]} />
+                      <Bar dataKey="costo_colacion"   name="Colación"   stackId="a" fill={COSTO_COLORS.colacion} radius={[0, 0, 0, 0]} />
+                      <Bar dataKey="costo_mermas"     name="Mermas"     stackId="a" fill={COSTO_COLORS.mermas} radius={[2, 2, 0, 0]} />
+                    </BarChart>
+                  ) : (
+                    <AreaChart data={chartDataCosto} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id={`grad-${vistaCosto}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={COSTO_COLORS[vistaCosto]} stopOpacity={0.25} />
+                          <stop offset="95%" stopColor={COSTO_COLORS[vistaCosto]} stopOpacity={0.02} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis dataKey="fecha" tickFormatter={labelFecha} tick={{ fontSize: 11, fill: 'var(--ts)' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11, fill: 'var(--ts)' }} axisLine={false} tickLine={false} width={60}
+                        tickFormatter={(v: number) => v >= 1000000 ? `$${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `$${(v / 1000).toFixed(0)}K` : `$${v}`}
+                      />
+                      <Tooltip content={<TooltipCLP />} />
+                      <Area
+                        type="monotone"
+                        dataKey={vistaCosto === 'produccion' ? 'costo_produccion' : vistaCosto === 'colacion' ? 'costo_colacion' : 'costo_mermas'}
+                        stroke={COSTO_COLORS[vistaCosto]}
+                        strokeWidth={2}
+                        fill={`url(#grad-${vistaCosto})`}
+                        dot={false}
+                        name={vistaCosto === 'produccion' ? 'Producción' : vistaCosto === 'colacion' ? 'Colación' : 'Mermas'}
+                      />
+                    </AreaChart>
+                  )}
                 </ResponsiveContainer>
               ) : (
                 <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ts)', fontSize: '13px' }}>
@@ -235,7 +331,6 @@ export default function DashboardPage() {
               )}
             </ChartCard>
 
-            {/* Pie chart — Costos no productivos */}
             <ChartCard title="Costos no productivos (mermas + colación)">
               {costoPie.length > 0 ? (
                 <>
@@ -271,24 +366,18 @@ export default function DashboardPage() {
             </ChartCard>
           </div>
 
-          {/* Bottom row */}
           <div className="dash-chart-row">
-
-            {/* Stacked bar — Costos por día */}
-            <ChartCard title="Costos del período (producción · colación · mermas)">
-              {chartData.some(d => (d.clp_produccion ?? 0) + (d.clp_mermas ?? 0) + (d.clp_colacion ?? 0) > 0) ? (
+            <ChartCard title="Costo total diario">
+              {totalDiario.some(d => d.costo_total > 0) ? (
                 <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <LineChart data={totalDiario} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                     <XAxis dataKey="fecha" tickFormatter={labelFecha} tick={{ fontSize: 11, fill: 'var(--ts)' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: 'var(--ts)' }} axisLine={false} tickLine={false} width={55}
+                    <YAxis tick={{ fontSize: 11, fill: 'var(--ts)' }} axisLine={false} tickLine={false} width={60}
                       tickFormatter={(v: number) => v >= 1000000 ? `$${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `$${(v / 1000).toFixed(0)}K` : `$${v}`}
                     />
-                    <Tooltip content={<TooltipCLP />} />
-                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '12px' }} />
-                    <Bar dataKey="clp_produccion" name="Producción" stackId="a" fill="#6366F1" radius={[0, 0, 0, 0]} />
-                    <Bar dataKey="clp_colacion"   name="Colación"   stackId="a" fill="#CA8A04" radius={[0, 0, 0, 0]} />
-                    <Bar dataKey="clp_mermas"     name="Mermas"     stackId="a" fill="#DC2626" radius={[2, 2, 0, 0]} />
-                  </BarChart>
+                    <Tooltip formatter={(v: unknown) => (typeof v === 'number' ? formatCLP(v) : String(v ?? ''))} />
+                    <Line type="monotone" dataKey="costo_total" name="Costo total" stroke="var(--ac)" strokeWidth={2.5} dot={false} />
+                  </LineChart>
                 </ResponsiveContainer>
               ) : (
                 <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ts)', fontSize: '13px' }}>
@@ -297,7 +386,6 @@ export default function DashboardPage() {
               )}
             </ChartCard>
 
-            {/* Top motivos de merma */}
             <ChartCard title="Top motivos de merma">
               {motivos.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingTop: '4px' }}>

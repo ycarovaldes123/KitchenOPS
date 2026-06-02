@@ -6,6 +6,8 @@ export type Modulo =
   | 'colacion'
   | 'mermas'
   | 'historial'
+  | 'bodega'
+  | 'ventas'
   | 'kpis'
   | 'costos'
   | 'export'
@@ -35,6 +37,8 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     colacion:   COMPLETO,
     mermas:     COMPLETO,
     historial:  COMPLETO,
+    bodega:     COMPLETO,
+    ventas:     COMPLETO,
     kpis:       COMPLETO,
     costos:     COMPLETO,
     export:     COMPLETO,
@@ -47,6 +51,8 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     colacion:   FINANCIERO,
     mermas:     FINANCIERO,
     historial:  FINANCIERO,
+    bodega:     FINANCIERO,
+    ventas:     FINANCIERO,
     kpis:       FINANCIERO,
     costos:     FINANCIERO,
     export:     { ...NADA, ver: true, exportar: true, verCostos: true },
@@ -59,10 +65,26 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     colacion:   OPERATIVO,
     mermas:     OPERATIVO,
     historial:  SOLO_VER,
+    bodega:     SOLO_VER,
+    ventas:     SOLO_VER,
     kpis:       SOLO_VER,
     costos:     NADA,
     export:     { ...NADA, ver: true, exportar: true },
     maestros:   SOLO_VER,
+  },
+
+  economo: {
+    dashboard:  NADA,
+    produccion: NADA,
+    colacion:   OPERATIVO,
+    mermas:     OPERATIVO,
+    historial:  { ...NADA, ver: true, verCostos: true },
+    bodega:     { ...NADA, ver: true, registrar: true, verCostos: true },
+    ventas:     { ...NADA, ver: true, registrar: true, verCostos: true },
+    kpis:       NADA,
+    costos:     NADA,
+    export:     NADA,
+    maestros:   NADA,
   },
 
   cocina: {
@@ -71,6 +93,8 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     colacion:   OPERATIVO,
     mermas:     OPERATIVO,
     historial:  { ...NADA, ver: true, soloHoy: true },
+    bodega:     NADA,
+    ventas:     NADA,
     kpis:       NADA,
     costos:     NADA,
     export:     NADA,
