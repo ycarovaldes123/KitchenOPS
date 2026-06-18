@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { formatCLP } from '@/lib/calculos';
+import { TIPOS_CARTA } from '@/lib/carta';
+import ProductSearchSelect from './ProductSearchSelect';
 
 interface ProductoMaestro {
   codigo: string;
@@ -26,6 +28,7 @@ interface PlatoEditable {
   cod_softland?: string | null;
   nombre: string;
   categoria: string;
+  tipo_carta?: 'ANTIGUA' | 'NUEVA';
   precio_carta: number | null;
   activo?: boolean;
   foto_url: string | null;
@@ -46,6 +49,8 @@ interface Props {
   plato: PlatoEditable | null;
   onClose: () => void;
   onSaved: () => void;
+  canDelete?: boolean;
+  onDeleted?: () => void;
 }
 
 const CATEGORIAS = ['PICADAS', 'CLASICOS', 'CLÁSICOS', 'SANDWICH & BURGERS', 'ENSALADAS', 'POSTRES', 'CATERING'];
@@ -97,18 +102,21 @@ function rowFromIngrediente(ing: Ingrediente): IngredienteForm {
   };
 }
 
-export default function PlatoEditorModal({ plato, onClose, onSaved }: Props) {
+export default function PlatoEditorModal({ plato, onClose, onSaved, canDelete = false, onDeleted }: Props) {
   const [productos, setProductos] = useState<ProductoMaestro[]>([]);
   const [loadingProductos, setLoadingProductos] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
 
   const [codSoftland, setCodSoftland] = useState(plato?.cod_softland ?? '');
   const [nombre, setNombre] = useState(plato?.nombre ?? '');
   const [categoria, setCategoria] = useState(plato?.categoria ?? 'CLÁSICOS');
+  const [tipoCarta, setTipoCarta] = useState<'ANTIGUA' | 'NUEVA'>(plato?.tipo_carta ?? 'ANTIGUA');
   const [precioCarta, setPrecioCarta] = useState(plato?.precio_carta?.toString() ?? '');
   const [fotoUrl, setFotoUrl] = useState(plato?.foto_url ?? '');
   const [activo, setActivo] = useState(plato?.activo !== false);
+  const [uploadingFoto, setUploadingFoto] = useState(false);
   const [ingredientes, setIngredientes] = useState<IngredienteForm[]>(
     plato?.carta_ingredientes?.length ? plato.carta_ingredientes.map(rowFromIngrediente) : [emptyRow()],
   );
@@ -135,6 +143,28 @@ export default function PlatoEditorModal({ plato, onClose, onSaved }: Props) {
     return () => { alive = false; };
   }, []);
 
+  async function handleFotoFile(file: File | null) {
+    if (!file) return;
+    setUploadingFoto(true);
+    setError('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('plato', nombre || plato?.nombre || 'plato');
+      const res = await fetch('/api/carta/foto', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Error subiendo foto');
+      setFotoUrl(data.url ?? '');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error subiendo foto');
+    } finally {
+      setUploadingFoto(false);
+    }
+  }
+
   const productoMap = useMemo(
     () => new Map(productos.map(p => [p.codigo, p])),
     [productos],
@@ -160,7 +190,13 @@ export default function PlatoEditorModal({ plato, onClose, onSaved }: Props) {
   function handleProductoChange(localId: string, codigo: string) {
     const producto = productoMap.get(codigo);
     if (!producto) {
-      updateRow(localId, { codigo_producto: '', pp_id: null });
+      updateRow(localId, {
+        codigo_producto: '',
+        pp_id: null,
+        nombre: '',
+        unidad_medida: 'KG',
+        precio_unitario: '',
+      });
       return;
     }
     const unidad = producto.unidad_medida ?? 'KG';
@@ -197,6 +233,7 @@ export default function PlatoEditorModal({ plato, onClose, onSaved }: Props) {
         cod_softland: codSoftland,
         nombre,
         categoria,
+        tipo_carta: tipoCarta,
         precio_carta: precioCarta === '' ? null : Number(precioCarta),
         foto_url: fotoUrl,
         activo,
@@ -224,6 +261,29 @@ export default function PlatoEditorModal({ plato, onClose, onSaved }: Props) {
       setError(e instanceof Error ? e.message : 'Error guardando plato');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function deletePlato() {
+    if (!plato || !canDelete) return;
+    const ok = window.confirm(`¿Eliminar "${plato.nombre}" de la carta? El plato dejará de aparecer en Costos, pero se conserva el registro histórico.`);
+    if (!ok) return;
+
+    setDeleting(true);
+    setError('');
+    try {
+      const res = await fetch('/api/carta', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: plato.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Error eliminando plato');
+      onDeleted?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error eliminando plato');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -273,6 +333,16 @@ export default function PlatoEditorModal({ plato, onClose, onSaved }: Props) {
               </datalist>
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: 'var(--ts)', fontWeight: 700 }}>
+              Tipo carta
+              <select value={tipoCarta} onChange={e => setTipoCarta(e.target.value as 'ANTIGUA' | 'NUEVA')} className="field-input" style={{ minHeight: 'unset', padding: '8px 10px', fontSize: '13px' }}>
+                {TIPOS_CARTA.map(tipo => (
+                  <option key={tipo} value={tipo}>
+                    {tipo === 'NUEVA' ? 'Nueva' : 'Antigua'}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: 'var(--ts)', fontWeight: 700 }}>
               Precio carta
               <input type="number" min={0} step={1} value={precioCarta} onChange={e => setPrecioCarta(e.target.value)} className="field-input" style={{ minHeight: 'unset', padding: '8px 10px', fontSize: '13px' }} />
             </label>
@@ -283,10 +353,27 @@ export default function PlatoEditorModal({ plato, onClose, onSaved }: Props) {
               Foto URL
               <input value={fotoUrl} onChange={e => setFotoUrl(e.target.value)} className="field-input" style={{ minHeight: 'unset', padding: '8px 10px', fontSize: '13px' }} />
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', alignSelf: 'end', fontSize: '13px', color: 'var(--tx)', fontWeight: 600, minHeight: '35px' }}>
-              <input type="checkbox" checked={activo} onChange={e => setActivo(e.target.checked)} />
-              Activo
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: 'var(--ts)', fontWeight: 700 }}>
+              Subir foto
+              <input
+                type="file"
+                accept="image/*"
+                onChange={e => void handleFotoFile(e.target.files?.[0] ?? null)}
+                className="field-input"
+                style={{ minHeight: 'unset', padding: '8px 10px', fontSize: '13px' }}
+              />
             </label>
+            {uploadingFoto && (
+              <div style={{ display: 'flex', alignItems: 'end', color: 'var(--ts)', fontSize: '12px', fontWeight: 600 }}>
+                Subiendo foto...
+              </div>
+            )}
+            {canDelete && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', alignSelf: 'end', fontSize: '13px', color: 'var(--tx)', fontWeight: 600, minHeight: '35px' }}>
+                <input type="checkbox" checked={activo} onChange={e => setActivo(e.target.checked)} />
+                Activo
+              </label>
+            )}
           </div>
 
           <div style={{ border: '1px solid var(--bo)', borderRadius: '10px', overflow: 'hidden' }}>
@@ -318,17 +405,14 @@ export default function PlatoEditorModal({ plato, onClose, onSaved }: Props) {
                     return (
                       <tr key={row.localId} style={{ borderTop: '1px solid var(--bo)' }}>
                         <td style={{ padding: '8px 10px', width: '250px' }}>
-                          <select
+                          <ProductSearchSelect
                             value={row.codigo_producto}
-                            onChange={e => handleProductoChange(row.localId, e.target.value)}
+                            onChange={codigo => handleProductoChange(row.localId, codigo)}
+                            productos={productos}
+                            placeholder={row.pp_id ? 'PP / manual' : `Buscar en ${productos.length} productos...`}
+                            allowManual
                             disabled={loadingProductos}
-                            style={{ width: '100%', border: '1px solid var(--bo)', borderRadius: '6px', padding: '7px 8px', fontSize: '12px', background: 'var(--bg)', color: 'var(--tx)' }}
-                          >
-                            <option value="">{row.pp_id ? 'PP / manual' : 'Manual'}</option>
-                            {productos.map(p => (
-                              <option key={p.codigo} value={p.codigo}>{p.codigo} - {p.nombre}</option>
-                            ))}
-                          </select>
+                          />
                         </td>
                         <td style={{ padding: '8px 10px' }}>
                           <input
@@ -386,15 +470,20 @@ export default function PlatoEditorModal({ plato, onClose, onSaved }: Props) {
         </div>
 
         <div style={{ padding: '14px 22px', borderTop: '1px solid var(--bo)', display: 'flex', alignItems: 'center', gap: '16px', background: 'var(--bg)' }}>
+          {plato && canDelete && (
+            <button type="button" onClick={deletePlato} disabled={saving || deleting} style={{ border: '1px solid var(--rd)', background: '#FEF2F2', color: 'var(--rd)', borderRadius: '7px', padding: '8px 14px', cursor: deleting ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 700 }}>
+              {deleting ? 'Eliminando...' : 'Eliminar plato'}
+            </button>
+          )}
           <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '12px', color: 'var(--ts)', flex: 1 }}>
             <span><strong style={{ color: 'var(--tx)' }}>{formatCLP(Math.round(costoNeto))}</strong> neto</span>
             <span><strong style={{ color: 'var(--tx)' }}>{formatCLP(costoBruto)}</strong> bruto</span>
             <span><strong style={{ color: margen == null ? 'var(--ts)' : margen >= 30 ? '#16A34A' : margen >= 25 ? '#CA8A04' : '#DC2626' }}>{margen == null ? '—' : `${margen.toFixed(1)}%`}</strong> margen</span>
           </div>
-          <button type="button" onClick={onClose} disabled={saving} style={{ border: '1px solid var(--bo)', background: 'var(--sf)', color: 'var(--ts)', borderRadius: '7px', padding: '8px 14px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+          <button type="button" onClick={onClose} disabled={saving || deleting} style={{ border: '1px solid var(--bo)', background: 'var(--sf)', color: 'var(--ts)', borderRadius: '7px', padding: '8px 14px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
             Cancelar
           </button>
-          <button type="button" onClick={save} disabled={saving} style={{ border: 'none', background: 'var(--ac)', color: '#fff', borderRadius: '7px', padding: '8px 16px', cursor: 'pointer', fontSize: '13px', fontWeight: 700 }}>
+          <button type="button" onClick={save} disabled={saving || deleting} style={{ border: 'none', background: 'var(--ac)', color: '#fff', borderRadius: '7px', padding: '8px 16px', cursor: 'pointer', fontSize: '13px', fontWeight: 700 }}>
             {saving ? 'Guardando...' : 'Guardar'}
           </button>
         </div>

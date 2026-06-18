@@ -1,0 +1,14 @@
+export const UBICACIONES_INVENTARIO = [
+  'CAMARA CONGELADOS',
+  'CAMARA MANTENCION',
+  'BODEGA SECA',
+  'SALAD BAR',
+  'DESPACHO',
+  'COCINA',
+  'MUEBLE DE ASEO',
+  'VITRINA',
+  'CAMARA BRYAN',
+  'BODEGA PASTELERIA',
+] as const;
+
+export type UbicacionInventario = typeof UBICACIONES_INVENTARIO[number];

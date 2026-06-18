@@ -3,6 +3,7 @@ import { createClient } from '@/utils/supabase/server';
 import { semaforo, calcMargen } from '@/lib/calculos';
 import { requireRol } from '@/lib/auth-server';
 import { auditLog } from '@/lib/audit';
+import { TIPOS_CARTA } from '@/lib/carta';
 
 type IngredientePayload = {
   id?: string;
@@ -91,7 +92,7 @@ export async function GET() {
   const { data: platos, error } = await supabase
     .from('carta')
     .select(`
-      id, cod_softland, nombre, categoria, precio_carta, activo, foto_url, updated_at,
+      id, cod_softland, nombre, categoria, tipo_carta, precio_carta, activo, foto_url, updated_at,
       carta_ingredientes (
         id, nombre, cantidad, unidad_medida, precio_unitario, costo_total,
         codigo_producto, pp_id
@@ -120,10 +121,13 @@ export async function POST(req: NextRequest) {
 
   const supabase = await createClient();
   const body = await req.json();
-  const { cod_softland, nombre, categoria, precio_carta, foto_url, ingredientes } = body;
+  const { cod_softland, nombre, categoria, tipo_carta, precio_carta, foto_url, ingredientes } = body;
 
   if (!nombre?.trim() || !categoria?.trim())
     return NextResponse.json({ error: 'Nombre y categoria son requeridos' }, { status: 400 });
+  if (tipo_carta && !TIPOS_CARTA.includes(tipo_carta)) {
+    return NextResponse.json({ error: 'Tipo de carta inválido' }, { status: 400 });
+  }
 
   const { data: plato, error: platoErr } = await supabase
     .from('carta')
@@ -131,6 +135,7 @@ export async function POST(req: NextRequest) {
       cod_softland: cod_softland?.trim() || null,
       nombre: nombre.trim().toUpperCase(),
       categoria: categoria.trim().toUpperCase(),
+      tipo_carta: TIPOS_CARTA.includes(tipo_carta) ? tipo_carta : 'ANTIGUA',
       precio_carta: precio_carta == null || precio_carta === '' ? null : Number(precio_carta),
       foto_url: foto_url?.trim() || null,
       activo: true,
@@ -157,7 +162,7 @@ export async function POST(req: NextRequest) {
     accion: 'crear_plato_carta',
     tabla: 'carta',
     registro_id: plato.id,
-    datos_nuevos: { nombre, categoria, ingredientes: ingredientes?.length ?? 0 },
+    datos_nuevos: { nombre, categoria, tipo_carta: TIPOS_CARTA.includes(tipo_carta) ? tipo_carta : 'ANTIGUA', ingredientes: ingredientes?.length ?? 0 },
   });
 
   return NextResponse.json({ id: plato.id }, { status: 201 });
@@ -169,10 +174,17 @@ export async function PATCH(req: NextRequest) {
 
   const supabase = await createClient();
   const body = await req.json();
-  const { id, cod_softland, nombre, categoria, precio_carta, foto_url, activo, ingredientes } = body;
+  const { id, cod_softland, nombre, categoria, tipo_carta, precio_carta, foto_url, activo, ingredientes } = body;
 
   if (!id || !nombre?.trim() || !categoria?.trim())
     return NextResponse.json({ error: 'Datos invalidos' }, { status: 400 });
+  if (tipo_carta && !TIPOS_CARTA.includes(tipo_carta)) {
+    return NextResponse.json({ error: 'Tipo de carta inválido' }, { status: 400 });
+  }
+
+  if (activo === false && s.rol !== 'admin') {
+    return NextResponse.json({ error: 'Solo admin puede desactivar platos de carta' }, { status: 403 });
+  }
 
   const { error: platoErr } = await supabase
     .from('carta')
@@ -180,6 +192,7 @@ export async function PATCH(req: NextRequest) {
       cod_softland: cod_softland?.trim() || null,
       nombre: nombre.trim().toUpperCase(),
       categoria: categoria.trim().toUpperCase(),
+      tipo_carta: TIPOS_CARTA.includes(tipo_carta) ? tipo_carta : 'ANTIGUA',
       precio_carta: precio_carta == null || precio_carta === '' ? null : Number(precio_carta),
       foto_url: foto_url?.trim() || null,
       activo: activo === false ? false : true,
@@ -207,7 +220,46 @@ export async function PATCH(req: NextRequest) {
     accion: 'editar_plato_carta',
     tabla: 'carta',
     registro_id: id,
-    datos_nuevos: { nombre, categoria, activo, ingredientes: ingredientes?.length ?? 0 },
+    datos_nuevos: { nombre, categoria, tipo_carta: TIPOS_CARTA.includes(tipo_carta) ? tipo_carta : 'ANTIGUA', activo, ingredientes: ingredientes?.length ?? 0 },
+  });
+
+  return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(req: NextRequest) {
+  const s = await requireRol(['admin']);
+  if (!s.ok) return s.response;
+
+  const supabase = await createClient();
+  const body = await req.json().catch(() => ({}));
+  const id = typeof body.id === 'string' ? body.id : '';
+
+  if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 });
+
+  const { data: actual, error: getErr } = await supabase
+    .from('carta')
+    .select('id,nombre,categoria,activo')
+    .eq('id', id)
+    .single();
+
+  if (getErr) return NextResponse.json({ error: getErr.message }, { status: 500 });
+  if (!actual) return NextResponse.json({ error: 'Plato no encontrado' }, { status: 404 });
+
+  const { error } = await supabase
+    .from('carta')
+    .update({ activo: false, updated_at: new Date().toISOString() })
+    .eq('id', id);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await auditLog(supabase, {
+    usuario_email: s.email,
+    rol_usuario: s.rol,
+    accion: 'desactivar_plato_carta',
+    tabla: 'carta',
+    registro_id: id,
+    datos_anteriores: actual,
+    datos_nuevos: { activo: false },
   });
 
   return NextResponse.json({ ok: true });

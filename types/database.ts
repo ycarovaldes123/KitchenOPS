@@ -20,6 +20,7 @@ export type MotivoMerma   =
   | 'Daño físico' | 'Sobra producción' | 'Contaminación';
 export type CategoriaCarta = 'PICADAS' | 'CLÁSICOS' | 'SANDWICH & BURGERS' | 'ENSALADAS' | 'POSTRES' | 'CATERING';
 export type ColorSemaforo = 'green' | 'yellow' | 'red' | 'gray';
+export type TipoCarta = 'ANTIGUA' | 'NUEVA';
 
 // ─── Maestros ────────────────────────────────────────────────
 
@@ -38,7 +39,7 @@ export interface Producto {
   codigo:         string;   // TEXT — "0301032" con cero inicial, NUNCA number
   nombre:         string;
   unidad_medida:  string;   // KG | GR | LT | UN | CC | PR
-  costo_promedio: number;   // CLP entero sin decimales
+  costo_promedio: number;   // CLP; puede tener decimales para PP por GR/CC
   activo:         boolean;
   updated_at:     string;
 }
@@ -65,6 +66,7 @@ export interface PPIngrediente {
 export interface Verdura {
   id:         string;
   nombre:     string;
+  codigo_producto?: string | null;
   activo:     boolean;
   created_at: string;
 }
@@ -94,7 +96,7 @@ export interface DetalleProduccion {
   total_producido: number | null;   // = cantidad × gramos_por_pp
   recetas_ref:     number | null;   // SOLO referencia histórica — NO entra en cálculo
   codigo_producto: string | null;   // TEXT — snapshot
-  costo_unitario:  number;          // snapshot al momento del registro
+  costo_unitario:  number;          // snapshot al momento del registro; puede ser decimal
   costo_total:     number;          // snapshot al momento del registro
 }
 
@@ -134,6 +136,46 @@ export interface DetalleColacion {
   unidad_medida:   string | null;
   costo_unitario:  number;          // snapshot
   costo_total:     number;          // snapshot
+}
+
+export interface Fruta {
+  id:                 string;
+  fecha:              string;
+  responsable_id:     string | null;
+  responsable_nombre: string;
+  observacion:        string | null;
+  costo_total:        number;
+  created_at:         string;
+}
+
+export interface DetalleFruta {
+  id:              string;
+  fruta_id:        string;
+  codigo_producto: string | null;
+  nombre_producto: string | null;
+  cantidad:        number;
+  unidad_medida:   string | null;
+  costo_unitario:  number;
+  costo_total:     number;
+}
+
+export interface Inventario {
+  id:                 string;
+  fecha:              string;
+  responsable_id:     string | null;
+  responsable_nombre: string;
+  observacion:        string | null;
+  created_at:         string;
+}
+
+export interface DetalleInventario {
+  id:              string;
+  inventario_id:   string;
+  ubicacion:       string;
+  codigo_producto: string | null;
+  nombre_producto: string | null;
+  cantidad:        number;
+  unidad_medida:   string | null;
 }
 
 // ─── Mermas ──────────────────────────────────────────────────
@@ -195,6 +237,7 @@ export interface Carta {
   cod_softland: string | null;    // TEXT — puede tener cero inicial
   nombre:       string;
   categoria:    CategoriaCarta;
+  tipo_carta:   TipoCarta;
   precio_carta: number | null;    // SIEMPRE CON IVA — jamás recalcular
   activo:       boolean;
   foto_url:     string | null;
@@ -222,6 +265,14 @@ export interface ProduccionConDetalle extends Produccion {
 
 export interface ColacionConDetalle extends Colacion {
   detalle_colacion: DetalleColacion[];
+}
+
+export interface FrutaConDetalle extends Fruta {
+  detalle_frutas: DetalleFruta[];
+}
+
+export interface InventarioConDetalle extends Inventario {
+  detalle_inventario: DetalleInventario[];
 }
 
 export interface MermaConDetalle extends Merma {
@@ -256,6 +307,22 @@ export interface ColacionPayload {
   menu:               string;
   n_inscritos:        number;
   detalle:            Omit<DetalleColacion, 'id' | 'colacion_id'>[];
+}
+
+export interface FrutaPayload {
+  fecha:              string;
+  responsable_id:     string;
+  responsable_nombre: string;
+  observacion?:       string | null;
+  detalle:            Omit<DetalleFruta, 'id' | 'fruta_id'>[];
+}
+
+export interface InventarioPayload {
+  fecha:              string;
+  responsable_id:     string;
+  responsable_nombre: string;
+  observacion?:       string | null;
+  detalle:            Omit<DetalleInventario, 'id' | 'inventario_id'>[];
 }
 
 export interface MermaPayload {

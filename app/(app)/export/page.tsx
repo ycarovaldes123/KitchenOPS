@@ -37,7 +37,9 @@ const HOJAS = [
   { nombre: 'PRODUCCION', desc: 'Informes diarios de producción PP con costos estimados' },
   { nombre: 'VERDURAS',   desc: 'Rendimiento de verduras: KG utilizados, rendimiento, merma %' },
   { nombre: 'COLACION',   desc: 'Colaciones del personal con ingredientes y costo por plato' },
+  { nombre: 'INVENTARIO', desc: 'Toma de inventario por camaras y bodegas con stock registrado' },
   { nombre: 'MERMA',      desc: 'Registros de mermas y desperdicios con motivo y costo' },
+  { nombre: 'MERMA PLATOS', desc: 'Desglose de platos preparados en merma e insumos asociados' },
 ];
 
 interface Preview { total_informes: number; total_colaciones: number; total_mermas: number }

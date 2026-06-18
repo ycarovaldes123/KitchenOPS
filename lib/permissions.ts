@@ -4,6 +4,8 @@ export type Modulo =
   | 'dashboard'
   | 'produccion'
   | 'colacion'
+  | 'frutas'
+  | 'inventario'
   | 'mermas'
   | 'historial'
   | 'bodega'
@@ -35,6 +37,8 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     dashboard: COMPLETO,
     produccion: COMPLETO,
     colacion:   COMPLETO,
+    frutas:     COMPLETO,
+    inventario: COMPLETO,
     mermas:     COMPLETO,
     historial:  COMPLETO,
     bodega:     COMPLETO,
@@ -49,6 +53,8 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     dashboard:  FINANCIERO,
     produccion: FINANCIERO,
     colacion:   FINANCIERO,
+    frutas:     FINANCIERO,
+    inventario: FINANCIERO,
     mermas:     FINANCIERO,
     historial:  FINANCIERO,
     bodega:     FINANCIERO,
@@ -63,6 +69,8 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     dashboard:  SOLO_VER,
     produccion: OPERATIVO,
     colacion:   OPERATIVO,
+    frutas:     OPERATIVO,
+    inventario: OPERATIVO,
     mermas:     OPERATIVO,
     historial:  SOLO_VER,
     bodega:     SOLO_VER,
@@ -77,6 +85,8 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     dashboard:  NADA,
     produccion: NADA,
     colacion:   OPERATIVO,
+    frutas:     OPERATIVO,
+    inventario: OPERATIVO,
     mermas:     OPERATIVO,
     historial:  { ...NADA, ver: true, verCostos: true },
     bodega:     { ...NADA, ver: true, registrar: true, verCostos: true },
@@ -91,6 +101,8 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     dashboard:  NADA,
     produccion: OPERATIVO,
     colacion:   OPERATIVO,
+    frutas:     OPERATIVO,
+    inventario: OPERATIVO,
     mermas:     OPERATIVO,
     historial:  { ...NADA, ver: true, soloHoy: true },
     bodega:     NADA,

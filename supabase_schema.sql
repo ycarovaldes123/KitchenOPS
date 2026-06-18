@@ -95,7 +95,7 @@ CREATE TABLE productos (
   codigo         TEXT PRIMARY KEY,    -- SIEMPRE TEXT, nunca INTEGER
   nombre         TEXT NOT NULL,
   unidad_medida  TEXT NOT NULL,       -- KG | GR | LT | UN | CC | PR
-  costo_promedio INTEGER NOT NULL DEFAULT 0,  -- CLP sin decimales
+  costo_promedio NUMERIC(14,6) NOT NULL DEFAULT 0,  -- CLP; puede tener decimales para PP por GR/CC
   activo         BOOLEAN DEFAULT true,
   updated_at     TIMESTAMPTZ DEFAULT NOW()
 );
@@ -126,6 +126,7 @@ CREATE TABLE pp_ingredientes (
 CREATE TABLE verduras (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   nombre     TEXT NOT NULL UNIQUE,
+  codigo_producto TEXT REFERENCES productos(codigo),
   activo     BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -157,7 +158,7 @@ CREATE TABLE detalle_produccion (
   total_producido NUMERIC,            -- = cantidad × gramos_por_pp
   recetas_ref     INTEGER,            -- SOLO referencia histórica
   codigo_producto TEXT,               -- snapshot
-  costo_unitario  INTEGER DEFAULT 0,  -- snapshot al momento del registro
+  costo_unitario  NUMERIC(14,6) DEFAULT 0,  -- snapshot al momento del registro
   costo_total     INTEGER DEFAULT 0   -- snapshot al momento del registro
 );
 
@@ -199,6 +200,52 @@ CREATE TABLE detalle_colacion (
   costo_total     INTEGER DEFAULT 0   -- snapshot
 );
 
+CREATE TABLE frutas (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  fecha              DATE NOT NULL,
+  responsable_id     UUID REFERENCES responsables(id),
+  responsable_nombre TEXT NOT NULL,
+  observacion        TEXT DEFAULT '',
+  costo_total        INTEGER DEFAULT 0,
+  created_at         TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE detalle_frutas (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  fruta_id        UUID REFERENCES frutas(id) ON DELETE CASCADE,
+  codigo_producto TEXT REFERENCES productos(codigo),
+  nombre_producto TEXT,
+  cantidad        NUMERIC NOT NULL,
+  unidad_medida   TEXT,
+  costo_unitario  NUMERIC DEFAULT 0,
+  costo_total     INTEGER DEFAULT 0,
+  updated_at      TIMESTAMPTZ,
+  updated_by      TEXT,
+  updated_by_rol  TEXT
+);
+
+CREATE TABLE inventarios (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  fecha              DATE NOT NULL,
+  responsable_id     UUID REFERENCES responsables(id),
+  responsable_nombre TEXT NOT NULL,
+  observacion        TEXT DEFAULT '',
+  created_at         TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE detalle_inventario (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  inventario_id   UUID REFERENCES inventarios(id) ON DELETE CASCADE,
+  ubicacion       TEXT NOT NULL,
+  codigo_producto TEXT REFERENCES productos(codigo),
+  nombre_producto TEXT,
+  cantidad        NUMERIC NOT NULL,
+  unidad_medida   TEXT,
+  updated_at      TIMESTAMPTZ,
+  updated_by      TEXT,
+  updated_by_rol  TEXT
+);
+
 -- ─── MERMAS ──────────────────────────────────────────────────
 CREATE TABLE mermas (
   id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -231,6 +278,7 @@ CREATE TABLE carta (
   cod_softland TEXT,           -- TEXT — puede tener cero inicial
   nombre       TEXT NOT NULL,
   categoria    TEXT NOT NULL,  -- PICADAS | CLÁSICOS | SANDWICH & BURGERS | ENSALADAS | POSTRES | CATERING
+  tipo_carta   TEXT NOT NULL DEFAULT 'ANTIGUA',
   precio_carta INTEGER,        -- CON IVA — jamás recalcular
   activo       BOOLEAN DEFAULT true,
   foto_url     TEXT,
@@ -261,6 +309,10 @@ CREATE INDEX idx_rendimiento_produccion   ON rendimiento(produccion_id);
 CREATE INDEX idx_rendimiento_fecha        ON rendimiento(fecha);
 CREATE INDEX idx_colacion_fecha           ON colacion(fecha);
 CREATE INDEX idx_detalle_col_colacion     ON detalle_colacion(colacion_id);
+CREATE INDEX idx_frutas_fecha             ON frutas(fecha);
+CREATE INDEX idx_detalle_frutas_fruta     ON detalle_frutas(fruta_id);
+CREATE INDEX idx_inventarios_fecha        ON inventarios(fecha);
+CREATE INDEX idx_detalle_inventario       ON detalle_inventario(inventario_id);
 CREATE INDEX idx_mermas_fecha             ON mermas(fecha);
 CREATE INDEX idx_detalle_mer_merma        ON detalle_mermas(merma_id);
 CREATE INDEX idx_productos_activo         ON productos(activo);
@@ -281,6 +333,10 @@ ALTER TABLE detalle_produccion    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rendimiento           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE colacion              ENABLE ROW LEVEL SECURITY;
 ALTER TABLE detalle_colacion      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE frutas                ENABLE ROW LEVEL SECURITY;
+ALTER TABLE detalle_frutas        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE inventarios           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE detalle_inventario    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mermas                ENABLE ROW LEVEL SECURITY;
 ALTER TABLE detalle_mermas        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE carta                 ENABLE ROW LEVEL SECURITY;
@@ -307,6 +363,14 @@ CREATE POLICY "Acceso autenticado" ON rendimiento
 CREATE POLICY "Acceso autenticado" ON colacion
   FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "Acceso autenticado" ON detalle_colacion
+  FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "Acceso autenticado" ON frutas
+  FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "Acceso autenticado" ON detalle_frutas
+  FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "Acceso autenticado" ON inventarios
+  FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "Acceso autenticado" ON detalle_inventario
   FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "Acceso autenticado" ON mermas
   FOR ALL USING (auth.role() = 'authenticated');

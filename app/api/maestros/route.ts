@@ -2,6 +2,14 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { getSessionRol } from '@/lib/auth-server';
 
+function normalizeText(text: unknown) {
+  return String(text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
 // GET /api/maestros — datos de dropdowns para formularios
 export async function GET() {
   const s = await getSessionRol();
@@ -19,11 +27,11 @@ export async function GET() {
     supabase.from('productos').select('codigo,nombre,unidad_medida,costo_promedio').neq('activo', false).order('nombre'),
     supabase.from('pp').select('id,nombre,tipo_pp,gramos_por_pp,codigo_producto,activo').neq('activo', false).order('nombre'),
     supabase.from('responsables').select('id,nombre,rol,color_hex,iniciales').eq('activo', true).order('nombre'),
-    supabase.from('verduras').select('id,nombre').neq('activo', false).order('nombre'),
+    supabase.from('verduras').select('id,nombre,codigo_producto').neq('activo', false).order('nombre'),
     supabase
       .from('carta')
       .select(`
-        id,nombre,categoria,precio_carta,activo,
+        id,nombre,categoria,tipo_carta,precio_carta,activo,
         carta_ingredientes(id,codigo_producto,pp_id,nombre,cantidad,unidad_medida,precio_unitario,costo_total)
       `)
       .eq('activo', true)
@@ -56,10 +64,23 @@ export async function GET() {
       }))
     : (productos ?? []);
 
+  type VerduraRow = { id: string; nombre: string; codigo_producto: string | null };
+  const verdurasOut = Array.from(
+    ((verduras as VerduraRow[] ?? []).reduce((map, verdura) => {
+      const key = normalizeText(verdura.nombre);
+      const current = map.get(key);
+      if (!current || (!current.codigo_producto && verdura.codigo_producto)) {
+        map.set(key, verdura);
+      }
+      return map;
+    }, new Map<string, VerduraRow>())).values(),
+  );
+
   type CartaRow = {
     id: string;
     nombre: string;
     categoria: string | null;
+    tipo_carta: string | null;
     precio_carta: number | null;
     carta_ingredientes?: { costo_total: number | null }[] | null;
   };
@@ -70,11 +91,13 @@ export async function GET() {
         id: plato.id,
         nombre: plato.nombre,
         categoria: plato.categoria,
+        tipo_carta: plato.tipo_carta ?? 'ANTIGUA',
         ingredientes_count: plato.carta_ingredientes?.length ?? 0,
       };
     }
     return {
       ...plato,
+      tipo_carta: plato.tipo_carta ?? 'ANTIGUA',
       ingredientes_count: plato.carta_ingredientes?.length ?? 0,
       costo_neto,
     };
@@ -84,7 +107,7 @@ export async function GET() {
     productos: productosOut,
     pps: ppsConBase,
     responsables: responsables ?? [],
-    verduras: verduras ?? [],
+    verduras: verdurasOut,
     carta: cartaOut,
   });
 }

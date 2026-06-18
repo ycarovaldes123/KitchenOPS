@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { formatCLP, formatPct, calcMerma } from '@/lib/calculos';
+import { calcCostoProduccionPP, calcTotalPP, formatCLP, formatPct, calcMerma } from '@/lib/calculos';
 import { useRol } from '@/components/RolProvider';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -43,20 +43,35 @@ function calcCostoProduccion(
   unidadProducto: string | null | undefined,
   costoUnitario: number,
 ) {
-  if (!cantidad || !costoUnitario) return 0;
-  const total = tipoPP === 'CC' || tipoPP === 'DIRECTO'
-    ? cantidad
-    : cantidad * (Number(gramosPorPP) || 1);
-  const um = String(unidadProducto ?? '').toUpperCase();
+  return calcCostoProduccionPP(
+    cantidad,
+    { tipo_pp: tipoPP, gramos_por_pp: gramosPorPP },
+    unidadProducto,
+    costoUnitario
+  );
+}
 
-  if (tipoPP === 'DIRECTO') return Math.round(total * costoUnitario);
-  if (um === 'KG' || um === 'LT') return Math.round((total / 1000) * costoUnitario);
-  return Math.round(total * costoUnitario);
+function formatTotalProduccion(
+  cantidad: number,
+  tipoPP: string | null | undefined,
+  gramosPorPP: number | null | undefined,
+  unidadProducto: string | null | undefined,
+) {
+  const total = calcTotalPP(
+    cantidad,
+    { tipo_pp: tipoPP, gramos_por_pp: gramosPorPP },
+    unidadProducto
+  );
+  const tipo = String(tipoPP ?? '').toUpperCase();
+  const um = String(unidadProducto ?? '').toUpperCase();
+  if (tipo === 'CC' || um === 'CC') return `${total} cc`;
+  if (tipo === 'DIRECTO' && um && um !== 'GR' && um !== 'KG') return `${total} ${um.toLowerCase()}`;
+  return total >= 1000 ? `${(total / 1000).toFixed(2)} kg` : `${total} g`;
 }
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-type Tab = 'produccion' | 'colacion' | 'mermas';
+type Tab = 'produccion' | 'colacion' | 'mermas' | 'frutas' | 'inventario';
 const PAGE_SIZE = 50;
 
 // ─── Shared styles ──────────────────────────────────────────────────────────
@@ -276,10 +291,9 @@ function TablaProduccion({ datos, canEdit, isAdmin, onRefresh, verCostos, produc
         const cantidad = Number(r.cantidad) || 0;
         const tipoPP = pp?.tipo_pp as string | null | undefined;
         const gramosPorPP = Number(pp?.gramos_por_pp) || null;
+        const unidadProducto = producto?.unidad_medida as string | null | undefined;
         const total_producido = pp
-          ? ((tipoPP === 'CC' || tipoPP === 'DIRECTO')
-            ? cantidad
-            : cantidad * (gramosPorPP || 1))
+          ? calcTotalPP(cantidad, { tipo_pp: tipoPP, gramos_por_pp: gramosPorPP }, unidadProducto)
           : cantidad;
         return {
           pp_id: r.pp_id,
@@ -290,7 +304,7 @@ function TablaProduccion({ datos, canEdit, isAdmin, onRefresh, verCostos, produc
           total_producido,
           codigo_producto: pp?.codigo_producto ?? null,
           costo_unitario: costoUnitario,
-          costo_total: calcCostoProduccion(cantidad, tipoPP, gramosPorPP, producto?.unidad_medida as string | null | undefined, costoUnitario),
+          costo_total: calcCostoProduccion(cantidad, tipoPP, gramosPorPP, unidadProducto, costoUnitario),
         };
       }).filter(r => r.pp_id);
       const rendimiento = rend.map(r => ({
@@ -444,12 +458,26 @@ function TablaProduccion({ datos, canEdit, isAdmin, onRefresh, verCostos, produc
                             {det.filter(d => !deletedIds.has(d.id as string)).map((d, i) => {
                               const isEditing = editingId === id;
                               const qty = isEditing ? (editValues[d.id as string] ?? (d.cantidad as number)) : (d.cantidad as number);
-                              const total = isEditing
-                                ? ((d.tipo_pp as string) === 'CC' || (d.tipo_pp as string) === 'DIRECTO'
-                                  ? qty
-                                  : qty * ((d.gramos_por_pp as number | null) ?? 1))
-                                : d.total_producido as number | null;
                               const costoUnitarioEdit = Number(d.costo_unitario) || (Number(d.cantidad) > 0 ? Number(d.costo_total) / Number(d.cantidad) : 0);
+                              const producto = d.codigo_producto ? productosMap.get(d.codigo_producto as string) : undefined;
+                              const unidadProducto = producto?.unidad_medida as string | null | undefined;
+                              const costoEdit = d.codigo_producto
+                                ? calcCostoProduccion(
+                                    qty,
+                                    d.tipo_pp as string | null | undefined,
+                                    d.gramos_por_pp as number | null | undefined,
+                                    unidadProducto,
+                                    costoUnitarioEdit
+                                  )
+                                : Math.round(qty * costoUnitarioEdit);
+                              const total = calcTotalPP(
+                                qty,
+                                {
+                                  tipo_pp: d.tipo_pp as string | null | undefined,
+                                  gramos_por_pp: d.gramos_por_pp as number | null | undefined,
+                                },
+                                unidadProducto
+                              );
                               const totalStr = total == null ? '—' : total >= 1000 ? `${(total / 1000).toFixed(2)} kg` : `${total} g`;
                               const costo = d.costo_total as number;
                               return (
@@ -464,7 +492,7 @@ function TablaProduccion({ datos, canEdit, isAdmin, onRefresh, verCostos, produc
                                       <span style={{ fontSize: '12px', color: 'var(--ts)' }}>PP</span>
                                       {verCostos && (
                                         <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>
-                                          {formatCLP(Math.round(qty * costoUnitarioEdit))}
+                                          {formatCLP(costoEdit)}
                                         </span>
                                       )}
                                     </>
@@ -493,12 +521,11 @@ function TablaProduccion({ datos, canEdit, isAdmin, onRefresh, verCostos, produc
                               const cantidad = Number(row.cantidad) || 0;
                               const tipoPP = pp?.tipo_pp as string | null | undefined;
                               const gramosPorPP = Number(pp?.gramos_por_pp) || null;
-                              const totalProducido = pp
-                                ? ((tipoPP === 'CC' || tipoPP === 'DIRECTO')
-                                  ? cantidad
-                                  : cantidad * (gramosPorPP || 1))
-                                : cantidad;
-                              const costoProduccion = calcCostoProduccion(cantidad, tipoPP, gramosPorPP, producto?.unidad_medida as string | null | undefined, costoUnitario);
+                              const unidadProducto = producto?.unidad_medida as string | null | undefined;
+                              const totalProduccionStr = pp
+                                ? formatTotalProduccion(cantidad, tipoPP, gramosPorPP, unidadProducto)
+                                : `${cantidad} g`;
+                              const costoProduccion = calcCostoProduccion(cantidad, tipoPP, gramosPorPP, unidadProducto, costoUnitario);
                               return (
                                 <div key={row.localId} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--al)', borderRadius: '7px', padding: '7px 12px', border: '1px dashed var(--bo)' }}>
                                   <SearchablePicker
@@ -518,7 +545,7 @@ function TablaProduccion({ datos, canEdit, isAdmin, onRefresh, verCostos, produc
                                     style={{ width: '80px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }}
                                     />
                                   <span style={{ fontSize: '12px', color: 'var(--ts)' }}>PP</span>
-                                  <span style={{ fontSize: '12px', color: 'var(--tl)', fontWeight: 600, fontFamily: "'Space Grotesk', sans-serif" }}>{totalProducido} g</span>
+                                  <span style={{ fontSize: '12px', color: 'var(--tl)', fontWeight: 600, fontFamily: "'Space Grotesk', sans-serif" }}>{totalProduccionStr}</span>
                                   <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(costoProduccion)}</span>
                                   <button
                                     type="button"
@@ -835,16 +862,6 @@ function TablaColacion({ datos, canEdit, isAdmin, onRefresh, verCostos, producto
                                           {formatCLP(Math.round(qty * costoUnitarioEdit))}
                                         </span>
                                       )}
-                                      {isEditing && isAdmin && (
-                                        <button
-                                          type="button"
-                                          onClick={e => { e.stopPropagation(); removeDetalle(d.id as string); }}
-                                          title="Quitar linea"
-                                          style={{ border: 'none', background: 'transparent', color: '#B91C1C', cursor: 'pointer', fontSize: '16px', lineHeight: 1, fontWeight: 700, padding: '0 2px' }}
-                                        >
-                                          ×
-                                        </button>
-                                      )}
                                     </>
                                   ) : (
                                     <>
@@ -901,6 +918,595 @@ function TablaColacion({ datos, canEdit, isAdmin, onRefresh, verCostos, producto
 }
 
 // ─── TablaMermas ─────────────────────────────────────────────────────────────
+
+function TablaFrutas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos }: { datos: Record<string, unknown>[]; canEdit: boolean; isAdmin: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[] }) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<Record<string, number>>({});
+  const [editFecha, setEditFecha] = useState('');
+  const [newRows, setNewRows] = useState<Array<{ localId: string; codigo_producto: string; cantidad: number }>>([]);
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState('');
+  const productosMap = new Map(productos.map(p => [p.codigo as string, p]));
+
+  const toggle = (id: string) => {
+    setExpanded(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+    if (editingId === id) { setEditingId(null); setEditValues({}); setEditFecha(''); setNewRows([]); setDeletedIds(new Set()); setSaveErr(''); }
+  };
+  const startEdit = (id: string, det: Record<string, unknown>[]) => {
+    const vals: Record<string, number> = {};
+    det.forEach(d => { vals[d.id as string] = d.cantidad as number; });
+    const fechaActual = String(datos.find(f => (f.id as string) === id)?.fecha ?? '');
+    setEditingId(id); setEditValues(vals); setEditFecha(fechaActual); setNewRows([]); setDeletedIds(new Set()); setSaveErr('');
+  };
+  const cancelEdit = () => { setEditingId(null); setEditValues({}); setEditFecha(''); setNewRows([]); setDeletedIds(new Set()); setSaveErr(''); };
+  const addRow = () => setNewRows(rows => [...rows, { localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`, codigo_producto: '', cantidad: 1 }]);
+  const removeDetalle = (id: string) => {
+    setDeletedIds(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  };
+  const productoOptions = useMemo(() => productos.map(prod => ({
+    value: prod.codigo as string,
+    label: `${prod.codigo as string} Â· ${prod.nombre as string}`,
+    searchText: [prod.codigo, prod.nombre, prod.unidad_medida].filter(Boolean).join(' '),
+  })), [productos]);
+  const saveEditFrutas = async (frutaId: string, det: Record<string, unknown>[]) => {
+    setSaving(true); setSaveErr('');
+    try {
+      const detalle = det
+        .filter(d => !deletedIds.has(d.id as string))
+        .map(d => ({ id: d.id as string, cantidad: editValues[d.id as string] ?? (d.cantidad as number) }));
+      const nuevos = newRows.map(r => {
+        const p = productosMap.get(r.codigo_producto);
+        const costoUnitario = Number(p?.costo_promedio) || 0;
+        const cantidad = Number(r.cantidad) || 0;
+        return {
+          codigo_producto: r.codigo_producto,
+          nombre_producto: p?.nombre ?? '',
+          cantidad,
+          unidad_medida: p?.unidad_medida ?? null,
+          costo_unitario: costoUnitario,
+          costo_total: Math.round(cantidad * costoUnitario),
+        };
+      }).filter(r => r.codigo_producto);
+      const res = await fetch('/api/frutas', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fruta_id: frutaId, fecha: isAdmin ? editFecha : undefined, delete_ids: [...deletedIds], detalle: [...detalle, ...nuevos] }) });
+      if (!res.ok) { const j = await res.json(); throw new Error(j.error); }
+      setEditingId(null); setEditValues({}); setEditFecha(''); setNewRows([]); setDeletedIds(new Set()); onRefresh();
+    } catch (e: unknown) { setSaveErr(e instanceof Error ? e.message : 'Error guardando'); }
+    finally { setSaving(false); }
+  };
+  const deleteRecord = async (frutaId: string) => {
+    if (!confirm('BORRAR este informe de frutas?')) return;
+    const res = await fetch('/api/frutas', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fruta_id: frutaId }) });
+    if (!res.ok) {
+      const j = await res.json();
+      setSaveErr(j.error ?? 'Error borrando');
+      return;
+    }
+    onRefresh();
+  };
+
+  if (!datos.length) return <Empty msg="No hay informes de frutas registrados en este perÃ­odo." />;
+
+  return (
+    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '500px' }}>
+        <thead>
+          <tr>
+            {['Fecha', 'Frutas', 'Lineas', ...(verCostos ? ['Costo total'] : []), ''].map(h => (
+              <th key={h} style={thSt}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {datos.map((f: Record<string, unknown>) => {
+            const id = f.id as string;
+            const det = (f.detalle_frutas as Record<string, unknown>[]) ?? [];
+            const ct = (f.costo_total as number) ?? det.reduce((s, d) => s + ((d.costo_total as number) ?? 0), 0);
+            const open = expanded.has(id);
+            const preview = det.slice(0, 3).map(d => d.nombre_producto as string);
+            const extra = det.length > 3 ? det.length - 3 : 0;
+
+            return [
+              <tr key={id} onClick={() => toggle(id)}
+                style={{ borderBottom: '1px solid var(--bo)', cursor: 'pointer', transition: 'background 0.12s', background: open ? 'var(--al)' : 'transparent' }}
+                onMouseEnter={e => { if (!open) (e.currentTarget as HTMLTableRowElement).style.background = 'var(--bg)'; }}
+                onMouseLeave={e => { if (!open) (e.currentTarget as HTMLTableRowElement).style.background = 'transparent'; }}
+              >
+                <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtFecha(f.fecha as string)}</td>
+                <td style={{ ...tdSt, maxWidth: '300px' }}>
+                  {det.length === 0 ? (
+                    <span style={{ color: 'var(--ts)' }}>Sin detalle</span>
+                  ) : (
+                    <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center' }}>
+                      {preview.map((n, i) => (
+                        <span key={i} style={{ fontSize: '11px', background: '#ECFDF5', color: '#065F46', padding: '2px 8px', borderRadius: '4px', fontWeight: 500, whiteSpace: 'nowrap' }}>{n}</span>
+                      ))}
+                      {extra > 0 && <span style={{ fontSize: '11px', color: 'var(--ts)' }}>+{extra} mas</span>}
+                    </div>
+                  )}
+                </td>
+                <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums' }}>{det.length}</td>
+                {verCostos && (
+                  <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: ct > 0 ? 'var(--ac)' : 'var(--ts)', fontWeight: ct > 0 ? 700 : 400 }}>
+                    {ct > 0 ? formatCLP(ct) : 'â€”'}
+                  </td>
+                )}
+                <td style={{ ...tdSt, textAlign: 'right', width: '48px' }}><ExpandBtn open={open} /></td>
+              </tr>,
+
+              open && (
+                <tr key={`${id}-det`}>
+                  <td colSpan={verCostos ? 5 : 4} style={{ background: 'var(--al)', padding: '0 0 2px' }}>
+                    <div style={{ padding: '16px 20px', display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
+                      <div style={{ minWidth: '180px' }}>
+                        <DetailLabel>QuiÃ©n / cuÃ¡ndo</DetailLabel>
+                        <MetaRow icon="ðŸ‘¤" label="Responsable" value={f.responsable_nombre as string} />
+                        {!!f.created_at && <MetaRow icon="ðŸ•" label="Hora registro" value={fmtHora(f.created_at as string) ?? 'â€”'} />}
+                        {editingId === id && isAdmin && (
+                          <div style={{ marginTop: '10px' }}>
+                            <DetailLabel>Fecha registro</DetailLabel>
+                            <input type="date" value={editFecha} onClick={e => e.stopPropagation()} onChange={e => setEditFecha(e.target.value)}
+                              style={{ width: '140px', padding: '5px 8px', fontSize: '13px', borderRadius: '5px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', fontFamily: "'Space Grotesk', sans-serif" }}
+                            />
+                          </div>
+                        )}
+                        {(f.observacion as string) && (
+                          <div style={{ marginTop: '10px' }}>
+                            <DetailLabel>ObservaciÃ³n</DetailLabel>
+                            <p style={{ fontSize: '13px', color: 'var(--tx)', margin: 0, lineHeight: 1.5, maxWidth: '280px' }}>{f.observacion as string}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ flex: 1, minWidth: '240px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                          <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Frutas entregadas</span>
+                          {canEdit && editingId !== id && (
+                            <button onClick={e => { e.stopPropagation(); startEdit(id, det); }}
+                              style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--ac)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                              Editar
+                            </button>
+                          )}
+                          {editingId === id && (
+                            <>
+                              <button onClick={e => { e.stopPropagation(); addRow(); }} disabled={saving}
+                                style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--al)', color: 'var(--ac)', border: '1px solid var(--ac)', cursor: 'pointer', fontWeight: 700 }}>
+                                + A&ntilde;adir fruta
+                              </button>
+                              <button onClick={e => { e.stopPropagation(); saveEditFrutas(id, det); }} disabled={saving}
+                                style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#0D9373', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                                {saving ? 'Guardando...' : 'Guardar'}
+                              </button>
+                              <button onClick={e => { e.stopPropagation(); cancelEdit(); }}
+                                style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--bo)', color: 'var(--ts)', border: 'none', cursor: 'pointer' }}>
+                                Cancelar
+                              </button>
+                            </>
+                          )}
+                          {canEdit && editingId !== id && (
+                            <button onClick={e => { e.stopPropagation(); deleteRecord(id); }}
+                              style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5', cursor: 'pointer', fontWeight: 700 }}>
+                              BORRAR
+                            </button>
+                          )}
+                        </div>
+                        {saveErr && <p style={{ color: 'var(--rd)', fontSize: '11px', margin: '0 0 6px' }}>{saveErr}</p>}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                          {det.filter(d => !deletedIds.has(d.id as string)).map((d, i) => {
+                            const isEditing = editingId === id;
+                            const qty = isEditing ? (editValues[d.id as string] ?? (d.cantidad as number)) : (d.cantidad as number);
+                            const costoUnitarioEdit = Number(d.costo_unitario) || (Number(d.cantidad) > 0 ? Number(d.costo_total) / Number(d.cantidad) : 0);
+                            return (
+                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--sf)', borderRadius: '7px', padding: '7px 12px' }}>
+                                <span style={{ flex: 1, fontSize: '13px', fontWeight: 500, color: 'var(--tx)' }}>{d.nombre_producto as string}</span>
+                                {isEditing ? (
+                                  <>
+                                    <input type="number" value={qty} min={0} step="any" onClick={e => e.stopPropagation()} onChange={e => setEditValues(v => ({ ...v, [d.id as string]: parseFloat(e.target.value) || 0 }))}
+                                      style={{ width: '80px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }} />
+                                    <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{d.unidad_medida as string}</span>
+                                    {verCostos && <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(Math.round(qty * costoUnitarioEdit))}</span>}
+                                    {isAdmin && (
+                                      <button type="button" onClick={e => { e.stopPropagation(); removeDetalle(d.id as string); }} title="Quitar linea"
+                                        style={{ border: 'none', background: 'transparent', color: '#B91C1C', cursor: 'pointer', fontSize: '16px', lineHeight: 1, fontWeight: 700, padding: '0 2px' }}>
+                                        Ã—
+                                      </button>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    <span style={{ fontSize: '12px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{qty} {d.unidad_medida as string}</span>
+                                    {verCostos && (d.costo_total as number) > 0 && <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(d.costo_total as number)}</span>}
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })}
+                          {editingId === id && newRows.map(row => {
+                            const p = row.codigo_producto ? productosMap.get(row.codigo_producto) : undefined;
+                            const qty = Number(row.cantidad) || 0;
+                            const costoUnitario = Number(p?.costo_promedio) || 0;
+                            return (
+                              <div key={row.localId} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--al)', borderRadius: '7px', padding: '7px 12px', border: '1px dashed var(--bo)' }}>
+                                <SearchablePicker
+                                  value={row.codigo_producto}
+                                  options={productoOptions}
+                                  placeholder="Buscar por nombre o cÃ³digo"
+                                  width="300px"
+                                  onChange={value => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, codigo_producto: value } : x))}
+                                />
+                                <input type="number" min={0} step="any" value={row.cantidad} onClick={e => e.stopPropagation()} onChange={e => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, cantidad: parseFloat(e.target.value) || 0 } : x))}
+                                  style={{ width: '80px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }}
+                                />
+                                <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{String(p?.unidad_medida ?? '')}</span>
+                                {verCostos && <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(Math.round(qty * costoUnitario))}</span>}
+                                <button type="button" onClick={e => { e.stopPropagation(); setNewRows(v => v.filter(x => x.localId !== row.localId)); }} style={{ border: 'none', background: 'transparent', color: 'var(--rd)', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }}>Ã—</button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              ),
+            ];
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function TablaInventario({ datos, isAdmin, onRefresh, productos }: { datos: Record<string, unknown>[]; isAdmin: boolean; onRefresh: () => void; productos: Record<string, unknown>[] }) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<Record<string, number>>({});
+  const [editFecha, setEditFecha] = useState('');
+  const [newRows, setNewRows] = useState<Array<{ localId: string; ubicacion: string; codigo_producto: string; cantidad: number }>>([]);
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState('');
+  const productosMap = new Map(productos.map(p => [p.codigo as string, p]));
+  const productoOptions = useMemo(() => productos.map(prod => ({
+    value: prod.codigo as string,
+    label: `${prod.codigo as string} · ${prod.nombre as string}`,
+    searchText: [prod.codigo, prod.nombre, prod.unidad_medida].filter(Boolean).join(' '),
+  })), [productos]);
+
+  const toggle = (id: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    if (editingId === id) {
+      setEditingId(null);
+      setEditValues({});
+      setEditFecha('');
+      setNewRows([]);
+      setDeletedIds(new Set());
+      setSaveErr('');
+    }
+  };
+
+  const startEdit = (id: string, det: Record<string, unknown>[]) => {
+    const vals: Record<string, number> = {};
+    det.forEach(d => { vals[d.id as string] = d.cantidad as number; });
+    const fechaActual = String(datos.find(item => (item.id as string) === id)?.fecha ?? '');
+    setEditingId(id);
+    setEditValues(vals);
+    setEditFecha(fechaActual);
+    setNewRows([]);
+    setDeletedIds(new Set());
+    setSaveErr('');
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditValues({});
+    setEditFecha('');
+    setNewRows([]);
+    setDeletedIds(new Set());
+    setSaveErr('');
+  };
+
+  const addRow = () => {
+    setNewRows(rows => [...rows, {
+      localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      ubicacion: 'CAMARA CONGELADOS',
+      codigo_producto: '',
+      cantidad: 1,
+    }]);
+  };
+
+  const removeDetalle = (id: string) => {
+    setDeletedIds(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  };
+
+  const saveEditInventario = async (inventarioId: string, det: Record<string, unknown>[], observacion: string) => {
+    setSaving(true);
+    setSaveErr('');
+    try {
+      const detalle = det
+        .filter(d => !deletedIds.has(d.id as string))
+        .map(d => ({
+          id: d.id as string,
+          ubicacion: String(d.ubicacion ?? ''),
+          cantidad: editValues[d.id as string] ?? (d.cantidad as number),
+        }));
+
+      const nuevos = newRows.map(row => {
+        const producto = productosMap.get(row.codigo_producto);
+        return {
+          ubicacion: row.ubicacion,
+          codigo_producto: row.codigo_producto,
+          nombre_producto: producto?.nombre ?? '',
+          cantidad: Number(row.cantidad) || 0,
+          unidad_medida: String(producto?.unidad_medida ?? ''),
+        };
+      }).filter(row => row.codigo_producto);
+
+      const res = await fetch('/api/inventario', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          inventario_id: inventarioId,
+          fecha: editFecha,
+          observacion,
+          delete_ids: [...deletedIds],
+          detalle: [...detalle, ...nuevos],
+        }),
+      });
+      if (!res.ok) {
+        const json = await res.json();
+        throw new Error(json.error ?? 'Error guardando inventario');
+      }
+      setEditingId(null);
+      setEditValues({});
+      setEditFecha('');
+      setNewRows([]);
+      setDeletedIds(new Set());
+      onRefresh();
+    } catch (error: unknown) {
+      setSaveErr(error instanceof Error ? error.message : 'Error guardando');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteRecord = async (inventarioId: string) => {
+    if (!confirm('BORRAR este inventario?')) return;
+    const res = await fetch('/api/inventario', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inventario_id: inventarioId }),
+    });
+    if (!res.ok) {
+      const json = await res.json();
+      setSaveErr(json.error ?? 'Error borrando');
+      return;
+    }
+    onRefresh();
+  };
+
+  if (!datos.length) return <Empty msg="No hay tomas de inventario registradas en este periodo." />;
+
+  return (
+    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '520px' }}>
+        <thead>
+          <tr>
+            {['Fecha', 'Ubicaciones', 'Lineas', ''].map(h => <th key={h} style={thSt}>{h}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {datos.map((inventario: Record<string, unknown>) => {
+            const id = inventario.id as string;
+            const det = (inventario.detalle_inventario as Record<string, unknown>[]) ?? [];
+            const open = expanded.has(id);
+            const ubicaciones = Array.from(new Set(det.map(item => String(item.ubicacion ?? '')).filter(Boolean)));
+            const preview = ubicaciones.slice(0, 2);
+            const extra = ubicaciones.length > 2 ? ubicaciones.length - 2 : 0;
+            const observacion = String(inventario.observacion ?? '');
+
+            return [
+              <tr
+                key={id}
+                onClick={() => toggle(id)}
+                style={{ borderBottom: '1px solid var(--bo)', cursor: 'pointer', transition: 'background 0.12s', background: open ? 'var(--al)' : 'transparent' }}
+                onMouseEnter={e => { if (!open) (e.currentTarget as HTMLTableRowElement).style.background = 'var(--bg)'; }}
+                onMouseLeave={e => { if (!open) (e.currentTarget as HTMLTableRowElement).style.background = 'transparent'; }}
+              >
+                <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtFecha(inventario.fecha as string)}</td>
+                <td style={{ ...tdSt, maxWidth: '320px' }}>
+                  <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                    {preview.map(ubicacion => <Chip key={ubicacion} label={ubicacion} color="#2563EB" />)}
+                    {extra > 0 && <span style={{ fontSize: '11px', color: 'var(--ts)' }}>+{extra} mas</span>}
+                  </div>
+                </td>
+                <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums' }}>{det.length}</td>
+                <td style={{ ...tdSt, textAlign: 'right', width: '48px' }}><ExpandBtn open={open} /></td>
+              </tr>,
+              open && (
+                <tr key={`${id}-det`}>
+                  <td colSpan={4} style={{ background: 'var(--al)', padding: '0 0 2px' }}>
+                    <div style={{ padding: '16px 20px', display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
+                      <div style={{ minWidth: '190px' }}>
+                        <DetailLabel>Quien / cuando</DetailLabel>
+                        <MetaRow icon="👤" label="Responsable" value={String(inventario.responsable_nombre ?? '')} />
+                        {!!inventario.created_at && <MetaRow icon="🕐" label="Hora registro" value={fmtHora(inventario.created_at as string) ?? '-'} />}
+                        {editingId === id && (
+                          <div style={{ marginTop: '10px' }}>
+                            <DetailLabel>Fecha registro</DetailLabel>
+                            <input
+                              type="date"
+                              value={editFecha}
+                              onClick={e => e.stopPropagation()}
+                              onChange={e => setEditFecha(e.target.value)}
+                              style={{ width: '140px', padding: '5px 8px', fontSize: '13px', borderRadius: '5px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)' }}
+                            />
+                          </div>
+                        )}
+                        {observacion && (
+                          <div style={{ marginTop: '10px' }}>
+                            <DetailLabel>Observacion</DetailLabel>
+                            <p style={{ fontSize: '13px', color: 'var(--tx)', margin: 0, lineHeight: 1.5, maxWidth: '280px' }}>{observacion}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ flex: 1, minWidth: '260px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Stock registrado</span>
+                          {isAdmin && editingId !== id && (
+                            <button
+                              onClick={e => { e.stopPropagation(); startEdit(id, det); }}
+                              style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--ac)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+                            >
+                              Editar
+                            </button>
+                          )}
+                          {isAdmin && editingId === id && (
+                            <>
+                              <button
+                                onClick={e => { e.stopPropagation(); addRow(); }}
+                                disabled={saving}
+                                style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--al)', color: 'var(--ac)', border: '1px solid var(--ac)', cursor: 'pointer', fontWeight: 700 }}
+                              >
+                                + Anadir linea
+                              </button>
+                              <button
+                                onClick={e => { e.stopPropagation(); saveEditInventario(id, det, observacion); }}
+                                disabled={saving}
+                                style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#0D9373', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+                              >
+                                {saving ? 'Guardando...' : 'Guardar'}
+                              </button>
+                              <button
+                                onClick={e => { e.stopPropagation(); cancelEdit(); }}
+                                style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--bo)', color: 'var(--ts)', border: 'none', cursor: 'pointer' }}
+                              >
+                                Cancelar
+                              </button>
+                            </>
+                          )}
+                          {isAdmin && editingId !== id && (
+                            <button
+                              onClick={e => { e.stopPropagation(); deleteRecord(id); }}
+                              style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5', cursor: 'pointer', fontWeight: 700 }}
+                            >
+                              BORRAR
+                            </button>
+                          )}
+                        </div>
+                        {saveErr && <p style={{ color: 'var(--rd)', fontSize: '11px', margin: '0 0 6px' }}>{saveErr}</p>}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {det.filter(d => !deletedIds.has(d.id as string)).map(item => {
+                            const isEditing = editingId === id;
+                            const qty = isEditing ? (editValues[item.id as string] ?? (item.cantidad as number)) : (item.cantidad as number);
+                            return (
+                              <div key={String(item.id)} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--sf)', borderRadius: '7px', padding: '8px 12px', flexWrap: 'wrap' }}>
+                                <Chip label={String(item.ubicacion ?? '')} color="#2563EB" />
+                                <span style={{ flex: 1, fontSize: '13px', fontWeight: 500, color: 'var(--tx)' }}>{String(item.nombre_producto ?? '')}</span>
+                                {isEditing ? (
+                                  <>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      step="any"
+                                      value={qty}
+                                      onClick={e => e.stopPropagation()}
+                                      onChange={e => setEditValues(v => ({ ...v, [item.id as string]: parseFloat(e.target.value) || 0 }))}
+                                      style={{ width: '82px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }}
+                                    />
+                                    <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{String(item.unidad_medida ?? '')}</span>
+                                    <button
+                                      type="button"
+                                      onClick={e => { e.stopPropagation(); removeDetalle(item.id as string); }}
+                                      style={{ border: 'none', background: 'transparent', color: '#B91C1C', cursor: 'pointer', fontSize: '16px', lineHeight: 1, fontWeight: 700, padding: '0 2px' }}
+                                    >
+                                      ×
+                                    </button>
+                                  </>
+                                ) : (
+                                  <span style={{ fontSize: '12px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>
+                                    {qty} {String(item.unidad_medida ?? '')}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+
+                          {editingId === id && newRows.map(row => {
+                            const producto = row.codigo_producto ? productosMap.get(row.codigo_producto) : undefined;
+                            return (
+                              <div key={row.localId} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--al)', borderRadius: '7px', padding: '8px 12px', border: '1px dashed var(--bo)', flexWrap: 'wrap' }}>
+                                <select
+                                  value={row.ubicacion}
+                                  onChange={e => setNewRows(v => v.map(item => item.localId === row.localId ? { ...item, ubicacion: e.target.value } : item))}
+                                  style={{ padding: '4px 8px', fontSize: '12px', borderRadius: '4px', border: '1px solid var(--bo)', background: 'var(--bg)', color: 'var(--tx)' }}
+                                >
+                                  <option value="CAMARA CONGELADOS">CAMARA CONGELADOS</option>
+                                  <option value="CAMARA MANTENCION">CAMARA MANTENCION</option>
+                                  <option value="BODEGA SECA">BODEGA SECA</option>
+                                  <option value="SALAD BAR">SALAD BAR</option>
+                                  <option value="DESPACHO">DESPACHO</option>
+                                  <option value="COCINA">COCINA</option>
+                                  <option value="MUEBLE DE ASEO">MUEBLE DE ASEO</option>
+                                  <option value="VITRINA">VITRINA</option>
+                                  <option value="CAMARA BRYAN">CAMARA BRYAN</option>
+                                  <option value="BODEGA PASTELERIA">BODEGA PASTELERIA</option>
+                                </select>
+                                <SearchablePicker
+                                  value={row.codigo_producto}
+                                  options={productoOptions}
+                                  placeholder="Buscar producto"
+                                  width="300px"
+                                  onChange={value => setNewRows(v => v.map(item => item.localId === row.localId ? { ...item, codigo_producto: value } : item))}
+                                />
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step="any"
+                                  value={row.cantidad}
+                                  onClick={e => e.stopPropagation()}
+                                  onChange={e => setNewRows(v => v.map(item => item.localId === row.localId ? { ...item, cantidad: parseFloat(e.target.value) || 0 } : item))}
+                                  style={{ width: '82px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }}
+                                />
+                                <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{String(producto?.unidad_medida ?? '')}</span>
+                                <button
+                                  type="button"
+                                  onClick={e => { e.stopPropagation(); setNewRows(v => v.filter(item => item.localId !== row.localId)); }}
+                                  style={{ border: 'none', background: 'transparent', color: 'var(--rd)', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }}
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              ),
+            ];
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 const MOTIVO_COLOR: Record<string, string> = {
   'Vencimiento':        '#DC2626',
@@ -1000,6 +1606,7 @@ function TablaMermas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
           {datos.map((m: Record<string, unknown>) => {
             const id  = m.id as string;
             const det = (m.detalle_mermas as Record<string, unknown>[]) ?? [];
+            const platos = (m.detalle_mermas_platos as Record<string, unknown>[]) ?? [];
             const ct  = det.reduce((s, d) => s + ((d.costo_total as number) ?? 0), 0);
             const open = expanded.has(id);
             // Preview: first 2 products
@@ -1084,8 +1691,56 @@ function TablaMermas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
                         )}
                       </div>
 
+                      {platos.length > 0 && (
+                        <div style={{ flex: 1, minWidth: '300px' }}>
+                          <DetailLabel>Platos preparados</DetailLabel>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {platos.map((plato, i) => {
+                              const insumos = (plato.detalle_mermas_platos_insumos as Record<string, unknown>[] | undefined) ?? [];
+                              const motivo = plato.motivo as string | null;
+                              const motivoColor = motivo ? (MOTIVO_COLOR[motivo] ?? '#6B7280') : '#6B7280';
+                              const observacionPlato = String(plato.observacion ?? '');
+                              return (
+                                <div key={i} style={{ background: 'var(--sf)', borderRadius: '8px', border: '1px solid #FECACA', padding: '10px 12px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: insumos.length ? '8px' : 0, flexWrap: 'wrap' }}>
+                                    <span style={{ flex: 1, minWidth: '180px', fontSize: '13px', fontWeight: 700, color: 'var(--tx)' }}>{plato.nombre_plato as string}</span>
+                                    <span style={{ fontSize: '12px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{Number(plato.cantidad) || 0} plato(s)</span>
+                                    {motivo && (
+                                      <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '4px', background: `${motivoColor}18`, color: motivoColor, border: `1px solid ${motivoColor}40`, whiteSpace: 'nowrap' }}>
+                                        {motivo}
+                                      </span>
+                                    )}
+                                    {verCostos && Number(plato.costo_total) > 0 && (
+                                      <span style={{ fontSize: '12px', color: '#DC2626', fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(Number(plato.costo_total))}</span>
+                                    )}
+                                  </div>
+                                  {observacionPlato && (
+                                    <p style={{ margin: '0 0 8px', fontSize: '12px', color: 'var(--ts)' }}>{observacionPlato}</p>
+                                  )}
+                                  {insumos.length > 0 && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                      {insumos.map((insumo, j) => (
+                                        <div key={j} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#FEF2F2', borderRadius: '6px', padding: '6px 8px' }}>
+                                          <span style={{ flex: 1, fontSize: '12px', color: 'var(--tx)' }}>{insumo.nombre as string}</span>
+                                          <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>
+                                            {Number(insumo.cantidad_total) || 0} {String(insumo.unidad_medida ?? '')}
+                                          </span>
+                                          {verCostos && Number(insumo.costo_total) > 0 && (
+                                            <span style={{ fontSize: '11px', color: '#DC2626', fontWeight: 600, fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(Number(insumo.costo_total))}</span>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Detalle */}
-                      {det.length > 0 && (
+                      {(det.length > 0 || canEdit) && (
                         <div style={{ flex: 1, minWidth: '240px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                             <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Detalle de productos</span>
@@ -1140,6 +1795,16 @@ function TablaMermas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
                                         <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>
                                           {formatCLP(Math.round(qty * costoUnitarioEdit))}
                                         </span>
+                                      )}
+                                      {isAdmin && (
+                                        <button
+                                          type="button"
+                                          onClick={e => { e.stopPropagation(); removeDetalle(d.id as string); }}
+                                          title="Quitar linea"
+                                          style={{ border: 'none', background: 'transparent', color: '#B91C1C', cursor: 'pointer', fontSize: '16px', lineHeight: 1, fontWeight: 700, padding: '0 2px' }}
+                                        >
+                                          x
+                                        </button>
                                       )}
                                     </>
                                   ) : (
@@ -1256,6 +1921,13 @@ export default function HistorialPage() {
   const [tab,     setTab]     = useState<Tab>('produccion');
   const [desde,   setDesde]   = useState(mesInicio());
   const [hasta,   setHasta]   = useState(hoyChile());
+  const [busquedas, setBusquedas] = useState<Record<Tab, string>>({
+    produccion: '',
+    colacion: '',
+    mermas: '',
+    frutas: '',
+    inventario: '',
+  });
   const [datos,   setDatos]   = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -1264,14 +1936,23 @@ export default function HistorialPage() {
   const [hasMore, setHasMore] = useState(false);
   const [nextOffset, setNextOffset] = useState(0);
   const [maestros, setMaestros] = useState<{ productos: Record<string, unknown>[]; pps: Record<string, unknown>[] }>({ productos: [], pps: [] });
+  const busqueda = busquedas[tab] ?? '';
 
-  const cargar = useCallback(async (t: Tab, d: string, h: string, opts?: { append?: boolean; offset?: number }) => {
+  const cargar = useCallback(async (t: Tab, d: string, h: string, q: string, opts?: { append?: boolean; offset?: number }) => {
     const append = opts?.append ?? false;
     const offset = opts?.offset ?? 0;
     if (append) setLoadingMore(true);
     else { setLoading(true); setErr(''); setDatos([]); }
     try {
-      const res = await fetch(`/api/historial?tipo=${t}&desde=${d}&hasta=${h}&limit=${PAGE_SIZE}&offset=${offset}`);
+      const params = new URLSearchParams({
+        tipo: t,
+        desde: d,
+        hasta: h,
+        limit: String(PAGE_SIZE),
+        offset: String(offset),
+      });
+      if (q.trim()) params.set('q', q.trim());
+      const res = await fetch(`/api/historial?${params.toString()}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       const items = data.items ?? [];
@@ -1304,21 +1985,25 @@ export default function HistorialPage() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void cargar(tab, desde, hasta);
-    }, 0);
+      void cargar(tab, desde, hasta, busqueda);
+    }, busqueda ? 250 : 0);
     return () => window.clearTimeout(timer);
-  }, [tab, desde, hasta, cargar]);
-  const refresh = useCallback(() => cargar(tab, desde, hasta), [tab, desde, hasta, cargar]);
+  }, [tab, desde, hasta, busqueda, cargar]);
+  const refresh = useCallback(() => cargar(tab, desde, hasta, busqueda), [tab, desde, hasta, busqueda, cargar]);
   const cargarMas = useCallback(() => {
     if (!hasMore || loadingMore) return;
-    void cargar(tab, desde, hasta, { append: true, offset: nextOffset });
-  }, [cargar, hasMore, loadingMore, nextOffset, tab, desde, hasta]);
+    void cargar(tab, desde, hasta, busqueda, { append: true, offset: nextOffset });
+  }, [cargar, hasMore, loadingMore, nextOffset, tab, desde, hasta, busqueda]);
 
   const TAB_CFG: { id: Tab; label: string; color: string }[] = [
     { id: 'produccion', label: 'Producción',  color: 'var(--ac)' },
     { id: 'colacion',   label: 'Colación',    color: 'var(--tl)' },
+    { id: 'frutas',     label: 'Frutas',      color: '#0D9373' },
+    { id: 'inventario', label: 'Inventario',  color: '#2563EB' },
     { id: 'mermas',     label: 'Mermas',      color: 'var(--rd)' },
   ];
+
+  const currentTabCfg = TAB_CFG.find(({ id }) => id === tab) ?? TAB_CFG[0];
 
   return (
     <div className="page">
@@ -1357,6 +2042,41 @@ export default function HistorialPage() {
           ))}
         </div>
 
+        <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ flex: '1 1 320px', minWidth: '240px' }}>
+            <p style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 6px' }}>
+              Buscar en {currentTabCfg.label}
+            </p>
+            <input
+              type="search"
+              value={busqueda}
+              onChange={e => setBusquedas(prev => ({ ...prev, [tab]: e.target.value }))}
+              placeholder={`Filtra ${currentTabCfg.label.toLowerCase()} por responsable, producto, verdura u observaciÃ³n...`}
+              className="field-input"
+              style={{ padding: '6px 10px', fontSize: '13px', minHeight: 'unset', width: '100%' }}
+            />
+          </div>
+          {busqueda.trim() && (
+            <button
+              type="button"
+              onClick={() => setBusquedas(prev => ({ ...prev, [tab]: '' }))}
+              style={{
+                height: '36px',
+                padding: '0 12px',
+                borderRadius: '8px',
+                border: '1px solid var(--bo)',
+                background: 'var(--bg)',
+                color: 'var(--ts)',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Limpiar
+            </button>
+          )}
+        </div>
+
         {/* Content */}
         {err && (
           <div style={{ padding: '16px 20px', color: 'var(--rd)', fontSize: '13px', display: 'flex', gap: '6px', alignItems: 'center' }}>
@@ -1373,6 +2093,8 @@ export default function HistorialPage() {
           <>
             {tab === 'produccion' && <TablaProduccion datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} pps={maestros.pps} />}
             {tab === 'colacion'   && <TablaColacion   datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} />}
+            {tab === 'frutas'     && <TablaFrutas     datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} />}
+            {tab === 'inventario' && <TablaInventario datos={datos} isAdmin={isAdmin} onRefresh={refresh} productos={maestros.productos} />}
             {tab === 'mermas'     && <TablaMermas     datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} />}
             {hasMore && (
               <div style={{ padding: '0 20px 20px', display: 'flex', justifyContent: 'center' }}>
