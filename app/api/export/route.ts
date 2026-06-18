@@ -291,7 +291,7 @@ export async function GET(req: NextRequest) {
     ['VERDURAS (rendimientos)', producciones.flatMap(produccion => produccion.rendimiento ?? []).length],
     ['COLACION', colaciones.length],
     ['FRUTAS', frutas.length],
-    ['INVENTARIO', inventarios.length],
+    ['TOMA INVENTARIO', inventarios.length],
     ['MERMA', mermas.length],
     ['MERMA PLATOS', mermas.flatMap(merma => merma.detalle_mermas_platos ?? []).length],
     [],
@@ -474,7 +474,7 @@ export async function GET(req: NextRequest) {
       rowsInventario.push([inventario.fecha, '', inventario.responsable_nombre, '', '', '', '']);
     }
   }
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rowsInventario), 'INVENTARIO');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rowsInventario), 'TOMA INVENTARIO');
 
   const headerMer = verCostos
     ? ['Fecha', 'Responsable', 'Observación', 'Código producto', 'Producto', 'Cantidad', 'Unidad', 'Motivo', 'Costo unitario', 'Costo total']

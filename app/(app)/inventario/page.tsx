@@ -75,6 +75,7 @@ export default function InventarioPage() {
 
   const rowsActivas = rows.filter(row => row.ubicacion === ubicacionActiva);
   const totalValidas = rows.filter(row => row.codigo_producto && (Number(row.cantidad) || 0) > 0).length;
+  const ubicacionesConDatos = new Set(rows.filter(row => row.codigo_producto && (Number(row.cantidad) || 0) > 0).map(row => row.ubicacion)).size;
 
   const conteoPorUbicacion = useMemo(() => {
     const map = new Map<UbicacionInventario, number>();
@@ -213,11 +214,23 @@ export default function InventarioPage() {
 
   return (
     <div className="page" style={{ paddingBottom: '42px' }}>
-      <div style={{ marginBottom: '18px' }}>
-        <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '22px', fontWeight: 800, margin: '0 0 4px' }}>Toma Inventario</h1>
-        <p style={{ color: 'var(--ts)', fontSize: '13px', margin: 0 }}>
-          Registra stock por cámara o bodega. Solo se ingresan cantidades.
-        </p>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '10px' }}>
+        <div>
+          <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '22px', fontWeight: 800, margin: '0 0 4px' }}>Toma Inventario</h1>
+          <p style={{ color: 'var(--ts)', fontSize: '13px', margin: 0 }}>
+            Registra stock por cámara o bodega. Solo se ingresan cantidades.
+          </p>
+        </div>
+        {rows.length > 0 && (
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '12px', background: 'var(--sf)', border: '1px solid var(--bo)', padding: '4px 12px', borderRadius: '20px', color: 'var(--ts)' }}>
+              {totalValidas} línea{totalValidas !== 1 ? 's' : ''} válida{totalValidas !== 1 ? 's' : ''}
+            </span>
+            <span style={{ fontSize: '12px', fontWeight: 700, background: 'var(--al)', border: '1px solid var(--ac)', padding: '4px 12px', borderRadius: '20px', color: 'var(--ac)' }}>
+              {ubicacionesConDatos} ubicación{ubicacionesConDatos !== 1 ? 'es' : ''}
+            </span>
+          </div>
+        )}
       </div>
 
       {err && (
@@ -233,6 +246,9 @@ export default function InventarioPage() {
 
       <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '16px' }}>
         <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '12px', padding: '16px' }}>
+          <p style={{ margin: '0 0 12px', fontSize: '11px', color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700 }}>
+            Datos de la toma
+          </p>
           <div className="inventario-head-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '12px' }}>
             <div>
               <label style={label}>Fecha</label>
@@ -271,7 +287,7 @@ export default function InventarioPage() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
             <div>
               <p style={{ margin: '0 0 3px', fontSize: '11px', color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700 }}>
-                Ubicación
+                Productos por ubicación
               </p>
               <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: 'var(--tx)' }}>{ubicacionActiva}</h2>
             </div>
@@ -370,7 +386,15 @@ export default function InventarioPage() {
           </div>
         </section>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '12px', background: 'var(--sf)', border: '1px solid var(--bo)', padding: '4px 12px', borderRadius: '20px', color: 'var(--ts)' }}>
+              {totalValidas} producto{totalValidas !== 1 ? 's' : ''} listo{totalValidas !== 1 ? 's' : ''}
+            </span>
+            <span style={{ fontSize: '12px', background: 'var(--sf)', border: '1px solid var(--bo)', padding: '4px 12px', borderRadius: '20px', color: 'var(--ts)' }}>
+              {UBICACIONES_INVENTARIO.length} ubicaciones
+            </span>
+          </div>
           <button
             type="button"
             onClick={() => {
