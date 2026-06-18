@@ -5,6 +5,8 @@ import { requireRol } from '@/lib/auth-server';
 import { auditLog } from '@/lib/audit';
 import { TIPOS_CARTA } from '@/lib/carta';
 
+let cartaTipoCartaColumnExists: boolean | null = null;
+
 type IngredientePayload = {
   id?: string;
   codigo_producto?: string | null;
@@ -14,6 +16,31 @@ type IngredientePayload = {
   precio_unitario?: number | null;
   pp_id?: string | null;
 };
+
+const CARTA_SELECT_WITH_TIPO: string = `
+      id, cod_softland, nombre, categoria, tipo_carta, precio_carta, activo, foto_url, updated_at,
+      carta_ingredientes (
+        id, nombre, cantidad, unidad_medida, precio_unitario, costo_total,
+        codigo_producto, pp_id
+      )
+    `;
+
+const CARTA_SELECT_WITHOUT_TIPO: string = `
+      id, cod_softland, nombre, categoria, precio_carta, activo, foto_url, updated_at,
+      carta_ingredientes (
+        id, nombre, cantidad, unidad_medida, precio_unitario, costo_total,
+        codigo_producto, pp_id
+      )
+    `;
+
+function isMissingTipoCartaColumn(error: { message?: string } | null | undefined) {
+  const message = (error?.message ?? '').toLowerCase();
+  return message.includes('tipo_carta') && (
+    message.includes('does not exist') ||
+    message.includes('column') ||
+    message.includes('could not find')
+  );
+}
 
 function normalizarUM(um: string | null | undefined) {
   const val = (um ?? '').trim().toUpperCase();
@@ -88,28 +115,48 @@ export async function GET() {
   if (!s.ok) return s.response;
 
   const supabase = await createClient();
+  const includeTipoCarta = cartaTipoCartaColumnExists !== false;
 
-  const { data: platos, error } = await supabase
+  let query = supabase
     .from('carta')
-    .select(`
-      id, cod_softland, nombre, categoria, tipo_carta, precio_carta, activo, foto_url, updated_at,
-      carta_ingredientes (
-        id, nombre, cantidad, unidad_medida, precio_unitario, costo_total,
-        codigo_producto, pp_id
-      )
-    `)
+    .select(includeTipoCarta ? (CARTA_SELECT_WITH_TIPO as string) : (CARTA_SELECT_WITHOUT_TIPO as string))
     .eq('activo', true)
     .order('categoria')
     .order('nombre');
 
+  let { data: platos, error } = await query;
+
+  if (error && includeTipoCarta && isMissingTipoCartaColumn(error)) {
+    cartaTipoCartaColumnExists = false;
+    ({ data: platos, error } = await supabase
+      .from('carta')
+      .select(CARTA_SELECT_WITHOUT_TIPO as string)
+      .eq('activo', true)
+      .order('categoria')
+      .order('nombre'));
+  }
+
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const resultado = (platos ?? []).map(p => {
+  type CartaRow = {
+    id: string;
+    cod_softland: string | null;
+    nombre: string;
+    categoria: string;
+    tipo_carta?: string | null;
+    precio_carta: number | null;
+    activo: boolean;
+    foto_url: string | null;
+    updated_at: string;
+    carta_ingredientes?: { id: string; nombre: string | null; cantidad: number; unidad_medida: string | null; precio_unitario: number | null; costo_total: number | null; codigo_producto: string | null; pp_id: string | null; }[] | null;
+  };
+
+  const resultado = ((platos ?? []) as unknown as CartaRow[]).map((p) => {
     const costo_neto   = (p.carta_ingredientes ?? []).reduce((s: number, i: { costo_total: number | null }) => s + (i.costo_total ?? 0), 0);
     const costo_bruto  = costo_neto * 1.19;
     const margen_pct   = calcMargen(costo_neto, p.precio_carta);
     const color        = semaforo(costo_neto, p.precio_carta);
-    return { ...p, costo_neto, costo_bruto: Math.round(costo_bruto), margen_pct, semaforo: color };
+    return { ...p, tipo_carta: p.tipo_carta ?? 'ANTIGUA', costo_neto, costo_bruto: Math.round(costo_bruto), margen_pct, semaforo: color };
   });
 
   return NextResponse.json(resultado);
@@ -122,6 +169,7 @@ export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const body = await req.json();
   const { cod_softland, nombre, categoria, tipo_carta, precio_carta, foto_url, ingredientes } = body;
+  const tipoCartaValor = TIPOS_CARTA.includes(tipo_carta) ? tipo_carta : 'ANTIGUA';
 
   if (!nombre?.trim() || !categoria?.trim())
     return NextResponse.json({ error: 'Nombre y categoria son requeridos' }, { status: 400 });
@@ -129,22 +177,38 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Tipo de carta inválido' }, { status: 400 });
   }
 
-  const { data: plato, error: platoErr } = await supabase
+  const baseRow = {
+    cod_softland: cod_softland?.trim() || null,
+    nombre: nombre.trim().toUpperCase(),
+    categoria: categoria.trim().toUpperCase(),
+    precio_carta: precio_carta == null || precio_carta === '' ? null : Number(precio_carta),
+    foto_url: foto_url?.trim() || null,
+    activo: true,
+    updated_at: new Date().toISOString(),
+  };
+  const rowConTipo = {
+    ...baseRow,
+    tipo_carta: tipoCartaValor,
+  };
+  const rowSinTipo = baseRow;
+
+  let { data: plato, error: platoErr } = await supabase
     .from('carta')
-    .insert({
-      cod_softland: cod_softland?.trim() || null,
-      nombre: nombre.trim().toUpperCase(),
-      categoria: categoria.trim().toUpperCase(),
-      tipo_carta: TIPOS_CARTA.includes(tipo_carta) ? tipo_carta : 'ANTIGUA',
-      precio_carta: precio_carta == null || precio_carta === '' ? null : Number(precio_carta),
-      foto_url: foto_url?.trim() || null,
-      activo: true,
-      updated_at: new Date().toISOString(),
-    })
+    .insert(cartaTipoCartaColumnExists === false ? rowSinTipo : rowConTipo)
     .select('id')
     .single();
 
+  if (platoErr && cartaTipoCartaColumnExists !== false && isMissingTipoCartaColumn(platoErr)) {
+    cartaTipoCartaColumnExists = false;
+    ({ data: plato, error: platoErr } = await supabase
+      .from('carta')
+      .insert(rowSinTipo)
+      .select('id')
+      .single());
+  }
+
   if (platoErr) return NextResponse.json({ error: platoErr.message }, { status: 500 });
+  if (!plato) return NextResponse.json({ error: 'No se pudo crear el plato' }, { status: 500 });
 
   try {
     const ingRows = await prepararIngredientes(supabase, plato.id, ingredientes);
@@ -162,7 +226,7 @@ export async function POST(req: NextRequest) {
     accion: 'crear_plato_carta',
     tabla: 'carta',
     registro_id: plato.id,
-    datos_nuevos: { nombre, categoria, tipo_carta: TIPOS_CARTA.includes(tipo_carta) ? tipo_carta : 'ANTIGUA', ingredientes: ingredientes?.length ?? 0 },
+    datos_nuevos: { nombre, categoria, tipo_carta: tipoCartaValor, ingredientes: ingredientes?.length ?? 0 },
   });
 
   return NextResponse.json({ id: plato.id }, { status: 201 });
@@ -175,6 +239,7 @@ export async function PATCH(req: NextRequest) {
   const supabase = await createClient();
   const body = await req.json();
   const { id, cod_softland, nombre, categoria, tipo_carta, precio_carta, foto_url, activo, ingredientes } = body;
+  const tipoCartaValor = TIPOS_CARTA.includes(tipo_carta) ? tipo_carta : 'ANTIGUA';
 
   if (!id || !nombre?.trim() || !categoria?.trim())
     return NextResponse.json({ error: 'Datos invalidos' }, { status: 400 });
@@ -186,19 +251,33 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Solo admin puede desactivar platos de carta' }, { status: 403 });
   }
 
-  const { error: platoErr } = await supabase
-    .from('carta')
-    .update({
+  const baseRow = {
       cod_softland: cod_softland?.trim() || null,
       nombre: nombre.trim().toUpperCase(),
       categoria: categoria.trim().toUpperCase(),
-      tipo_carta: TIPOS_CARTA.includes(tipo_carta) ? tipo_carta : 'ANTIGUA',
       precio_carta: precio_carta == null || precio_carta === '' ? null : Number(precio_carta),
       foto_url: foto_url?.trim() || null,
       activo: activo === false ? false : true,
       updated_at: new Date().toISOString(),
-    })
+  };
+  const rowConTipo = {
+    ...baseRow,
+    tipo_carta: tipoCartaValor,
+  };
+  const rowSinTipo = baseRow;
+
+  let { error: platoErr } = await supabase
+    .from('carta')
+    .update(cartaTipoCartaColumnExists === false ? rowSinTipo : rowConTipo)
     .eq('id', id);
+
+  if (platoErr && cartaTipoCartaColumnExists !== false && isMissingTipoCartaColumn(platoErr)) {
+    cartaTipoCartaColumnExists = false;
+    ({ error: platoErr } = await supabase
+      .from('carta')
+      .update(rowSinTipo)
+      .eq('id', id));
+  }
 
   if (platoErr) return NextResponse.json({ error: platoErr.message }, { status: 500 });
 

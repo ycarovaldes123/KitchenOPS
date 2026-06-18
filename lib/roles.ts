@@ -11,10 +11,10 @@ export const RMAP: Record<string, RolType> = {
 };
 
 export const RUTAS_ROL: Record<RolType, string[]> = {
-  admin:    ['/produccion', '/colacion', '/frutas', '/inventario', '/mermas', '/historial', '/bodega', '/ventas', '/dashboard', '/kpis', '/costos', '/export', '/maestros'],
-  finanzas: ['/dashboard', '/produccion', '/colacion', '/frutas', '/inventario', '/mermas', '/historial', '/bodega', '/ventas', '/kpis', '/costos', '/export', '/maestros'],
-  jefatura: ['/produccion', '/colacion', '/frutas', '/inventario', '/mermas', '/historial', '/bodega', '/ventas', '/dashboard', '/kpis', '/export', '/maestros'],
-  economo:  ['/colacion', '/frutas', '/inventario', '/mermas', '/historial', '/bodega', '/ventas'],
+  admin:    ['/produccion', '/colacion', '/frutas', '/inventario', '/mermas', '/historial', '/ventas', '/dashboard', '/kpis', '/costos', '/export', '/maestros'],
+  finanzas: ['/dashboard', '/produccion', '/colacion', '/frutas', '/inventario', '/mermas', '/historial', '/ventas', '/kpis', '/costos', '/export', '/maestros'],
+  jefatura: ['/produccion', '/colacion', '/frutas', '/inventario', '/mermas', '/historial', '/ventas', '/dashboard', '/kpis', '/export', '/maestros'],
+  economo:  ['/colacion', '/frutas', '/inventario', '/mermas', '/historial', '/ventas'],
   cocina:   ['/produccion', '/colacion', '/frutas', '/inventario', '/mermas', '/historial'],
 };
 
@@ -22,7 +22,7 @@ export const RUTA_INICIO: Record<RolType, string> = {
   admin:    '/kpis',
   finanzas: '/kpis',
   jefatura: '/dashboard',
-  economo:  '/bodega',
+  economo:  '/inventario',
   cocina:   '/produccion',
 };
 
@@ -45,10 +45,9 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/produccion', label: 'Produccion', icon: 'flame',    roles: ['admin', 'cocina', 'jefatura'] },
   { href: '/colacion',   label: 'Colacion',   icon: 'utensils', roles: ['admin', 'cocina', 'jefatura', 'economo'] },
   { href: '/frutas',     label: 'Frutas',     icon: 'utensils', roles: ['admin', 'cocina', 'jefatura', 'economo', 'finanzas'] },
-  { href: '/inventario', label: 'Inventario', icon: 'grid',     roles: ['admin', 'cocina', 'jefatura', 'economo', 'finanzas'] },
+  { href: '/inventario', label: 'Toma Inventario', icon: 'grid', roles: ['admin', 'cocina', 'jefatura', 'economo', 'finanzas'] },
   { href: '/mermas',     label: 'Mermas',     icon: 'trending', roles: ['admin', 'cocina', 'jefatura', 'economo'] },
   { href: '/historial',  label: 'Historial',  icon: 'clock',    roles: ['admin', 'cocina', 'jefatura', 'finanzas', 'economo'] },
-  { href: '/bodega',     label: 'Bodega',     icon: 'grid',     roles: ['admin', 'finanzas', 'jefatura', 'economo'] },
   { href: '/ventas',     label: 'Ventas',     icon: 'barchart', roles: ['admin', 'finanzas', 'jefatura', 'economo'] },
   { href: '/dashboard',  label: 'Dashboard',  icon: 'grid',     roles: ['admin', 'jefatura', 'finanzas'] },
   { href: '/kpis',       label: 'KPIs',       icon: 'barchart', roles: ['admin', 'finanzas', 'jefatura'] },

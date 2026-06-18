@@ -214,7 +214,7 @@ export default function InventarioPage() {
   return (
     <div className="page" style={{ paddingBottom: '42px' }}>
       <div style={{ marginBottom: '18px' }}>
-        <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '22px', fontWeight: 800, margin: '0 0 4px' }}>Toma de inventario</h1>
+        <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '22px', fontWeight: 800, margin: '0 0 4px' }}>Toma Inventario</h1>
         <p style={{ color: 'var(--ts)', fontSize: '13px', margin: 0 }}>
           Registra stock por cámara o bodega. Solo se ingresan cantidades.
         </p>

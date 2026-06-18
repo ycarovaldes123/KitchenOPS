@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { getSessionRol } from '@/lib/auth-server';
 
+let cartaTipoCartaColumnExists: boolean | null = null;
+
 function normalizeText(text: unknown) {
   return String(text || '')
     .toLowerCase()
@@ -10,33 +12,68 @@ function normalizeText(text: unknown) {
     .trim();
 }
 
+const CARTA_SELECT_WITH_TIPO: string = `
+        id,nombre,categoria,tipo_carta,precio_carta,activo,
+        carta_ingredientes(id,codigo_producto,pp_id,nombre,cantidad,unidad_medida,precio_unitario,costo_total)
+      `;
+
+const CARTA_SELECT_WITHOUT_TIPO: string = `
+        id,nombre,categoria,precio_carta,activo,
+        carta_ingredientes(id,codigo_producto,pp_id,nombre,cantidad,unidad_medida,precio_unitario,costo_total)
+      `;
+
+function isMissingTipoCartaColumn(error: { message?: string } | null | undefined) {
+  const message = (error?.message ?? '').toLowerCase();
+  return message.includes('tipo_carta') && (
+    message.includes('does not exist') ||
+    message.includes('column') ||
+    message.includes('could not find')
+  );
+}
+
 // GET /api/maestros — datos de dropdowns para formularios
 export async function GET() {
   const s = await getSessionRol();
   if (!s.ok) return s.response;
 
   const supabase = await createClient();
+  const includeTipoCarta = cartaTipoCartaColumnExists !== false;
 
   const [
-    { data: productos },
-    { data: pps },
-    { data: responsables },
-    { data: verduras },
-    { data: carta },
+    productosRes,
+    ppsRes,
+    responsablesRes,
+    verdurasRes,
   ] = await Promise.all([
     supabase.from('productos').select('codigo,nombre,unidad_medida,costo_promedio').neq('activo', false).order('nombre'),
     supabase.from('pp').select('id,nombre,tipo_pp,gramos_por_pp,codigo_producto,activo').neq('activo', false).order('nombre'),
     supabase.from('responsables').select('id,nombre,rol,color_hex,iniciales').eq('activo', true).order('nombre'),
     supabase.from('verduras').select('id,nombre,codigo_producto').neq('activo', false).order('nombre'),
-    supabase
-      .from('carta')
-      .select(`
-        id,nombre,categoria,tipo_carta,precio_carta,activo,
-        carta_ingredientes(id,codigo_producto,pp_id,nombre,cantidad,unidad_medida,precio_unitario,costo_total)
-      `)
-      .eq('activo', true)
-      .order('nombre'),
   ]);
+
+  let { data: cartaRows, error: cartaError } = await supabase
+    .from('carta')
+    .select(includeTipoCarta ? (CARTA_SELECT_WITH_TIPO as string) : (CARTA_SELECT_WITHOUT_TIPO as string))
+    .eq('activo', true)
+    .order('nombre');
+
+  if (cartaError && includeTipoCarta && isMissingTipoCartaColumn(cartaError)) {
+    cartaTipoCartaColumnExists = false;
+    ({ data: cartaRows, error: cartaError } = await supabase
+      .from('carta')
+      .select(CARTA_SELECT_WITHOUT_TIPO as string)
+      .eq('activo', true)
+      .order('nombre'));
+  }
+
+  if (cartaError) {
+    return NextResponse.json({ error: cartaError.message }, { status: 500 });
+  }
+
+  const { data: productos } = productosRes;
+  const { data: pps } = ppsRes;
+  const { data: responsables } = responsablesRes;
+  const { data: verduras } = verdurasRes;
 
   // Build producto map for unidad_base derivation
   type ProdRow = { codigo: string; nombre: string; unidad_medida: string; costo_promedio: number };
@@ -84,7 +121,7 @@ export async function GET() {
     precio_carta: number | null;
     carta_ingredientes?: { costo_total: number | null }[] | null;
   };
-  const cartaOut = (carta as CartaRow[] ?? []).map(plato => {
+  const cartaOut = ((cartaRows ?? []) as unknown as CartaRow[]).map(plato => {
     const costo_neto = (plato.carta_ingredientes ?? []).reduce((sum, ing) => sum + (ing.costo_total ?? 0), 0);
     if (isCocina) {
       return {

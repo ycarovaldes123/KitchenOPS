@@ -8,7 +8,6 @@ export type Modulo =
   | 'inventario'
   | 'mermas'
   | 'historial'
-  | 'bodega'
   | 'ventas'
   | 'kpis'
   | 'costos'
@@ -41,7 +40,6 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     inventario: COMPLETO,
     mermas:     COMPLETO,
     historial:  COMPLETO,
-    bodega:     COMPLETO,
     ventas:     COMPLETO,
     kpis:       COMPLETO,
     costos:     COMPLETO,
@@ -57,7 +55,6 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     inventario: FINANCIERO,
     mermas:     FINANCIERO,
     historial:  FINANCIERO,
-    bodega:     FINANCIERO,
     ventas:     FINANCIERO,
     kpis:       FINANCIERO,
     costos:     FINANCIERO,
@@ -73,7 +70,6 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     inventario: OPERATIVO,
     mermas:     OPERATIVO,
     historial:  SOLO_VER,
-    bodega:     SOLO_VER,
     ventas:     SOLO_VER,
     kpis:       SOLO_VER,
     costos:     NADA,
@@ -89,7 +85,6 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     inventario: OPERATIVO,
     mermas:     OPERATIVO,
     historial:  { ...NADA, ver: true, verCostos: true },
-    bodega:     { ...NADA, ver: true, registrar: true, verCostos: true },
     ventas:     { ...NADA, ver: true, registrar: true, verCostos: true },
     kpis:       NADA,
     costos:     NADA,
@@ -105,7 +100,6 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     inventario: OPERATIVO,
     mermas:     OPERATIVO,
     historial:  { ...NADA, ver: true, soloHoy: true },
-    bodega:     NADA,
     ventas:     NADA,
     kpis:       NADA,
     costos:     NADA,
