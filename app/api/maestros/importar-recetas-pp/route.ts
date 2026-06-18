@@ -16,6 +16,7 @@ interface RecetaRow {
   rendimiento: number;
   unidad_rendimiento: string;
   costo_pp: number;       // col K del Excel: costo por unidad de rendimiento
+  costo_total_neto: number; // col H del Excel: costo neto total de la receta
   ingredientes: IngredienteRow[];
 }
 
@@ -44,6 +45,35 @@ function codeToCodigoPP(code: string | null): string | null {
   return null;
 }
 
+function closeTo(a: number, b: number, tolerancePct = 0.03): boolean {
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b === 0) return false;
+  return Math.abs(a - b) <= Math.max(1, Math.abs(b) * tolerancePct);
+}
+
+function resolveCostoPP(
+  receta: RecetaRow,
+  ppInfo?: { tipo_pp: string | null; gramos_por_pp: number | null }
+): { costo: number; unidad: string; ajustado: boolean } {
+  const costoColK = Number(receta.costo_pp) || 0;
+  const costoTotal = Number(receta.costo_total_neto) || 0;
+  const rendimiento = Number(receta.rendimiento) || 0;
+  const unidadOriginal = receta.unidad_rendimiento || 'GR';
+
+  if (costoColK > 0 && costoTotal > 0 && ppInfo?.tipo_pp === 'PORCION' && Number(ppInfo.gramos_por_pp) > 0) {
+    const porciones = rendimiento / Number(ppInfo.gramos_por_pp);
+    if (porciones > 0 && closeTo(costoColK * porciones, costoTotal)) {
+      return { costo: costoColK, unidad: 'PR', ajustado: unidadOriginal !== 'PR' };
+    }
+  }
+
+  const costoPorRendimiento = costoTotal > 0 && rendimiento > 0 ? costoTotal / rendimiento : 0;
+  if (costoPorRendimiento > 0 && (!costoColK || !closeTo(costoColK * rendimiento, costoTotal))) {
+    return { costo: costoPorRendimiento, unidad: unidadOriginal, ajustado: true };
+  }
+
+  return { costo: costoColK, unidad: unidadOriginal, ajustado: false };
+}
+
 function parseProduccionSheet(buffer: Buffer): RecetaRow[] {
   const wb   = XLSX.read(buffer, { type: 'buffer' });
   const ws   = wb.Sheets['PRODUCCION'];
@@ -59,11 +89,13 @@ function parseProduccionSheet(buffer: Buffer): RecetaRow[] {
   let isFirstIngredient = false;
   let pendingRendimiento = 0;
   let pendingCostoPP = 0;
+  let pendingCostoTotalNeto = 0;
 
   function finalise() {
     if (current && current.ingredientes.length > 0) {
       if (pendingRendimiento > 0) current.rendimiento = pendingRendimiento;
       if (pendingCostoPP > 0) current.costo_pp = pendingCostoPP;
+      if (pendingCostoTotalNeto > 0) current.costo_total_neto = pendingCostoTotalNeto;
       recetas.push(current);
     }
   }
@@ -76,6 +108,7 @@ function parseProduccionSheet(buffer: Buffer): RecetaRow[] {
     const colC = r[2];
     const colD = r[3];
     const colE = r[4];
+    const colH = r[7];
     const colJ = r[9];
 
     if (colD === 'U/M') {
@@ -103,11 +136,13 @@ function parseProduccionSheet(buffer: Buffer): RecetaRow[] {
         rendimiento: 1,
         unidad_rendimiento: rendUnit,
         costo_pp: 0,
+        costo_total_neto: 0,
         ingredientes: [],
       };
       isFirstIngredient = true;
       pendingRendimiento = 0;
       pendingCostoPP = 0;
+      pendingCostoTotalNeto = 0;
       continue;
     }
 
@@ -119,6 +154,7 @@ function parseProduccionSheet(buffer: Buffer): RecetaRow[] {
 
       if (isFirstIngredient) {
         if (typeof colJ === 'number' && colJ > 0) pendingRendimiento = colJ;
+        if (typeof colH === 'number' && colH > 0) pendingCostoTotalNeto = colH;
         const colK = r[10];
         if (typeof colK === 'number' && colK > 0) pendingCostoPP = colK;
       }
@@ -164,9 +200,33 @@ export async function POST(req: NextRequest) {
 
   let importadas = 0;
   let actualizadas = 0;
+  let costosAjustados = 0;
+  let productosUpsert = 0;
   const errores: string[] = [];
 
+  const codigosPP = [...new Set(recetas.map(r => r.codigo_pp).filter(Boolean))] as string[];
+  const { data: ppCostInfo, error: ppCostInfoErr } = codigosPP.length
+    ? await supabase
+        .from('pp')
+        .select('codigo_producto,tipo_pp,gramos_por_pp')
+        .in('codigo_producto', codigosPP)
+    : { data: [], error: null };
+  if (ppCostInfoErr) return NextResponse.json({ error: ppCostInfoErr.message }, { status: 500 });
+
+  const ppInfoPorCodigo = new Map(
+    (ppCostInfo ?? []).map(pp => [
+      pp.codigo_producto as string,
+      { tipo_pp: pp.tipo_pp as string | null, gramos_por_pp: pp.gramos_por_pp as number | null },
+    ])
+  );
+
   for (const receta of recetas) {
+    const costoPP = resolveCostoPP(
+      receta,
+      receta.codigo_pp ? ppInfoPorCodigo.get(receta.codigo_pp) : undefined
+    );
+    if (costoPP.ajustado) costosAjustados++;
+
     const { data: existing } = await supabase
       .from('pp_recetas')
       .select('id')
@@ -178,7 +238,7 @@ export async function POST(req: NextRequest) {
       codigo_pp:          receta.codigo_pp,
       nombre:             receta.nombre,
       rendimiento:        receta.rendimiento,
-      unidad_rendimiento: receta.unidad_rendimiento,
+      unidad_rendimiento: costoPP.unidad,
       importado_at:       new Date().toISOString(),
       estado:             'PENDIENTE',
     };
@@ -221,20 +281,25 @@ export async function POST(req: NextRequest) {
       if (ingErr) errores.push(`${receta.codigo_receta} ingredientes: ${ingErr.message}`);
     }
 
-    // Usar directamente el COSTO PP del Excel (col K) como fuente de verdad.
-    // Esto evita depender de que los precios de ingredientes estén en la DB.
-    if (receta.costo_pp > 0) {
+    // Col K se usa solo si cuadra con el neto/rendimiento; algunos PP traen formulas manuales.
+    if (costoPP.costo > 0) {
       await supabase.from('pp_recetas').update({
-        costo_unitario_calculado: receta.costo_pp,
-        costo_total_calculado:    Math.round(receta.costo_pp * receta.rendimiento),
+        costo_unitario_calculado: costoPP.costo,
+        costo_total_calculado:    Math.round(receta.costo_total_neto > 0 ? receta.costo_total_neto : costoPP.costo * receta.rendimiento),
         estado:                   'ACTIVO',
         calculado_at:             new Date().toISOString(),
       }).eq('id', recetaId);
 
       if (receta.codigo_pp) {
-        await supabase.from('productos')
-          .update({ costo_promedio: receta.costo_pp })
-          .eq('codigo', receta.codigo_pp);
+        const { error: prodUpsertErr } = await supabase.from('productos').upsert({
+          codigo:         receta.codigo_pp,
+          nombre:         receta.nombre,
+          unidad_medida:  costoPP.unidad,
+          costo_promedio: costoPP.costo,
+          activo:         true,
+        }, { onConflict: 'codigo' });
+        if (prodUpsertErr) errores.push(`${receta.codigo_pp} producto: ${prodUpsertErr.message}`);
+        else productosUpsert++;
       }
     }
   }
@@ -244,13 +309,15 @@ export async function POST(req: NextRequest) {
     rol_usuario:   s.rol,
     accion:        'importar_recetas_pp',
     tabla:         'pp_recetas',
-    datos_nuevos:  { importadas, actualizadas, total: recetas.length, archivo: file.name },
+    datos_nuevos:  { importadas, actualizadas, total: recetas.length, costosAjustados, productosUpsert, archivo: file.name },
   });
 
   return NextResponse.json({
     total_recetas: recetas.length,
     importadas,
     actualizadas,
+    costos_ajustados: costosAjustados,
+    productos_actualizados: productosUpsert,
     errores: errores.slice(0, 20),
   });
 }

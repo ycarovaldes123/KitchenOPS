@@ -18,8 +18,8 @@ CREATE TABLE IF NOT EXISTS pp_recetas (
   nombre                   TEXT NOT NULL,
   rendimiento              NUMERIC NOT NULL DEFAULT 1,  -- en la UM base del PP (GR, PR, CC, KG)
   unidad_rendimiento       TEXT NOT NULL DEFAULT 'GR',  -- GR | PR | CC | KG
-  costo_total_calculado    INTEGER DEFAULT 0,     -- suma de todas las líneas (CLP)
-  costo_unitario_calculado INTEGER DEFAULT 0,     -- costo_total / rendimiento (CLP por unidad)
+  costo_total_calculado    NUMERIC(14,6) DEFAULT 0, -- suma de todas las lineas (CLP)
+  costo_unitario_calculado NUMERIC(14,6) DEFAULT 0, -- costo_total / rendimiento (CLP por unidad)
   estado                   TEXT NOT NULL DEFAULT 'PENDIENTE',
   -- ACTIVO     = receta completa y costos OK
   -- PENDIENTE  = ingredientes sin costo (costo_promedio = 0)
@@ -41,8 +41,8 @@ CREATE TABLE IF NOT EXISTS pp_receta_ingredientes (
   cantidad              NUMERIC NOT NULL DEFAULT 0,
   unidad_medida         TEXT NOT NULL DEFAULT 'KG',
   -- Snapshot del costo al momento del último recálculo
-  costo_unitario_snap   INTEGER DEFAULT 0,
-  costo_linea_calculado INTEGER DEFAULT 0,        -- = calc(cantidad, UM, costo_unitario_snap)
+  costo_unitario_snap   NUMERIC(14,6) DEFAULT 0,
+  costo_linea_calculado NUMERIC(14,6) DEFAULT 0,  -- = calc(cantidad, UM, costo_unitario_snap)
   -- Estado de la línea
   sin_codigo            BOOLEAN DEFAULT false,    -- true si codigo_ingrediente es NULL
   sin_costo             BOOLEAN DEFAULT false,    -- true si costo_unitario_snap = 0

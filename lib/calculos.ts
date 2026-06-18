@@ -41,16 +41,52 @@ export function calcMargen(
 /**
  * Total producido de un PP.
  * FÓRMULA: cantidad × gramos_por_pp
+ * Si producto cuesta por KG/LT y gramos_por_pp viene como 0.x, se normaliza a g/cc.
  * CC y DIRECTO retornan cantidad directamente (sin multiplicar).
  * RECETAS nunca entra en el cálculo.
  */
 export function calcTotalPP(
   cantidad: number,
-  pp: { tipo_pp: TipoPP; gramos_por_pp?: number | null }
+  pp: { tipo_pp: TipoPP | string | null | undefined; gramos_por_pp?: number | null },
+  unidadProducto?: string | null
 ): number {
-  if (pp.tipo_pp === 'CC' || pp.tipo_pp === 'DIRECTO') return cantidad;
+  const tipo = String(pp.tipo_pp ?? '').toUpperCase();
+  if (tipo === 'CC' || tipo === 'DIRECTO') return cantidad;
   const g = pp.gramos_por_pp ?? 1;
+  const um = String(unidadProducto ?? '').toUpperCase();
+  if (tipo === 'PORCION' && (um === 'KG' || um === 'LT') && g > 0 && g < 10) {
+    return cantidad * g * 1000;
+  }
   return cantidad * g;
+}
+
+/**
+ * Costo de una linea de produccion PP.
+ *
+ * - GR/CC: costo por unidad de total_producido.
+ * - KG/LT: total_producido viene en g/cc y se convierte a kg/L.
+ * - PR: costo por PP/porcion informada, no por gramo producido.
+ */
+export function calcCostoProduccionPP(
+  cantidad: number,
+  pp: { tipo_pp: TipoPP | string | null | undefined; gramos_por_pp?: number | null },
+  unidadProducto: string | null | undefined,
+  costoUnitario: number | null | undefined
+): number {
+  const cant = Number(cantidad) || 0;
+  const costo = Number(costoUnitario) || 0;
+  if (!cant || !costo) return 0;
+
+  const tipo = String(pp.tipo_pp ?? '').toUpperCase();
+  const um = String(unidadProducto ?? '').toUpperCase();
+
+  if (tipo === 'DIRECTO') return Math.round(cant * costo);
+  if (um === 'PR') return Math.round(cant * costo);
+  if (!um && (tipo === 'PORCION' || tipo === 'UND')) return Math.round(cant * costo);
+
+  const total = calcTotalPP(cant, pp, um);
+  if (um === 'KG' || um === 'LT') return Math.round((total / 1000) * costo);
+  return Math.round(total * costo);
 }
 
 /**

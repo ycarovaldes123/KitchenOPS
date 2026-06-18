@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import { useRol } from '@/components/RolProvider';
 import type { Producto, PP, Responsable, TipoPP } from '@/types/database';
 
 type Tab = 'pp' | 'recetas' | 'productos' | 'personal';
@@ -62,6 +63,9 @@ const emptyPP: PPForm   = { nombre: '', tipo_pp: 'PORCION', codigo_producto: '',
 const emptyProd: ProdForm = { codigo: '', nombre: '', unidad_medida: 'KG', costo_promedio: '0' };
 
 export default function MaestrosPage() {
+  const { rol } = useRol();
+  const isAdmin = rol === 'admin';
+  const canManageProductos = isAdmin || rol === 'finanzas';
   const [tab, setTab]           = useState<Tab>('pp');
   const [productos, setProductos] = useState<Producto[]>([]);
   const [pps, setPPs]           = useState<PP[]>([]);
@@ -80,6 +84,11 @@ export default function MaestrosPage() {
   const [prodForm, setProdForm]     = useState<ProdForm>(emptyProd);
   const [prodSaving, setProdSaving] = useState(false);
   const [prodError, setProdError]   = useState('');
+  const [prodEditModal, setProdEditModal] = useState<Producto | null>(null);
+  const [prodEditCode, setProdEditCode]   = useState('');
+  const [prodEditName, setProdEditName]   = useState('');
+  const [prodEditSaving, setProdEditSaving] = useState(false);
+  const [prodEditError, setProdEditError] = useState('');
 
   // Product search in PP form
   const [prodSearch, setProdSearch] = useState('');
@@ -242,6 +251,38 @@ export default function MaestrosPage() {
     load();
   }
 
+  function openEditProd(p: Producto) {
+    setProdEditModal(p);
+    setProdEditCode(p.codigo);
+    setProdEditName(p.nombre);
+    setProdEditError('');
+  }
+
+  async function saveProdEdit() {
+    if (!prodEditModal) return;
+    const codigo = isAdmin ? prodEditCode.trim() : prodEditModal.codigo;
+    const nombre = prodEditName.trim();
+    if (isAdmin && !codigo) { setProdEditError('El codigo es requerido'); return; }
+    if (!nombre) { setProdEditError('El nombre es requerido'); return; }
+
+    setProdEditSaving(true);
+    setProdEditError('');
+    const r = await fetch(`/api/maestros/productos/${encodeURIComponent(prodEditModal.codigo)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(isAdmin ? { codigo, nombre } : { nombre }),
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      setProdEditError(data.error ?? 'Error al guardar');
+      setProdEditSaving(false);
+      return;
+    }
+    setProdEditModal(null);
+    setProdEditSaving(false);
+    load();
+  }
+
   async function actualizarCostos(file: File) {
     setUploadLoading(true);
     setUploadError('');
@@ -339,7 +380,7 @@ export default function MaestrosPage() {
               </button>
             </>
           )}
-          {tab === 'productos' && (
+          {tab === 'productos' && canManageProductos && (
             <>
               <input
                 ref={fileInputRef}
@@ -693,9 +734,14 @@ export default function MaestrosPage() {
                         }
                       </Td>
                       <Td>
-                        <button onClick={() => toggleProducto(p)} style={{ ...btnSm, color: p.activo ? 'var(--rd)' : 'var(--tl)' }}>
-                          {p.activo ? 'Desactivar' : 'Activar'}
-                        </button>
+                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                          {canManageProductos && <button onClick={() => openEditProd(p)} style={btnSm}>Editar nombre</button>}
+                          {canManageProductos && (
+                            <button onClick={() => toggleProducto(p)} style={{ ...btnSm, color: p.activo ? 'var(--rd)' : 'var(--tl)' }}>
+                              {p.activo ? 'Desactivar' : 'Activar'}
+                            </button>
+                          )}
+                        </div>
                       </Td>
                     </tr>
                   );
@@ -833,6 +879,40 @@ export default function MaestrosPage() {
           <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
             <button onClick={() => setProdModal(false)} style={btnSecondary}>Cancelar</button>
             <button onClick={saveProd} disabled={prodSaving} style={btnPrimary}>{prodSaving ? 'Guardando…' : 'Guardar'}</button>
+          </div>
+        </Modal>
+      )}
+
+      {prodEditModal && (
+        <Modal title="Modificar producto" onClose={() => setProdEditModal(null)}>
+          <label style={labelStyle}>Codigo Softland</label>
+          <input
+            value={isAdmin ? prodEditCode : prodEditModal.codigo}
+            onChange={e => setProdEditCode(e.target.value)}
+            placeholder="0301032"
+            readOnly={!isAdmin}
+            style={{
+              ...inputStyle,
+              marginBottom: '12px',
+              background: !isAdmin ? 'var(--bg)' : inputStyle.background,
+              color: !isAdmin ? 'var(--ts)' : inputStyle.color,
+              cursor: !isAdmin ? 'not-allowed' : 'text',
+            }}
+          />
+
+          <label style={labelStyle}>Nombre</label>
+          <input
+            value={prodEditName}
+            onChange={e => setProdEditName(e.target.value)}
+            placeholder="CARNE PLATEADA"
+            style={{ ...inputStyle, marginBottom: '12px' }}
+          />
+
+          {prodEditError && <p style={{ color: 'var(--rd)', fontSize: '12px', marginBottom: '8px' }}>{prodEditError}</p>}
+
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
+            <button onClick={() => setProdEditModal(null)} style={btnSecondary}>Cancelar</button>
+            <button onClick={saveProdEdit} disabled={prodEditSaving} style={btnPrimary}>{prodEditSaving ? 'Guardando...' : 'Guardar'}</button>
           </div>
         </Modal>
       )}

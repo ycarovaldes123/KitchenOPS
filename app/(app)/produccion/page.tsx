@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { calcTotalPP, calcMerma, formatCLP, formatPct } from '@/lib/calculos';
+import { calcTotalPP, calcCostoProduccionPP, calcMerma, formatCLP, formatPct } from '@/lib/calculos';
 import { useRol } from '@/components/RolProvider';
 import type { PP, Responsable, Verdura, Producto, TipoPP } from '@/types/database';
 
@@ -40,7 +40,7 @@ const hoyChile = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/San
 function totalLabel(row: PPRow): string {
   const cant = parseFloat(row.cantidad) || 0;
   if (!cant || !row.pp_id) return '—';
-  const total = calcTotalPP(cant, { tipo_pp: row.tipo_pp as TipoPP, gramos_por_pp: row.gramos_por_pp });
+  const total = calcTotalPP(cant, { tipo_pp: row.tipo_pp as TipoPP, gramos_por_pp: row.gramos_por_pp }, row._unidad_medida);
   if (row.tipo_pp === 'CC') return `${total} cc`;
   if (row.tipo_pp === 'DIRECTO') return `${total} ${row.unidad_base.toLowerCase() || 'u.'}`;
   return total >= 1000 ? `${(total / 1000).toFixed(2)} kg` : `${total} g`;
@@ -55,16 +55,12 @@ function getInputLabel(row: PPRow): string {
 function calcCostoFila(row: PPRow): number {
   const cant = parseFloat(row.cantidad) || 0;
   if (!cant || !row.pp_id || !row.costo_unitario) return 0;
-  const total = calcTotalPP(cant, { tipo_pp: row.tipo_pp as TipoPP, gramos_por_pp: row.gramos_por_pp });
-  const um = row._unidad_medida;
-  // DIRECTO: user enters in KG directly, total = cant in KG, no gram conversion
-  if (row.tipo_pp === 'DIRECTO') return Math.round(total * row.costo_unitario);
-  // PORCION/UND/CC con producto KG o LT: total en gramos/cc → convertir a kg/L
-  if (um === 'KG' || um === 'LT') return Math.round((total / 1000) * row.costo_unitario);
-  // Producto en GR: total ya en gramos
-  if (um === 'GR') return Math.round(total * row.costo_unitario);
-  // UN, CC, PR: usar total (incluye gramos_por_pp para UND)
-  return Math.round(total * row.costo_unitario);
+  return calcCostoProduccionPP(
+    cant,
+    { tipo_pp: row.tipo_pp, gramos_por_pp: row.gramos_por_pp },
+    row._unidad_medida,
+    row.costo_unitario
+  );
 }
 
 function getRowStatus(row: PPRow): RowStatus {
@@ -72,6 +68,10 @@ function getRowStatus(row: PPRow): RowStatus {
   if ((row.tipo_pp === 'PORCION' || row.tipo_pp === 'UND') && !row.gramos_por_pp) return 'sin-equiv';
   if (row.costo_unitario === 0) return 'sin-costo';
   return 'ok';
+}
+
+function isValidRendRow(row: RendRow): boolean {
+  return !!row.verdura && parseFloat(row.kg_utilizados) > 0 && parseFloat(row.rendimiento_kg) > 0;
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -365,7 +365,7 @@ export default function ProduccionPage() {
       .filter(r => r.pp_id && parseFloat(r.cantidad) > 0)
       .map(r => {
         const cant  = parseFloat(r.cantidad);
-        const total = calcTotalPP(cant, { tipo_pp: r.tipo_pp as TipoPP, gramos_por_pp: r.gramos_por_pp });
+        const total = calcTotalPP(cant, { tipo_pp: r.tipo_pp as TipoPP, gramos_por_pp: r.gramos_por_pp }, r._unidad_medida);
         return {
           pp_id: r.pp_id, nombre_pp: r.nombre_pp, tipo_pp: r.tipo_pp,
           cantidad: cant, gramos_por_pp: r.gramos_por_pp, total_producido: total,
@@ -374,17 +374,20 @@ export default function ProduccionPage() {
         };
       });
 
-    if (!detalle.length) { setErr('Ingresa al menos un PP con cantidad válida.'); return; }
-
     const responsable = maestros?.responsables.find(r => r.id === responsableId);
     const rendimiento = rendRows
-      .filter(r => r.verdura && parseFloat(r.kg_utilizados) > 0 && parseFloat(r.rendimiento_kg) > 0)
+      .filter(isValidRendRow)
       .map(r => ({
         fecha, verdura: r.verdura,
         kg_utilizados: parseFloat(r.kg_utilizados),
         rendimiento_kg: parseFloat(r.rendimiento_kg),
         responsable_nombre: responsable?.nombre ?? '',
       }));
+
+    if (!detalle.length && !rendimiento.length) {
+      setErr('Ingresa al menos un PP o un rendimiento con valores validos.');
+      return;
+    }
 
     setGuardando(true);
     try {
@@ -400,7 +403,12 @@ export default function ProduccionPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Error al guardar');
 
-      setOk(`Informe guardado — ${detalle.length} PP${detalle.length !== 1 ? 's' : ''}, turno ${turno}, responsable ${responsable?.nombre ?? ''}.`);
+      const resumen = [
+        detalle.length > 0 ? `${detalle.length} PP${detalle.length !== 1 ? 's' : ''}` : '',
+        rendimiento.length > 0 ? `${rendimiento.length} rendimiento${rendimiento.length !== 1 ? 's' : ''}` : '',
+      ].filter(Boolean).join(', ');
+
+      setOk(`Informe guardado — ${resumen}, turno ${turno}, responsable ${responsable?.nombre ?? ''}.`);
       setFecha(hoyChile()); setResponsableId(''); setObservacion('');
       setPPRows([]); setRendRows([]); setTab('pp');
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -415,10 +423,11 @@ export default function ProduccionPage() {
 
   const respActual  = maestros?.responsables.find(r => r.id === responsableId);
   const ppValidos   = ppRows.filter(r => r.pp_id && parseFloat(r.cantidad) > 0);
+  const rendValidos = rendRows.filter(isValidRendRow);
   const costoTotal  = ppRows.reduce((s, r) => s + calcCostoFila(r), 0);
   const warnings    = ppRows.filter(r => { const s = getRowStatus(r); return s === 'sin-costo' || s === 'sin-equiv'; }).length;
   const rendCount   = rendRows.filter(r => r.verdura).length;
-  const canSave     = !!responsableId && ppValidos.length > 0;
+  const canSave     = !!responsableId && (ppValidos.length > 0 || rendValidos.length > 0);
 
   // ── Shared styles ─────────────────────────────────────────────────────────
 
@@ -888,8 +897,8 @@ export default function ProduccionPage() {
                     <span style={{ fontSize: '12px', color: '#991B1B', fontWeight: 600 }}>Falta responsable</span>
                   </div>
                 )}
-                {ppValidos.length === 0 && ppRows.length === 0 && (
-                  <span style={{ fontSize: '13px', color: 'var(--ts)' }}>Agrega al menos un PP para guardar</span>
+                {ppValidos.length === 0 && rendValidos.length === 0 && (
+                  <span style={{ fontSize: '13px', color: 'var(--ts)' }}>Agrega al menos un PP o un rendimiento valido para guardar</span>
                 )}
               </div>
             </div>

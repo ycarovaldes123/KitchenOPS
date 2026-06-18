@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol } from '@/lib/auth-server';
 import { auditLog } from '@/lib/audit';
+import { calcCostoProduccionPP } from '@/lib/calculos';
 
 // Mapeo manual: nombre en tabla pp → nombre en pp_recetas
 // Cubre variaciones de sufijo, abreviaturas y typos históricos
@@ -69,21 +70,22 @@ export async function POST() {
   // Cargar pp_recetas con costos calculados
   const { data: recetas, error: rErr } = await supabase
     .from('pp_recetas')
-    .select('nombre, codigo_pp, costo_unitario_calculado')
+    .select('nombre, codigo_pp, unidad_rendimiento, costo_unitario_calculado')
     .eq('activo', true);
 
   if (rErr) return NextResponse.json({ error: rErr.message }, { status: 500 });
 
   // Mapa nombre_receta_upper → { codigo_pp, costo }
-  const recetaMap = new Map<string, { codigo_pp: string | null; costo: number }>();
+  const recetaMap = new Map<string, { codigo_pp: string | null; costo: number; unidad_rendimiento: string | null }>();
   for (const r of recetas ?? []) {
     recetaMap.set(r.nombre.toUpperCase(), {
       codigo_pp: r.codigo_pp ?? null,
       costo: r.costo_unitario_calculado ?? 0,
+      unidad_rendimiento: r.unidad_rendimiento ?? null,
     });
   }
 
-  function buscarReceta(nombrePP: string): { codigo_pp: string | null; costo: number } | null {
+  function buscarReceta(nombrePP: string): { codigo_pp: string | null; costo: number; unidad_rendimiento: string | null } | null {
     // 1. Override manual
     const override = NOMBRE_MAP[nombrePP];
     if (override) {
@@ -122,10 +124,32 @@ export async function POST() {
   // ── 2. Rellenar costos históricos en detalle_produccion ───────────────────
   const { data: lineas, error: lErr } = await supabase
     .from('detalle_produccion')
-    .select('id, nombre_pp, cantidad, total_producido')
+    .select('id, nombre_pp, tipo_pp, cantidad, gramos_por_pp, total_producido, codigo_producto')
     .eq('costo_unitario', 0);
 
   if (lErr) return NextResponse.json({ error: lErr.message }, { status: 500 });
+
+  const codigosProducto = [
+    ...new Set([
+      ...(recetas ?? []).map(r => r.codigo_pp).filter(Boolean),
+      ...(lineas ?? []).map(l => l.codigo_producto).filter(Boolean),
+    ]),
+  ] as string[];
+  const { data: productos, error: prodErr } = codigosProducto.length
+    ? await supabase
+        .from('productos')
+        .select('codigo,unidad_medida,costo_promedio')
+        .in('codigo', codigosProducto)
+    : { data: [], error: null };
+  if (prodErr) return NextResponse.json({ error: prodErr.message }, { status: 500 });
+
+  const productoPorCodigo = new Map((productos ?? []).map(p => [
+    p.codigo as string,
+    {
+      unidad_medida: p.unidad_medida as string | null,
+      costo_promedio: Number(p.costo_promedio) || 0,
+    },
+  ]));
 
   let detalleActualizados = 0;
   let detalleSinReceta    = 0;
@@ -135,16 +159,27 @@ export async function POST() {
     const receta = buscarReceta(linea.nombre_pp);
     if (!receta || receta.costo <= 0) { detalleSinReceta++; continue; }
 
-    const costoUnitario = receta.costo;
-    // Usar total_producido (gramos o unidades totales) en lugar de cantidad (porciones).
-    // Para PORCION: total_producido=2400gr, costo=0.856/gr → 2054 correcto.
-    // Para UND: total_producido=cantidad*1=cantidad → mismo resultado que antes.
-    const base       = Number(linea.total_producido) > 0 ? Number(linea.total_producido) : Number(linea.cantidad);
-    const costoTotal = Math.round(base * costoUnitario);
+    const codigoProducto = (linea.codigo_producto as string | null) ?? receta.codigo_pp;
+    const producto = codigoProducto ? productoPorCodigo.get(codigoProducto) : null;
+    const recetaUnidad = String(receta.unidad_rendimiento ?? '').toUpperCase();
+    const usarProductoCrudo = Boolean(producto && recetaUnidad === 'PR' && !receta.codigo_pp);
+    const costoUnitario = usarProductoCrudo ? producto!.costo_promedio : receta.costo;
+    const unidadProducto = usarProductoCrudo
+      ? producto!.unidad_medida
+      : (producto?.unidad_medida ?? receta.unidad_rendimiento);
+    const costoTotal = calcCostoProduccionPP(
+      Number(linea.cantidad) || 0,
+      {
+        tipo_pp: linea.tipo_pp as string | null,
+        gramos_por_pp: linea.gramos_por_pp as number | null,
+      },
+      unidadProducto,
+      costoUnitario
+    );
 
     const { error } = await supabase
       .from('detalle_produccion')
-      .update({ costo_unitario: costoUnitario, costo_total: costoTotal })
+      .update({ codigo_producto: codigoProducto, costo_unitario: costoUnitario, costo_total: costoTotal })
       .eq('id', linea.id);
 
     if (error) errores.push(`${linea.nombre_pp}: ${error.message}`);

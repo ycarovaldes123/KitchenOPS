@@ -1,23 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol, getSessionRol } from '@/lib/auth-server';
-
-function calcTotalPP(cantidad: number, tipoPP: string | null, gramosPorPP: number | null): number {
-  if (tipoPP === 'CC' || tipoPP === 'DIRECTO') return cantidad;
-  return cantidad * (gramosPorPP ?? 1);
-}
-
-function calcCostoProduccion(
-  totalProducido: number,
-  tipoPP: string | null,
-  unidadProducto: string | null | undefined,
-  costoUnitario: number,
-): number {
-  const um = String(unidadProducto ?? '').toUpperCase();
-  if (tipoPP === 'DIRECTO') return Math.round(totalProducido * costoUnitario);
-  if (um === 'KG' || um === 'LT') return Math.round((totalProducido / 1000) * costoUnitario);
-  return Math.round(totalProducido * costoUnitario);
-}
+import { calcTotalPP, calcCostoProduccionPP } from '@/lib/calculos';
 
 export async function GET(req: NextRequest) {
   const s = await getSessionRol();
@@ -29,8 +13,8 @@ export async function GET(req: NextRequest) {
 
   const verCostos = s.rol !== 'cocina';
   const detalleSelect = verCostos
-    ? 'id,nombre_pp,tipo_pp,cantidad,gramos_por_pp,total_producido,costo_unitario,costo_total'
-    : 'id,nombre_pp,tipo_pp,cantidad,gramos_por_pp,total_producido';
+    ? 'id,nombre_pp,tipo_pp,cantidad,gramos_por_pp,total_producido,codigo_producto,costo_unitario,costo_total'
+    : 'id,nombre_pp,tipo_pp,cantidad,gramos_por_pp,total_producido,codigo_producto';
 
   let query = supabase
     .from('produccion')
@@ -52,11 +36,37 @@ export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const body = await req.json();
   const { fecha, responsable_id, responsable_nombre, turno, observacion, detalle, rendimiento } = body;
+  const detalleInput = Array.isArray(detalle) ? detalle as Array<Record<string, unknown>> : [];
+  const rendimientoInput = Array.isArray(rendimiento) ? rendimiento as Array<Record<string, unknown>> : [];
+  const detalleValido = detalleInput.filter(d => {
+    const cantidad = Number(d.cantidad);
+    return typeof d.pp_id === 'string' && d.pp_id.trim() !== '' && Number.isFinite(cantidad) && cantidad > 0;
+  });
+  const rendimientoValido = rendimientoInput
+    .map(r => {
+      const kgUtilizados = Number(r.kg_utilizados);
+      const rendimientoKg = Number(r.rendimiento_kg);
+      return {
+        fecha: r.fecha,
+        verdura: typeof r.verdura === 'string' ? r.verdura.trim() : '',
+        kg_utilizados: kgUtilizados,
+        rendimiento_kg: rendimientoKg,
+        responsable_nombre: typeof r.responsable_nombre === 'string' ? r.responsable_nombre : '',
+      };
+    })
+    .filter(r =>
+      typeof r.fecha === 'string' &&
+      r.verdura !== '' &&
+      Number.isFinite(r.kg_utilizados) &&
+      r.kg_utilizados > 0 &&
+      Number.isFinite(r.rendimiento_kg) &&
+      r.rendimiento_kg > 0
+    );
 
   if (!fecha || !responsable_id || !turno || !observacion?.trim())
     return NextResponse.json({ error: 'Faltan campos requeridos' }, { status: 400 });
-  if (!detalle?.length)
-    return NextResponse.json({ error: 'Ingresa al menos un PP' }, { status: 400 });
+  if (!detalleValido.length && !rendimientoValido.length)
+    return NextResponse.json({ error: 'Ingresa al menos un PP o un rendimiento valido' }, { status: 400 });
 
   const { data: prod, error: pErr } = await supabase
     .from('produccion')
@@ -65,15 +75,54 @@ export async function POST(req: NextRequest) {
 
   if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
 
-  const { error: dErr } = await supabase
-    .from('detalle_produccion')
-    .insert(detalle.map((d: Record<string, unknown>) => ({ ...d, produccion_id: prod.id })));
-  if (dErr) return NextResponse.json({ error: dErr.message }, { status: 500 });
+  const codigos = [...new Set(detalleValido.map(d => d.codigo_producto).filter(Boolean))] as string[];
+  const { data: productos, error: prodErr } = codigos.length
+    ? await supabase
+        .from('productos')
+        .select('codigo,unidad_medida')
+        .in('codigo', codigos)
+    : { data: [], error: null };
+  if (prodErr) return NextResponse.json({ error: prodErr.message }, { status: 500 });
 
-  if (rendimiento?.length) {
+  const unidadPorCodigo = new Map((productos ?? []).map(p => [p.codigo as string, p.unidad_medida as string | null]));
+  const detalleRows = detalleValido.map(d => {
+    const cantidad = Number(d.cantidad) || 0;
+    const tipoPP = d.tipo_pp as string | null | undefined;
+    const gramosPorPP = d.gramos_por_pp as number | null | undefined;
+    const codigoProducto = d.codigo_producto as string | null | undefined;
+    const costoUnitario = Number(d.costo_unitario) || 0;
+    const unidadProducto = codigoProducto ? unidadPorCodigo.get(codigoProducto) : null;
+    const costoCalculado = calcCostoProduccionPP(
+      cantidad,
+      { tipo_pp: tipoPP, gramos_por_pp: gramosPorPP },
+      unidadProducto,
+      costoUnitario
+    );
+    return {
+      ...d,
+      produccion_id: prod.id,
+      cantidad,
+      total_producido: calcTotalPP(
+        cantidad,
+        { tipo_pp: tipoPP, gramos_por_pp: gramosPorPP },
+        unidadProducto
+      ),
+      costo_unitario: costoUnitario,
+      costo_total: costoCalculado > 0 ? costoCalculado : Number(d.costo_total) || 0,
+    };
+  });
+
+  if (detalleRows.length) {
+    const { error: dErr } = await supabase
+      .from('detalle_produccion')
+      .insert(detalleRows);
+    if (dErr) return NextResponse.json({ error: dErr.message }, { status: 500 });
+  }
+
+  if (rendimientoValido.length) {
     const { error: rErr } = await supabase
       .from('rendimiento')
-      .insert(rendimiento.map((r: Record<string, unknown>) => ({ ...r, produccion_id: prod.id })));
+      .insert(rendimientoValido.map(r => ({ ...r, produccion_id: prod.id })));
     if (rErr) return NextResponse.json({ error: rErr.message }, { status: 500 });
   }
 
@@ -119,12 +168,22 @@ export async function PATCH(req: NextRequest) {
     const ids = detalle.filter((d: { id?: string }) => d.id).map((d: { id: string }) => d.id);
     const { data: rows, error: fetchErr } = await supabase
       .from('detalle_produccion')
-      .select('id,cantidad,tipo_pp,gramos_por_pp,costo_unitario,costo_total')
+      .select('id,cantidad,tipo_pp,gramos_por_pp,codigo_producto,costo_unitario,costo_total')
       .in('id', ids)
       .eq('produccion_id', produccion_id);
     if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
 
     const rowMap = new Map(rows?.map(r => [r.id, r]) ?? []);
+    const codigos = [...new Set((rows ?? []).map(r => r.codigo_producto).filter(Boolean))] as string[];
+    const { data: productos, error: prodErr } = codigos.length
+      ? await supabase
+          .from('productos')
+          .select('codigo,unidad_medida')
+          .in('codigo', codigos)
+      : { data: [], error: null };
+    if (prodErr) return NextResponse.json({ error: prodErr.message }, { status: 500 });
+
+    const unidadPorCodigo = new Map((productos ?? []).map(p => [p.codigo as string, p.unidad_medida as string | null]));
 
     for (const d of detalle as Array<{ id?: string; cantidad: number; pp_id?: string | null; nombre_pp?: string | null; tipo_pp?: string | null; gramos_por_pp?: number | null; codigo_producto?: string | null; costo_unitario?: number | null }>) {
       if (!d.id) continue;
@@ -137,21 +196,30 @@ export async function PATCH(req: NextRequest) {
 
       const total_producido = calcTotalPP(
         cantidad,
-        row.tipo_pp as string | null,
-        row.gramos_por_pp as number | null
+        { tipo_pp: row.tipo_pp as string | null, gramos_por_pp: row.gramos_por_pp as number | null },
+        row.codigo_producto ? unidadPorCodigo.get(row.codigo_producto as string) : null
       );
       const cantidadAnterior = Number(row.cantidad) || 0;
       const costoAnterior = Number(row.costo_total) || 0;
       const costoPorCantidad = cantidadAnterior > 0 && costoAnterior > 0
         ? costoAnterior / cantidadAnterior
         : Number(row.costo_unitario) || 0;
+      const unidadProducto = row.codigo_producto ? unidadPorCodigo.get(row.codigo_producto as string) : null;
+      const costoTotal = row.codigo_producto
+        ? calcCostoProduccionPP(
+            cantidad,
+            { tipo_pp: row.tipo_pp as string | null, gramos_por_pp: row.gramos_por_pp as number | null },
+            unidadProducto,
+            Number(row.costo_unitario) || 0
+          )
+        : Math.round(cantidad * costoPorCantidad);
 
       const { error } = await supabase
         .from('detalle_produccion')
         .update({
           cantidad,
           total_producido,
-          costo_total: Math.round(cantidad * costoPorCantidad),
+          costo_total: costoTotal,
         })
         .eq('id', d.id)
         .eq('produccion_id', produccion_id);
@@ -177,8 +245,12 @@ export async function PATCH(req: NextRequest) {
       const cantidad = Number(d.cantidad);
       if (!Number.isFinite(cantidad) || cantidad < 0) throw new Error('Cantidad invalida');
       const costoUnitario = Number(d.costo_unitario) || 0;
-      const totalProducido = Number(d.total_producido) || calcTotalPP(cantidad, d.tipo_pp ?? null, d.gramos_por_pp ?? null);
       const unidadProducto = d.codigo_producto ? unidadPorCodigo.get(d.codigo_producto) : null;
+      const totalProducido = calcTotalPP(
+        cantidad,
+        { tipo_pp: d.tipo_pp ?? null, gramos_por_pp: d.gramos_por_pp ?? null },
+        unidadProducto
+      );
       return {
         produccion_id,
         pp_id: d.pp_id ?? null,
@@ -189,7 +261,12 @@ export async function PATCH(req: NextRequest) {
         total_producido: totalProducido,
         codigo_producto: d.codigo_producto ?? null,
         costo_unitario: costoUnitario,
-        costo_total: calcCostoProduccion(totalProducido, d.tipo_pp ?? null, unidadProducto, costoUnitario),
+        costo_total: calcCostoProduccionPP(
+          cantidad,
+          { tipo_pp: d.tipo_pp ?? null, gramos_por_pp: d.gramos_por_pp ?? null },
+          unidadProducto,
+          costoUnitario
+        ),
       };
     });
     try {
