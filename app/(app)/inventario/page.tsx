@@ -1,8 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react';
 import { useRol } from '@/components/RolProvider';
-import ProductSearchSelect from '@/components/costos/ProductSearchSelect';
 import { UBICACIONES_INVENTARIO, type UbicacionInventario } from '@/lib/inventario';
 import type { Producto, Responsable } from '@/types/database';
 
@@ -19,6 +18,15 @@ interface InventarioRow {
   unidad_medida: string;
   cantidad: string;
 }
+
+const UM_COLOR: Record<string, string> = {
+  KG: '#0D9373',
+  GR: '#6366F1',
+  LT: '#0EA5E9',
+  UN: '#D97706',
+  CC: '#8B5CF6',
+  PR: '#64748B',
+};
 
 function newId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -39,6 +47,229 @@ function emptyRow(ubicacion: UbicacionInventario): InventarioRow {
   };
 }
 
+function normalizeText(text: unknown) {
+  return String(text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function ProductoSelector({ productos, selectedCodigo, selectedNombre, selectedUM, onSelect, onClear }: {
+  productos: Producto[];
+  selectedCodigo: string;
+  selectedNombre: string;
+  selectedUM: string;
+  onSelect: (producto: Producto) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
+  const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const filtered = useMemo(() => {
+    const normalizedQuery = normalizeText(query).trim();
+    if (!normalizedQuery) return productos.slice(0, 80);
+    const terms = normalizedQuery.split(/\s+/).filter(Boolean);
+
+    return productos
+      .filter(producto => {
+        const haystack = normalizeText([
+          producto.codigo,
+          producto.nombre,
+          producto.unidad_medida,
+        ].join(' '));
+        return terms.every(term => haystack.includes(term));
+      })
+      .slice(0, 80);
+  }, [productos, query]);
+  const safeActiveIndex = Math.min(activeIndex, Math.max(filtered.length - 1, 0));
+
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        setOpen(false);
+        setQuery('');
+      }
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
+
+  useEffect(() => {
+    if (open) setTimeout(() => inputRef.current?.focus(), 30);
+  }, [open]);
+
+  function selectProducto(producto: Producto) {
+    onSelect(producto);
+    setOpen(false);
+    setQuery('');
+    setActiveIndex(0);
+  }
+
+  if (selectedCodigo) {
+    const color = UM_COLOR[selectedUM] || '#6B7280';
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+        <span style={{
+          fontSize: '9px',
+          fontWeight: 700,
+          padding: '2px 7px',
+          borderRadius: '4px',
+          flexShrink: 0,
+          background: `${color}18`,
+          color,
+          border: `1px solid ${color}40`,
+          whiteSpace: 'nowrap',
+        }}>
+          {selectedUM || 'UM'}
+        </span>
+        <span style={{ fontSize: '13px', fontWeight: 500, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {selectedNombre}
+        </span>
+        <button
+          type="button"
+          onClick={onClear}
+          title="Quitar producto"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ts)', fontSize: '16px', lineHeight: 1, flexShrink: 0, padding: '2px 4px', borderRadius: '4px' }}
+          onMouseEnter={event => (event.currentTarget.style.color = 'var(--rd)')}
+          onMouseLeave={event => (event.currentTarget.style.color = 'var(--ts)')}
+        >
+          x
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(value => !value)}
+        style={{
+          width: '100%',
+          textAlign: 'left',
+          background: open ? 'var(--al)' : 'var(--bg)',
+          border: `1.5px solid ${open ? 'var(--ac)' : 'var(--bo)'}`,
+          borderRadius: '8px',
+          padding: '6px 10px',
+          fontSize: '12px',
+          color: 'var(--ts)',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '6px',
+          fontFamily: 'DM Sans, sans-serif',
+          transition: 'border-color 0.15s, background 0.15s',
+        }}
+      >
+        <span>Seleccionar producto...</span>
+        <span style={{ fontSize: '9px', display: 'inline-block', transition: 'transform 0.15s', transform: open ? 'rotate(180deg)' : 'none' }}>v</span>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute',
+          top: 'calc(100% + 4px)',
+          left: 0,
+          zIndex: 800,
+          width: 'max(100%, 320px)',
+          background: 'var(--sf)',
+          border: '1.5px solid var(--ac)',
+          borderRadius: '12px',
+          boxShadow: '0 16px 40px rgba(0,0,0,0.18)',
+          overflow: 'hidden',
+        }}>
+          <div style={{ padding: '8px 8px 0' }}>
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={event => {
+                setQuery(event.target.value);
+                setActiveIndex(0);
+              }}
+              onKeyDown={event => {
+                if (event.key === 'Escape') {
+                  event.stopPropagation();
+                  setOpen(false);
+                  setQuery('');
+                  setActiveIndex(0);
+                  return;
+                }
+
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault();
+                  setActiveIndex(index => Math.min(index + 1, Math.max(filtered.length - 1, 0)));
+                  return;
+                }
+
+                if (event.key === 'ArrowUp') {
+                  event.preventDefault();
+                  setActiveIndex(index => Math.max(index - 1, 0));
+                  return;
+                }
+
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  if (filtered[safeActiveIndex]) selectProducto(filtered[safeActiveIndex]);
+                  return;
+                }
+
+                if (event.key === 'Tab' && filtered[safeActiveIndex]) {
+                  selectProducto(filtered[safeActiveIndex]);
+                }
+              }}
+              placeholder={`Buscar en ${productos.length} productos...`}
+              style={{
+                width: '100%',
+                border: '1.5px solid var(--bo)',
+                borderRadius: '8px',
+                padding: '7px 10px',
+                fontSize: '13px',
+                background: 'var(--bg)',
+                color: 'var(--tx)',
+                outline: 'none',
+                fontFamily: 'DM Sans, sans-serif',
+                boxSizing: 'border-box',
+              }}
+              onFocus={event => (event.currentTarget.style.borderColor = 'var(--ac)')}
+              onBlur={event => (event.currentTarget.style.borderColor = 'var(--bo)')}
+            />
+          </div>
+          <div style={{ maxHeight: '240px', overflowY: 'auto', padding: '4px 0 6px' }}>
+            {filtered.length === 0 ? (
+              <div style={{ padding: '20px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>
+                {productos.length === 0 ? 'Sin productos configurados.' : 'Sin coincidencias'}
+              </div>
+            ) : filtered.map((producto, index) => {
+              const color = UM_COLOR[producto.unidad_medida] || '#6B7280';
+              return (
+                <button
+                  key={producto.codigo}
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => selectProducto(producto)}
+                  style={{ width: '100%', textAlign: 'left', background: index === safeActiveIndex ? 'var(--al)' : 'none', border: 'none', padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontFamily: 'DM Sans, sans-serif' }}
+                  onMouseEnter={() => setActiveIndex(index)}
+                >
+                  <span style={{ fontSize: '9px', fontWeight: 700, padding: '2px 7px', borderRadius: '4px', background: `${color}18`, color, border: `1px solid ${color}40`, flexShrink: 0, minWidth: '34px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                    {producto.unidad_medida || 'UM'}
+                  </span>
+                  <span style={{ fontSize: '13px', color: 'var(--tx)', flex: 1 }}>{producto.nombre}</span>
+                  <span style={{ fontSize: '11px', color: 'var(--ts)', flexShrink: 0 }}>{producto.codigo}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function InventarioPage() {
   const { puede } = useRol();
   const puedeGuardar = puede('inventario', 'registrar');
@@ -49,7 +280,8 @@ export default function InventarioPage() {
   const [responsableId, setResponsableId] = useState('');
   const [observacion, setObservacion] = useState('');
   const [ubicacionActiva, setUbicacionActiva] = useState<UbicacionInventario>(UBICACIONES_INVENTARIO[0]);
-  const [rows, setRows] = useState<InventarioRow[]>([emptyRow(UBICACIONES_INVENTARIO[0])]);
+  const [rows, setRows] = useState<InventarioRow[]>([]);
+  const [cantidadLineas, setCantidadLineas] = useState('10');
   const [saving, setSaving] = useState(false);
   const [ok, setOk] = useState('');
   const [err, setErr] = useState('');
@@ -68,11 +300,6 @@ export default function InventarioPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const productoMap = useMemo(
-    () => new Map((maestros?.productos ?? []).map(producto => [producto.codigo, producto])),
-    [maestros],
-  );
-
   const rowsActivas = rows.filter(row => row.ubicacion === ubicacionActiva);
   const totalValidas = rows.filter(row => row.codigo_producto && (Number(row.cantidad) || 0) > 0).length;
   const ubicacionesConDatos = new Set(rows.filter(row => row.codigo_producto && (Number(row.cantidad) || 0) > 0).map(row => row.ubicacion)).size;
@@ -88,25 +315,26 @@ export default function InventarioPage() {
     return map;
   }, [rows]);
 
+  const respActual = maestros?.responsables.find(responsable => responsable.id === responsableId);
+  const canSave = Boolean(puedeGuardar && responsableId && totalValidas > 0);
+
+  function addRows(cantidad: number, ubicacion = ubicacionActiva) {
+    const safeCantidad = Math.min(Math.max(Math.floor(cantidad) || 1, 1), 100);
+    setRows(current => [
+      ...current,
+      ...Array.from({ length: safeCantidad }, () => emptyRow(ubicacion)),
+    ]);
+  }
+
   function addRow(ubicacion = ubicacionActiva) {
-    setRows(current => [...current, emptyRow(ubicacion)]);
+    addRows(1, ubicacion);
   }
 
   function updateRow(localId: string, patch: Partial<InventarioRow>) {
     setRows(current => current.map(row => row.localId === localId ? { ...row, ...patch } : row));
   }
 
-  function handleProductoChange(localId: string, codigo: string) {
-    const producto = productoMap.get(codigo);
-    if (!producto) {
-      updateRow(localId, {
-        codigo_producto: '',
-        nombre_producto: '',
-        unidad_medida: '',
-        cantidad: '',
-      });
-      return;
-    }
+  function handleProductoSelect(localId: string, producto: Producto) {
     updateRow(localId, {
       codigo_producto: producto.codigo,
       nombre_producto: producto.nombre,
@@ -114,15 +342,31 @@ export default function InventarioPage() {
     });
   }
 
-  function removeRow(localId: string) {
-    setRows(current => {
-      if (current.length === 1) return [emptyRow(ubicacionActiva)];
-      const filtered = current.filter(row => row.localId !== localId);
-      return filtered.length ? filtered : [emptyRow(ubicacionActiva)];
+  function clearProducto(localId: string) {
+    updateRow(localId, {
+      codigo_producto: '',
+      nombre_producto: '',
+      unidad_medida: '',
+      cantidad: '',
     });
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  function removeRow(localId: string) {
+    setRows(current => current.filter(row => row.localId !== localId));
+  }
+
+  function handleFormKeyDown(event: KeyboardEvent<HTMLFormElement>) {
+    if (event.key !== 'Enter' || event.defaultPrevented) return;
+    if (event.target instanceof HTMLTextAreaElement) return;
+    event.preventDefault();
+  }
+
+  function rowStatus(row: InventarioRow) {
+    if (!row.codigo_producto || !row.cantidad || Number(row.cantidad) <= 0) return 'Incompleto';
+    return 'OK';
+  }
+
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setErr('');
     setOk('');
@@ -147,7 +391,7 @@ export default function InventarioPage() {
       .filter(row => row.codigo_producto && Number.isFinite(row.cantidad) && row.cantidad > 0);
 
     if (!detalle.length) {
-      setErr('Agrega al menos un producto con cantidad válida.');
+      setErr('Agrega al menos un producto con cantidad valida.');
       return;
     }
 
@@ -176,7 +420,7 @@ export default function InventarioPage() {
       setResponsableId('');
       setObservacion('');
       setUbicacionActiva(UBICACIONES_INVENTARIO[0]);
-      setRows([emptyRow(UBICACIONES_INVENTARIO[0])]);
+      setRows([]);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
       setErr(error instanceof Error ? error.message : 'Error guardando inventario');
@@ -185,11 +429,11 @@ export default function InventarioPage() {
     }
   }
 
-  const field: React.CSSProperties = {
+  const field: CSSProperties = {
     width: '100%',
     border: '1.5px solid var(--bo)',
-    borderRadius: '10px',
-    padding: '9px 11px',
+    borderRadius: '8px',
+    padding: '8px 11px',
     fontSize: '14px',
     background: 'var(--bg)',
     color: 'var(--tx)',
@@ -198,7 +442,7 @@ export default function InventarioPage() {
     boxSizing: 'border-box',
   };
 
-  const label: React.CSSProperties = {
+  const label: CSSProperties = {
     display: 'block',
     fontSize: '11px',
     fontWeight: 700,
@@ -213,21 +457,21 @@ export default function InventarioPage() {
   }
 
   return (
-    <div className="page" style={{ paddingBottom: '42px' }}>
+    <div className="page" style={{ paddingBottom: '48px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '10px' }}>
         <div>
           <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '22px', fontWeight: 800, margin: '0 0 4px' }}>Toma Inventario</h1>
           <p style={{ color: 'var(--ts)', fontSize: '13px', margin: 0 }}>
-            Registra stock por cámara o bodega. Solo se ingresan cantidades.
+            Registra stock por camara o bodega. Solo se ingresan cantidades.
           </p>
         </div>
         {rows.length > 0 && (
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '12px', background: 'var(--sf)', border: '1px solid var(--bo)', padding: '4px 12px', borderRadius: '20px', color: 'var(--ts)' }}>
-              {totalValidas} línea{totalValidas !== 1 ? 's' : ''} válida{totalValidas !== 1 ? 's' : ''}
+              {totalValidas} linea{totalValidas !== 1 ? 's' : ''} valida{totalValidas !== 1 ? 's' : ''}
             </span>
             <span style={{ fontSize: '12px', fontWeight: 700, background: 'var(--al)', border: '1px solid var(--ac)', padding: '4px 12px', borderRadius: '20px', color: 'var(--ac)' }}>
-              {ubicacionesConDatos} ubicación{ubicacionesConDatos !== 1 ? 'es' : ''}
+              {ubicacionesConDatos} ubicacion{ubicacionesConDatos !== 1 ? 'es' : ''}
             </span>
           </div>
         )}
@@ -244,171 +488,275 @@ export default function InventarioPage() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '16px' }}>
-        <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '12px', padding: '16px' }}>
-          <p style={{ margin: '0 0 12px', fontSize: '11px', color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700 }}>
-            Datos de la toma
-          </p>
-          <div className="inventario-head-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '12px' }}>
+      <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown}>
+        <div className="inventario-grid" style={{ display: 'grid', gridTemplateColumns: '310px 1fr', gap: '14px', alignItems: 'start' }}>
+          <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '14px', padding: '22px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <p style={{ fontFamily: 'Syne, sans-serif', fontSize: '12px', fontWeight: 800, color: 'var(--ts)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+              Datos de la toma
+            </p>
+
             <div>
               <label style={label}>Fecha</label>
               <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={field} />
             </div>
+
             <div>
-              <label style={label}>Responsable</label>
-              <select value={responsableId} onChange={e => setResponsableId(e.target.value)} style={field}>
-                <option value="">Seleccionar...</option>
-                {maestros?.responsables.map(responsable => (
-                  <option key={responsable.id} value={responsable.id}>{responsable.nombre}</option>
-                ))}
+              <label style={label}>Responsable <span style={{ color: 'var(--rd)' }}>*</span></label>
+              {respActual ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', borderRadius: '9px', border: '1.5px solid var(--tl)', background: '#ECFDF5' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', borderRadius: '50%', flexShrink: 0, background: respActual.color_hex ?? 'var(--ac)', color: '#fff', fontSize: '11px', fontWeight: 700 }}>
+                    {respActual.iniciales ?? respActual.nombre.slice(0, 2)}
+                  </span>
+                  <span style={{ fontSize: '14px', fontWeight: 600, flex: 1, color: '#065F46', minWidth: 0 }}>{respActual.nombre}</span>
+                  <button type="button" onClick={() => setResponsableId('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6EE7B7', fontSize: '16px', padding: '2px' }}>x</button>
+                </div>
+              ) : (
+                <select value={responsableId} onChange={e => setResponsableId(e.target.value)} style={{ ...field, color: responsableId ? 'var(--tx)' : 'var(--ts)' }}>
+                  <option value="">Seleccionar responsable...</option>
+                  {maestros?.responsables.map(responsable => (
+                    <option key={responsable.id} value={responsable.id}>{responsable.nombre}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            <div>
+              <label style={label}>Camara</label>
+              <select
+                value={ubicacionActiva}
+                onChange={event => setUbicacionActiva(event.target.value as UbicacionInventario)}
+                style={{ ...field, color: 'var(--tx)', fontWeight: 700 }}
+                onFocus={event => (event.currentTarget.style.borderColor = 'var(--ac)')}
+                onBlur={event => (event.currentTarget.style.borderColor = 'var(--bo)')}
+              >
+                {UBICACIONES_INVENTARIO.map(ubicacion => {
+                  const total = conteoPorUbicacion.get(ubicacion) ?? 0;
+                  return (
+                    <option key={ubicacion} value={ubicacion}>
+                      {ubicacion} ({total})
+                    </option>
+                  );
+                })}
               </select>
             </div>
+
             <div>
-              <label style={label}>Productos válidos</label>
-              <div style={{ ...field, display: 'flex', alignItems: 'center', fontWeight: 700 }}>
-                {totalValidas} linea{totalValidas !== 1 ? 's' : ''}
-              </div>
+              <label style={label}>Observacion opcional</label>
+              <textarea
+                value={observacion}
+                onChange={e => setObservacion(e.target.value)}
+                rows={2}
+                style={{ ...field, resize: 'vertical', minHeight: '64px', lineHeight: 1.45 }}
+                placeholder="Opcional"
+              />
             </div>
-          </div>
+          </section>
 
-          <div style={{ marginTop: '12px' }}>
-            <label style={label}>Observación</label>
-            <textarea
-              value={observacion}
-              onChange={e => setObservacion(e.target.value)}
-              rows={3}
-              style={{ ...field, resize: 'vertical' }}
-              placeholder="Opcional"
-            />
-          </div>
-        </section>
+          <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '14px', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: '420px' }}>
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ minWidth: 0 }}>
+                <span style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Productos ingresados</span>
+                <strong style={{ display: 'block', marginTop: '3px', fontSize: '17px', color: 'var(--tx)', fontFamily: 'Syne, sans-serif' }}>{ubicacionActiva}</strong>
+              </div>
+              {rowsActivas.length > 0 && (
+                <span style={{ background: 'var(--ac)', color: '#fff', borderRadius: '10px', padding: '2px 8px', fontSize: '11px', fontWeight: 700 }}>
+                  {rowsActivas.length}
+                </span>
+              )}
+            </div>
 
-        <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '12px', padding: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+              {rowsActivas.length === 0 ? (
+                <div style={{ padding: '58px 32px', textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                  <p style={{ fontWeight: 700, fontSize: '15px', color: 'var(--tx)', margin: '0 0 6px', fontFamily: 'Syne, sans-serif' }}>
+                    Sin productos registrados
+                  </p>
+                  <p style={{ fontSize: '13px', color: 'var(--ts)', margin: '0 0 22px', lineHeight: 1.5 }}>
+                    Agrega productos para la camara seleccionada.
+                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <button type="button" onClick={() => addRow()} style={{
+                      background: 'var(--ac)', color: '#fff', border: 'none', borderRadius: '10px',
+                      padding: '10px 22px', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
+                      fontFamily: 'DM Sans, sans-serif',
+                    }}>
+                      + Agregar primer producto
+                    </button>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={cantidadLineas}
+                        onChange={event => setCantidadLineas(event.target.value)}
+                        aria-label="Cantidad de productos a agregar"
+                        style={{ ...field, width: '76px', padding: '9px 10px' }}
+                      />
+                      <button type="button" onClick={() => addRows(Number(cantidadLineas))} style={{
+                        background: 'var(--sf)',
+                        color: 'var(--ac)',
+                        border: '1.5px solid var(--ac)',
+                        borderRadius: '10px',
+                        padding: '10px 16px',
+                        fontSize: '13px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        fontFamily: 'DM Sans, sans-serif',
+                      }}>
+                        Agregar cantidad
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ overflowX: 'auto', flex: 1 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '620px' }}>
+                      <thead>
+                        <tr style={{ background: 'var(--bg)' }}>
+                          {['Producto', 'Cantidad ingresada', 'Unidad', 'Estado', ''].map((heading, index) => (
+                            <th key={heading} style={{ padding: '10px 12px', textAlign: index === 4 ? 'center' : 'left', fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: '1px solid var(--bo)', whiteSpace: 'nowrap' }}>
+                              {heading}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rowsActivas.map(row => (
+                          <tr key={row.localId} style={{ borderBottom: '1px solid var(--bo)' }}>
+                            <td style={{ padding: '9px 12px', minWidth: '260px' }}>
+                              <ProductoSelector
+                                productos={maestros?.productos ?? []}
+                                selectedCodigo={row.codigo_producto}
+                                selectedNombre={row.nombre_producto}
+                                selectedUM={row.unidad_medida}
+                                onSelect={producto => handleProductoSelect(row.localId, producto)}
+                                onClear={() => clearProducto(row.localId)}
+                              />
+                            </td>
+                            <td style={{ padding: '9px 12px', width: '150px' }}>
+                              <input
+                                type="number"
+                                min={0}
+                                step="any"
+                                value={row.cantidad}
+                                onChange={e => updateRow(row.localId, { cantidad: e.target.value })}
+                                style={{ ...field, width: '110px' }}
+                                placeholder="0"
+                              />
+                            </td>
+                            <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)', whiteSpace: 'nowrap' }}>
+                              {row.unidad_medida || '-'}
+                            </td>
+                            <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
+                              <span style={{
+                                display: 'inline-block',
+                                padding: '2px 8px',
+                                borderRadius: '20px',
+                                fontSize: '10px',
+                                fontWeight: 700,
+                                background: rowStatus(row) === 'OK' ? '#D1FAE5' : '#FEF3C7',
+                                color: rowStatus(row) === 'OK' ? '#065F46' : '#92400E',
+                              }}>
+                                {rowStatus(row)}
+                              </span>
+                            </td>
+                            <td style={{ padding: '9px 8px', textAlign: 'center', width: '44px' }}>
+                              <button
+                                type="button"
+                                onClick={() => removeRow(row.localId)}
+                                title="Quitar producto"
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ts)', fontSize: '18px', lineHeight: 1, padding: '4px 6px', borderRadius: '6px' }}
+                                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#FEE2E2'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--rd)'; }}
+                                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--ts)'; }}
+                              >
+                                x
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{ padding: '11px 14px', borderTop: '1px solid var(--bo)', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', flexWrap: 'wrap', flexShrink: 0 }}>
+                    <button type="button" onClick={() => addRow()} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'none', border: '1.5px dashed var(--bo)', borderRadius: '8px', padding: '8px 18px', cursor: 'pointer', fontSize: '13px', color: 'var(--ts)', fontFamily: 'DM Sans, sans-serif', transition: 'all 0.15s' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--ac)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--ac)'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--bo)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--ts)'; }}
+                    >
+                      + Agregar producto
+                    </button>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={cantidadLineas}
+                        onChange={event => setCantidadLineas(event.target.value)}
+                        aria-label="Cantidad de productos a agregar"
+                        style={{ ...field, width: '74px', padding: '8px 10px' }}
+                      />
+                      <button type="button" onClick={() => addRows(Number(cantidadLineas))} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'none', border: '1.5px dashed var(--bo)', borderRadius: '8px', padding: '8px 18px', cursor: 'pointer', fontSize: '13px', color: 'var(--ts)', fontFamily: 'DM Sans, sans-serif', transition: 'all 0.15s' }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--ac)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--ac)'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--bo)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--ts)'; }}
+                      >
+                        Agregar cantidad
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </section>
+        </div>
+
+        <div style={{ marginTop: '14px', background: 'var(--sf)', borderRadius: '14px', border: '1px solid var(--bo)', padding: '16px 22px', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '24px', flex: 1, flexWrap: 'wrap', alignItems: 'center', minWidth: 0 }}>
             <div>
-              <p style={{ margin: '0 0 3px', fontSize: '11px', color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700 }}>
-                Productos por ubicación
+              <p style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 2px' }}>Productos</p>
+              <p style={{ fontSize: '22px', fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: totalValidas > 0 ? 'var(--tx)' : 'var(--ts)', margin: 0, lineHeight: 1.1 }}>
+                {totalValidas}<span style={{ fontSize: '13px', color: 'var(--ts)', fontWeight: 400, marginLeft: '3px' }}>/{rows.length} total</span>
               </p>
-              <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: 'var(--tx)' }}>{ubicacionActiva}</h2>
             </div>
-            <button
-              type="button"
-              onClick={() => addRow()}
-              style={{ border: 'none', background: 'var(--ac)', color: '#fff', borderRadius: '9px', padding: '10px 14px', cursor: 'pointer', fontSize: '13px', fontWeight: 700 }}
-            >
-              + Agregar producto
-            </button>
-          </div>
 
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
-            {UBICACIONES_INVENTARIO.map(ubicacion => {
-              const active = ubicacion === ubicacionActiva;
-              const total = conteoPorUbicacion.get(ubicacion) ?? 0;
-              return (
-                <button
-                  key={ubicacion}
-                  type="button"
-                  onClick={() => {
-                    setUbicacionActiva(ubicacion);
-                    if (!rows.some(row => row.ubicacion === ubicacion)) {
-                      setRows(current => [...current, emptyRow(ubicacion)]);
-                    }
-                  }}
-                  style={{
-                    borderRadius: '999px',
-                    border: `1px solid ${active ? 'var(--ac)' : 'var(--bo)'}`,
-                    background: active ? 'var(--al)' : 'var(--bg)',
-                    color: active ? 'var(--ac)' : 'var(--ts)',
-                    padding: '8px 12px',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    minHeight: '40px',
-                  }}
-                >
-                  <span>{ubicacion}</span>
-                  <span style={{ background: active ? 'var(--sf)' : 'var(--al)', color: active ? 'var(--ac)' : 'var(--ts)', borderRadius: '999px', padding: '2px 7px', fontSize: '11px' }}>
-                    {total}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+            <div>
+              <p style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 2px' }}>Camaras con datos</p>
+              <p style={{ fontSize: '22px', fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: ubicacionesConDatos > 0 ? 'var(--ac)' : 'var(--ts)', margin: 0, lineHeight: 1.1 }}>
+                {ubicacionesConDatos}<span style={{ fontSize: '13px', color: 'var(--ts)', fontWeight: 400, marginLeft: '3px' }}>/{UBICACIONES_INVENTARIO.length}</span>
+              </p>
+            </div>
 
-          <div style={{ display: 'grid', gap: '10px' }}>
-            {rowsActivas.map(row => (
-              <div key={row.localId} style={{ border: '1px solid var(--bo)', borderRadius: '12px', padding: '12px', background: 'var(--bg)' }}>
-                <div className="inventario-row-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(120px, 0.8fr) auto', gap: '10px', alignItems: 'end' }}>
-                  <div>
-                    <label style={label}>Producto</label>
-                    <ProductSearchSelect
-                      value={row.codigo_producto}
-                      onChange={codigo => handleProductoChange(row.localId, codigo)}
-                      productos={maestros?.productos ?? []}
-                      placeholder={`Buscar en ${(maestros?.productos ?? []).length} productos...`}
-                      allowManual={false}
-                    />
-                  </div>
-                  <div>
-                    <label style={label}>Cantidad</label>
-                    <input
-                      type="number"
-                      min={0}
-                      step="any"
-                      value={row.cantidad}
-                      onChange={e => updateRow(row.localId, { cantidad: e.target.value })}
-                      style={field}
-                      placeholder="0"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeRow(row.localId)}
-                    style={{ border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#991B1B', borderRadius: '10px', padding: '10px 12px', cursor: 'pointer', fontSize: '13px', fontWeight: 700, minHeight: '42px' }}
-                  >
-                    Quitar
-                  </button>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginTop: '10px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--tx)' }}>
-                    {row.nombre_producto || 'Sin producto seleccionado'}
-                  </span>
-                  <span style={{ fontSize: '12px', color: 'var(--ts)' }}>
-                    {row.codigo_producto || '-'} {row.unidad_medida ? `· ${row.unidad_medida}` : ''}
-                  </span>
-                </div>
+            {!responsableId && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: '8px', padding: '5px 11px' }}>
+                <span style={{ fontSize: '12px', color: '#991B1B', fontWeight: 600 }}>Falta responsable</span>
               </div>
-            ))}
+            )}
           </div>
-        </section>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '12px', background: 'var(--sf)', border: '1px solid var(--bo)', padding: '4px 12px', borderRadius: '20px', color: 'var(--ts)' }}>
-              {totalValidas} producto{totalValidas !== 1 ? 's' : ''} listo{totalValidas !== 1 ? 's' : ''}
-            </span>
-            <span style={{ fontSize: '12px', background: 'var(--sf)', border: '1px solid var(--bo)', padding: '4px 12px', borderRadius: '20px', color: 'var(--ts)' }}>
-              {UBICACIONES_INVENTARIO.length} ubicaciones
-            </span>
-          </div>
           <button
             type="button"
             onClick={() => {
-              setRows([emptyRow(UBICACIONES_INVENTARIO[0])]);
+              setRows([]);
               setUbicacionActiva(UBICACIONES_INVENTARIO[0]);
             }}
-            style={{ border: '1px solid var(--bo)', background: 'var(--sf)', color: 'var(--ts)', borderRadius: '10px', padding: '11px 16px', cursor: 'pointer', fontSize: '13px', fontWeight: 700 }}
+            style={{ border: '1px solid var(--bo)', background: 'var(--sf)', color: 'var(--ts)', borderRadius: '10px', padding: '12px 18px', cursor: 'pointer', fontSize: '13px', fontWeight: 700 }}
           >
             Limpiar
           </button>
           <button
             type="submit"
-            disabled={saving || !puedeGuardar}
-            style={{ border: 'none', background: saving || !puedeGuardar ? '#94A3B8' : '#0D9373', color: '#fff', borderRadius: '10px', padding: '11px 18px', cursor: saving ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 800, minWidth: '180px' }}
+            disabled={saving || !canSave}
+            style={{
+              border: 'none',
+              background: saving ? 'var(--ts)' : canSave ? '#0D9373' : 'var(--bo)',
+              color: saving || canSave ? '#fff' : 'var(--ts)',
+              borderRadius: '10px',
+              padding: '12px 28px',
+              cursor: saving ? 'wait' : canSave ? 'pointer' : 'not-allowed',
+              fontSize: '14px',
+              fontWeight: 800,
+              minWidth: '200px',
+              fontFamily: 'DM Sans, sans-serif',
+            }}
           >
             {saving ? 'Enviando...' : 'Enviar inventario'}
           </button>
@@ -416,14 +764,9 @@ export default function InventarioPage() {
       </form>
 
       <style>{`
-        @media (max-width: 960px) {
-          .inventario-head-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-        @media (max-width: 720px) {
-          .inventario-row-grid {
-            grid-template-columns: 1fr;
+        @media (max-width: 1023px) {
+          .inventario-grid {
+            grid-template-columns: 1fr !important;
           }
         }
       `}</style>

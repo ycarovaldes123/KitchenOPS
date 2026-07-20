@@ -69,10 +69,31 @@ function formatTotalProduccion(
   return total >= 1000 ? `${(total / 1000).toFixed(2)} kg` : `${total} g`;
 }
 
+function formatPPDisplay(item: Record<string, unknown>) {
+  const codigo = String(item.codigo_producto ?? '').trim();
+  const nombre = String(item.nombre_pp ?? item.nombre ?? '').trim();
+  if (codigo && nombre) return `${codigo} - ${nombre}`;
+  return codigo || nombre || 'Sin codigo';
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 type Tab = 'produccion' | 'colacion' | 'mermas' | 'frutas' | 'inventario';
 const PAGE_SIZE = 50;
+
+type HistorialSummary = {
+  registros?: number;
+  lineas?: number;
+  inscritos?: number;
+  productos?: number;
+  platos?: number;
+  cantidad_total?: number;
+  costo_total?: number | null;
+  promedio_registro?: number | null;
+  promedio_plato?: number | null;
+  promedio_productos?: number | null;
+  truncated?: boolean;
+};
 
 // ─── Shared styles ──────────────────────────────────────────────────────────
 
@@ -114,6 +135,58 @@ function MetaRow({ icon, label, value }: { icon: string; label: string; value: s
       <span style={{ fontSize: '13px', flexShrink: 0 }}>{icon}</span>
       <span style={{ color: 'var(--ts)' }}>{label}:</span>
       <span style={{ color: 'var(--tx)', fontWeight: 600 }}>{value}</span>
+    </div>
+  );
+}
+
+function SummaryPanel({ tab, summary, verCostos }: { tab: Tab; summary: HistorialSummary | null; verCostos: boolean }) {
+  if (!summary || (summary.registros ?? 0) === 0) return null;
+
+  const numberFmt = (value: number | null | undefined) => value == null ? '—' : new Intl.NumberFormat('es-CL', { maximumFractionDigits: 2 }).format(value);
+  const items: Array<{ label: string; value: string; highlight?: boolean }> = [];
+
+  if (verCostos && summary.costo_total != null) {
+    items.push({ label: 'Costo total', value: formatCLP(summary.costo_total), highlight: true });
+  }
+
+  if (tab === 'colacion') {
+    if (verCostos) items.push({ label: 'Promedio / plato', value: summary.promedio_plato != null ? formatCLP(summary.promedio_plato) : '—' });
+    if (verCostos) items.push({ label: 'Promedio / colación', value: summary.promedio_registro != null ? formatCLP(summary.promedio_registro) : '—' });
+    items.push({ label: 'Inscritos', value: `${numberFmt(summary.inscritos)} personas` });
+    items.push({ label: 'Ingredientes', value: numberFmt(summary.lineas) });
+  } else if (tab === 'produccion') {
+    if (verCostos) items.push({ label: 'Promedio / informe', value: summary.promedio_registro != null ? formatCLP(summary.promedio_registro) : '—' });
+    items.push({ label: 'PP registrados', value: numberFmt(summary.lineas) });
+    items.push({ label: 'Informes', value: numberFmt(summary.registros) });
+  } else if (tab === 'frutas') {
+    if (verCostos) items.push({ label: 'Promedio / registro', value: summary.promedio_registro != null ? formatCLP(summary.promedio_registro) : '—' });
+    items.push({ label: 'Productos', value: numberFmt(summary.lineas) });
+    items.push({ label: 'Registros', value: numberFmt(summary.registros) });
+  } else if (tab === 'mermas') {
+    if (verCostos) items.push({ label: 'Promedio / merma', value: summary.promedio_registro != null ? formatCLP(summary.promedio_registro) : '—' });
+    items.push({ label: 'Productos', value: numberFmt(summary.productos) });
+    items.push({ label: 'Platos', value: numberFmt(summary.platos) });
+    items.push({ label: 'Registros', value: numberFmt(summary.registros) });
+  } else if (tab === 'inventario') {
+    items.push({ label: 'Productos contados', value: numberFmt(summary.productos) });
+    items.push({ label: 'Cantidad total', value: numberFmt(summary.cantidad_total) });
+    items.push({ label: 'Promedio / toma', value: numberFmt(summary.promedio_productos) });
+    items.push({ label: 'Tomas', value: numberFmt(summary.registros) });
+  }
+
+  return (
+    <div style={{ borderTop: '1px solid var(--bo)', background: 'var(--bg)', padding: '14px 20px' }}>
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'stretch' }}>
+        {items.map(item => (
+          <div key={item.label} style={{ minWidth: '150px', flex: '1 1 150px', border: '1px solid var(--bo)', borderRadius: '8px', background: item.highlight ? 'var(--al)' : 'var(--sf)', padding: '10px 12px' }}>
+            <p style={{ margin: '0 0 3px', fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{item.label}</p>
+            <p style={{ margin: 0, fontFamily: "'Space Grotesk', sans-serif", fontSize: item.highlight ? '18px' : '16px', fontWeight: 800, color: item.highlight ? 'var(--ac)' : 'var(--tx)' }}>{item.value}</p>
+          </div>
+        ))}
+      </div>
+      {summary.truncated && (
+        <p style={{ margin: '8px 0 0', fontSize: '11px', color: 'var(--ts)' }}>Resumen calculado sobre los primeros 10.000 registros del rango.</p>
+      )}
     </div>
   );
 }
@@ -275,7 +348,7 @@ function TablaProduccion({ datos, canEdit, isAdmin, onRefresh, verCostos, produc
   const ppsMap = new Map(pps.map(pp => [pp.id as string, pp]));
   const ppOptions = useMemo(() => pps.map(pp => ({
     value: pp.id as string,
-    label: `${pp.id as string} · ${pp.nombre as string}`,
+    label: formatPPDisplay(pp),
     searchText: [pp.id, pp.nombre, pp.codigo_producto, pp.tipo_pp].filter(Boolean).join(' '),
   })), [pps]);
   const saveEditProd = async (prodId: string, det: Record<string, unknown>[], rend: Record<string, unknown>[]) => {
@@ -348,8 +421,8 @@ function TablaProduccion({ datos, canEdit, isAdmin, onRefresh, verCostos, produc
             const rend = (p.rendimiento as Record<string, unknown>[]) ?? [];
             const ct   = det.reduce((s, d) => s + ((d.costo_total as number) ?? 0), 0);
             const open = expanded.has(id);
-            // Preview: first 2 PP names
-            const preview = det.slice(0, 2).map(d => d.nombre_pp as string);
+            // Preview: first 2 PP codes and names
+            const preview = det.slice(0, 2).map(d => formatPPDisplay(d));
             const extra   = det.length > 2 ? det.length - 2 : 0;
 
             return [
@@ -370,7 +443,7 @@ function TablaProduccion({ datos, canEdit, isAdmin, onRefresh, verCostos, produc
                   ) : (
                     <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center' }}>
                       {preview.map((n, i) => (
-                        <span key={i} style={{ fontSize: '11px', background: 'var(--bo)', color: 'var(--tx)', padding: '2px 8px', borderRadius: '4px', fontWeight: 500, whiteSpace: 'nowrap' }}>{n}</span>
+                        <span key={i} title={n} style={{ fontSize: '11px', background: 'var(--bo)', color: 'var(--tx)', padding: '2px 8px', borderRadius: '4px', fontWeight: 500, whiteSpace: 'nowrap', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{n}</span>
                       ))}
                       {extra > 0 && <span style={{ fontSize: '11px', color: 'var(--ts)' }}>+{extra} más</span>}
                     </div>
@@ -482,7 +555,7 @@ function TablaProduccion({ datos, canEdit, isAdmin, onRefresh, verCostos, produc
                               const costo = d.costo_total as number;
                               return (
                                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--sf)', borderRadius: '7px', padding: '7px 12px' }}>
-                                  <span style={{ flex: 1, fontSize: '13px', fontWeight: 500, color: 'var(--tx)' }}>{d.nombre_pp as string}</span>
+                                  <span title={formatPPDisplay(d)} style={{ flex: 1, minWidth: 0, fontSize: '13px', fontWeight: 500, color: 'var(--tx)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatPPDisplay(d)}</span>
                                   {isEditing ? (
                                     <>
                                       <input type="number" value={qty} min={0} step="any"
@@ -760,8 +833,20 @@ function TablaColacion({ datos, canEdit, isAdmin, onRefresh, verCostos, producto
                     {cpp ? formatCLP(cpp) : <span style={{ color: 'var(--ts)' }}>—</span>}
                   </td>
                 )}
-                <td style={{ ...tdSt, textAlign: 'right', width: '48px' }}>
-                  <ExpandBtn open={open} />
+                <td style={{ ...tdSt, textAlign: 'right', width: canEdit ? '116px' : '48px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={e => { e.stopPropagation(); deleteRecord(id); }}
+                        title="Borrar colacion"
+                        style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '4px', background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5', cursor: 'pointer', fontWeight: 700 }}
+                      >
+                        Borrar
+                      </button>
+                    )}
+                    <ExpandBtn open={open} />
+                  </div>
                 </td>
               </tr>,
 
@@ -861,6 +946,16 @@ function TablaColacion({ datos, canEdit, isAdmin, onRefresh, verCostos, producto
                                         <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>
                                           {formatCLP(Math.round(qty * costoUnitarioEdit))}
                                         </span>
+                                      )}
+                                      {isAdmin && (
+                                        <button
+                                          type="button"
+                                          onClick={e => { e.stopPropagation(); removeDetalle(d.id as string); }}
+                                          title="Quitar ingrediente"
+                                          style={{ border: 'none', background: 'transparent', color: '#B91C1C', cursor: 'pointer', fontSize: '16px', lineHeight: 1, fontWeight: 700, padding: '0 2px' }}
+                                        >
+                                          x
+                                        </button>
                                       )}
                                     </>
                                   ) : (
@@ -1933,6 +2028,7 @@ export default function HistorialPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [err,     setErr]     = useState('');
   const [total, setTotal] = useState(0);
+  const [summary, setSummary] = useState<HistorialSummary | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [nextOffset, setNextOffset] = useState(0);
   const [maestros, setMaestros] = useState<{ productos: Record<string, unknown>[]; pps: Record<string, unknown>[] }>({ productos: [], pps: [] });
@@ -1942,7 +2038,7 @@ export default function HistorialPage() {
     const append = opts?.append ?? false;
     const offset = opts?.offset ?? 0;
     if (append) setLoadingMore(true);
-    else { setLoading(true); setErr(''); setDatos([]); }
+    else { setLoading(true); setErr(''); setDatos([]); setSummary(null); }
     try {
       const params = new URLSearchParams({
         tipo: t,
@@ -1958,6 +2054,7 @@ export default function HistorialPage() {
       const items = data.items ?? [];
       setDatos(prev => append ? [...prev, ...items] : items);
       setTotal(data.count ?? items.length);
+      setSummary(data.summary ?? null);
       setHasMore(Boolean(data.hasMore));
       setNextOffset(data.nextOffset ?? (offset + items.length));
     } catch (e: unknown) {
@@ -2096,6 +2193,7 @@ export default function HistorialPage() {
             {tab === 'frutas'     && <TablaFrutas     datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} />}
             {tab === 'inventario' && <TablaInventario datos={datos} isAdmin={isAdmin} onRefresh={refresh} productos={maestros.productos} />}
             {tab === 'mermas'     && <TablaMermas     datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} />}
+            <SummaryPanel tab={tab} summary={summary} verCostos={verCostos} />
             {hasMore && (
               <div style={{ padding: '0 20px 20px', display: 'flex', justifyContent: 'center' }}>
                 <button

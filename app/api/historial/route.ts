@@ -7,6 +7,7 @@ function hoyChile() {
 }
 
 const SEARCH_FETCH_LIMIT = 5000;
+const SUMMARY_FETCH_LIMIT = 10000;
 
 function normalizarBusqueda(value: string) {
   return value
@@ -26,7 +27,98 @@ function textoBuscable(value: unknown): string {
   return '';
 }
 
-function responderConBusqueda(data: unknown[] | null, busqueda: string, offset: number, limit: number, baseCount?: number | null) {
+function asRecordRows(data: unknown[] | null | undefined) {
+  return (data ?? []) as Record<string, unknown>[];
+}
+
+function childRows(row: Record<string, unknown>, key: string) {
+  return Array.isArray(row[key]) ? (row[key] as Record<string, unknown>[]) : [];
+}
+
+function num(value: unknown) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function sumChildCost(rows: Record<string, unknown>[], key: string) {
+  return rows.reduce((sum, row) => sum + childRows(row, key).reduce((s, d) => s + num(d.costo_total), 0), 0);
+}
+
+function buildSummary(tipo: string, rowsUnknown: unknown[] | null | undefined, verCostos: boolean, truncated = false) {
+  const rows = asRecordRows(rowsUnknown);
+  const registros = rows.length;
+
+  if (tipo === 'produccion') {
+    const lineas = rows.reduce((sum, row) => sum + childRows(row, 'detalle_produccion').length, 0);
+    const costo_total = verCostos ? sumChildCost(rows, 'detalle_produccion') : null;
+    return {
+      registros,
+      lineas,
+      costo_total,
+      promedio_registro: verCostos && registros > 0 ? Math.round((costo_total ?? 0) / registros) : null,
+      truncated,
+    };
+  }
+
+  if (tipo === 'colacion') {
+    const ingredientes = rows.reduce((sum, row) => sum + childRows(row, 'detalle_colacion').length, 0);
+    const inscritos = rows.reduce((sum, row) => sum + num(row.n_inscritos), 0);
+    const costo_total = verCostos ? rows.reduce((sum, row) => sum + num(row.costo_total), 0) : null;
+    return {
+      registros,
+      lineas: ingredientes,
+      inscritos,
+      costo_total,
+      promedio_registro: verCostos && registros > 0 ? Math.round((costo_total ?? 0) / registros) : null,
+      promedio_plato: verCostos && inscritos > 0 ? Math.round((costo_total ?? 0) / inscritos) : null,
+      truncated,
+    };
+  }
+
+  if (tipo === 'frutas') {
+    const lineas = rows.reduce((sum, row) => sum + childRows(row, 'detalle_frutas').length, 0);
+    const costo_total = verCostos ? rows.reduce((sum, row) => sum + num(row.costo_total), 0) : null;
+    return {
+      registros,
+      lineas,
+      costo_total,
+      promedio_registro: verCostos && registros > 0 ? Math.round((costo_total ?? 0) / registros) : null,
+      truncated,
+    };
+  }
+
+  if (tipo === 'mermas') {
+    const productos = rows.reduce((sum, row) => sum + childRows(row, 'detalle_mermas').length, 0);
+    const platos = rows.reduce((sum, row) => sum + childRows(row, 'detalle_mermas_platos').length, 0);
+    const costo_total = verCostos ? sumChildCost(rows, 'detalle_mermas') : null;
+    return {
+      registros,
+      lineas: productos + platos,
+      productos,
+      platos,
+      costo_total,
+      promedio_registro: verCostos && registros > 0 ? Math.round((costo_total ?? 0) / registros) : null,
+      truncated,
+    };
+  }
+
+  if (tipo === 'inventario') {
+    const productos = rows.reduce((sum, row) => sum + childRows(row, 'detalle_inventario').length, 0);
+    const cantidad_total = rows.reduce((sum, row) => sum + childRows(row, 'detalle_inventario').reduce((s, d) => s + num(d.cantidad), 0), 0);
+    return {
+      registros,
+      lineas: productos,
+      productos,
+      cantidad_total,
+      promedio_productos: registros > 0 ? Math.round(productos / registros) : 0,
+      truncated,
+    };
+  }
+
+  return { registros, lineas: 0, truncated };
+}
+
+function responderConBusqueda(data: unknown[] | null, busqueda: string, offset: number, limit: number, tipo: string, verCostos: boolean, baseCount?: number | null) {
   const terms = normalizarBusqueda(busqueda).split(/\s+/).filter(Boolean);
   const rows = data ?? [];
   const filtered = terms.length
@@ -42,15 +134,18 @@ function responderConBusqueda(data: unknown[] | null, busqueda: string, offset: 
     hasMore: offset + items.length < filtered.length,
     nextOffset: offset + items.length,
     truncated: Boolean(baseCount && baseCount > SEARCH_FETCH_LIMIT),
+    summary: buildSummary(tipo, filtered, verCostos, Boolean(baseCount && baseCount > SEARCH_FETCH_LIMIT)),
   });
 }
 
-function responderPaginado(data: unknown[] | null, count: number | null, offset: number) {
+function responderPaginado(data: unknown[] | null, count: number | null, offset: number, tipo: string, verCostos: boolean, summaryRows?: unknown[] | null) {
+  const summaryTruncated = Boolean(count && count > SUMMARY_FETCH_LIMIT);
   return NextResponse.json({
     items: data ?? [],
     count: count ?? 0,
     hasMore: offset + (data?.length ?? 0) < (count ?? 0),
     nextOffset: offset + (data?.length ?? 0),
+    summary: buildSummary(tipo, summaryRows ?? data ?? [], verCostos, summaryTruncated),
   });
 }
 
@@ -90,11 +185,20 @@ export async function GET(req: NextRequest) {
     if (busqueda) {
       const { data, error, count } = await q.limit(SEARCH_FETCH_LIMIT);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return responderConBusqueda(data ?? [], busqueda, offset, limit, count);
+      return responderConBusqueda(data ?? [], busqueda, offset, limit, tipo, verCostos, count);
     }
     const { data, error, count } = await q.range(offset, offset + limit - 1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return responderPaginado(data ?? [], count, offset);
+    let sq = supabase
+      .from('produccion')
+      .select(`id,fecha,detalle_produccion(${detalleSelect})`)
+      .order('fecha', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (desde) sq = sq.gte('fecha', desde);
+    if (hasta) sq = sq.lte('fecha', hasta);
+    const { data: summaryData, error: summaryError } = await sq.limit(SUMMARY_FETCH_LIMIT);
+    if (summaryError) return NextResponse.json({ error: summaryError.message }, { status: 500 });
+    return responderPaginado(data ?? [], count, offset, tipo, verCostos, summaryData ?? []);
   }
 
   if (tipo === 'colacion') {
@@ -114,11 +218,20 @@ export async function GET(req: NextRequest) {
     if (busqueda) {
       const { data, error, count } = await q.limit(SEARCH_FETCH_LIMIT);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return responderConBusqueda(data ?? [], busqueda, offset, limit, count);
+      return responderConBusqueda(data ?? [], busqueda, offset, limit, tipo, verCostos, count);
     }
     const { data, error, count } = await q.range(offset, offset + limit - 1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return responderPaginado(data ?? [], count, offset);
+    let sq = supabase
+      .from('colacion')
+      .select(parentSelect)
+      .order('fecha', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (desde) sq = sq.gte('fecha', desde);
+    if (hasta) sq = sq.lte('fecha', hasta);
+    const { data: summaryData, error: summaryError } = await sq.limit(SUMMARY_FETCH_LIMIT);
+    if (summaryError) return NextResponse.json({ error: summaryError.message }, { status: 500 });
+    return responderPaginado(data ?? [], count, offset, tipo, verCostos, summaryData ?? []);
   }
 
   if (tipo === 'mermas') {
@@ -147,8 +260,13 @@ export async function GET(req: NextRequest) {
         : await buildQuery(baseSelect).range(offset, offset + limit - 1);
     }
     if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
-    if (busqueda) return responderConBusqueda(result.data ?? [], busqueda, offset, limit, result.count);
-    return responderPaginado(result.data ?? [], result.count, offset);
+    if (busqueda) return responderConBusqueda(result.data ?? [], busqueda, offset, limit, tipo, verCostos, result.count);
+    let summaryResult = await buildQuery(platosSelect).limit(SUMMARY_FETCH_LIMIT);
+    if (summaryResult.error && summaryResult.error.message.includes('detalle_mermas_platos')) {
+      summaryResult = await buildQuery(baseSelect).limit(SUMMARY_FETCH_LIMIT);
+    }
+    if (summaryResult.error) return NextResponse.json({ error: summaryResult.error.message }, { status: 500 });
+    return responderPaginado(result.data ?? [], result.count, offset, tipo, verCostos, summaryResult.data ?? []);
   }
 
   if (tipo === 'frutas') {
@@ -168,11 +286,20 @@ export async function GET(req: NextRequest) {
     if (busqueda) {
       const { data, error, count } = await q.limit(SEARCH_FETCH_LIMIT);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return responderConBusqueda(data ?? [], busqueda, offset, limit, count);
+      return responderConBusqueda(data ?? [], busqueda, offset, limit, tipo, verCostos, count);
     }
     const { data, error, count } = await q.range(offset, offset + limit - 1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return responderPaginado(data ?? [], count, offset);
+    let sq = supabase
+      .from('frutas')
+      .select(parentSelect)
+      .order('fecha', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (desde) sq = sq.gte('fecha', desde);
+    if (hasta) sq = sq.lte('fecha', hasta);
+    const { data: summaryData, error: summaryError } = await sq.limit(SUMMARY_FETCH_LIMIT);
+    if (summaryError) return NextResponse.json({ error: summaryError.message }, { status: 500 });
+    return responderPaginado(data ?? [], count, offset, tipo, verCostos, summaryData ?? []);
   }
 
   if (tipo === 'inventario') {
@@ -187,11 +314,20 @@ export async function GET(req: NextRequest) {
     if (busqueda) {
       const { data, error, count } = await q.limit(SEARCH_FETCH_LIMIT);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return responderConBusqueda(data ?? [], busqueda, offset, limit, count);
+      return responderConBusqueda(data ?? [], busqueda, offset, limit, tipo, verCostos, count);
     }
     const { data, error, count } = await q.range(offset, offset + limit - 1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return responderPaginado(data ?? [], count, offset);
+    let sq = supabase
+      .from('inventarios')
+      .select(parentSelect)
+      .order('fecha', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (desde) sq = sq.gte('fecha', desde);
+    if (hasta) sq = sq.lte('fecha', hasta);
+    const { data: summaryData, error: summaryError } = await sq.limit(SUMMARY_FETCH_LIMIT);
+    if (summaryError) return NextResponse.json({ error: summaryError.message }, { status: 500 });
+    return responderPaginado(data ?? [], count, offset, tipo, verCostos, summaryData ?? []);
   }
 
   return NextResponse.json({ error: 'Tipo invalido' }, { status: 400 });

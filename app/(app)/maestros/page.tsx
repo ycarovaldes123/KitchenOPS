@@ -87,6 +87,7 @@ export default function MaestrosPage() {
   const [prodEditModal, setProdEditModal] = useState<Producto | null>(null);
   const [prodEditCode, setProdEditCode]   = useState('');
   const [prodEditName, setProdEditName]   = useState('');
+  const [prodEditCost, setProdEditCost]   = useState('');
   const [prodEditSaving, setProdEditSaving] = useState(false);
   const [prodEditError, setProdEditError] = useState('');
 
@@ -117,9 +118,9 @@ export default function MaestrosPage() {
   async function load() {
     setLoading(true);
     const [rPP, rProd, rResp] = await Promise.all([
-      fetch('/api/maestros/pp').then(r => r.json()),
-      fetch('/api/maestros/productos').then(r => r.json()),
-      fetch('/api/maestros').then(r => r.json()).then(d => d.responsables),
+      fetch('/api/maestros/pp', { cache: 'no-store' }).then(r => r.json()),
+      fetch('/api/maestros/productos', { cache: 'no-store' }).then(r => r.json()),
+      fetch('/api/maestros', { cache: 'no-store' }).then(r => r.json()).then(d => d.responsables),
     ]);
     setPPs(Array.isArray(rPP) ? rPP : []);
     setProductos(Array.isArray(rProd) ? rProd : []);
@@ -255,6 +256,7 @@ export default function MaestrosPage() {
     setProdEditModal(p);
     setProdEditCode(p.codigo);
     setProdEditName(p.nombre);
+    setProdEditCost(String(p.costo_promedio ?? 0));
     setProdEditError('');
   }
 
@@ -262,15 +264,17 @@ export default function MaestrosPage() {
     if (!prodEditModal) return;
     const codigo = isAdmin ? prodEditCode.trim() : prodEditModal.codigo;
     const nombre = prodEditName.trim();
+    const costo = Number.parseFloat(prodEditCost.replace(',', '.'));
     if (isAdmin && !codigo) { setProdEditError('El codigo es requerido'); return; }
     if (!nombre) { setProdEditError('El nombre es requerido'); return; }
+    if (!Number.isFinite(costo) || costo < 0) { setProdEditError('El costo debe ser un numero valido'); return; }
 
     setProdEditSaving(true);
     setProdEditError('');
     const r = await fetch(`/api/maestros/productos/${encodeURIComponent(prodEditModal.codigo)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(isAdmin ? { codigo, nombre } : { nombre }),
+      body: JSON.stringify(isAdmin ? { codigo, nombre, costo_promedio: costo } : { nombre, costo_promedio: costo }),
     });
     const data = await r.json();
     if (!r.ok) {
@@ -294,7 +298,7 @@ export default function MaestrosPage() {
       const data = await r.json();
       if (!r.ok) { setUploadError(data.error ?? 'Error al procesar'); return; }
       setUploadResult(data);
-      load();
+      await load();
     } catch {
       setUploadError('Error de conexión');
     } finally {
@@ -735,7 +739,7 @@ export default function MaestrosPage() {
                       </Td>
                       <Td>
                         <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                          {canManageProductos && <button onClick={() => openEditProd(p)} style={btnSm}>Editar nombre</button>}
+                          {canManageProductos && <button onClick={() => openEditProd(p)} style={btnSm}>Editar</button>}
                           {canManageProductos && (
                             <button onClick={() => toggleProducto(p)} style={{ ...btnSm, color: p.activo ? 'var(--rd)' : 'var(--tl)' }}>
                               {p.activo ? 'Desactivar' : 'Activar'}
@@ -905,6 +909,16 @@ export default function MaestrosPage() {
             value={prodEditName}
             onChange={e => setProdEditName(e.target.value)}
             placeholder="CARNE PLATEADA"
+            style={{ ...inputStyle, marginBottom: '12px' }}
+          />
+
+          <label style={labelStyle}>Costo promedio (CLP)</label>
+          <input
+            type="number"
+            value={prodEditCost}
+            onChange={e => setProdEditCost(e.target.value)}
+            placeholder="0"
+            step="any"
             style={{ ...inputStyle, marginBottom: '12px' }}
           />
 

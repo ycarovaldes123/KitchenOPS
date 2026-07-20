@@ -10,6 +10,31 @@ import { auditLog } from '@/lib/audit';
 // Reads: Cod. Producto | Producto | Cod. U. Medida | Costo Unit.
 // Updates: productos.costo_promedio where productos.codigo = Cod. Producto
 
+function normalizeCodigo(value: unknown) {
+  if (value === null || value === undefined) return '';
+  const raw = typeof value === 'number'
+    ? (Number.isInteger(value) ? value.toFixed(0) : String(value))
+    : String(value);
+
+  const cleaned = raw.trim().replace(/\.0+$/, '');
+  return /^\d{1,6}$/.test(cleaned) ? cleaned.padStart(7, '0') : cleaned;
+}
+
+function parseCosto(value: unknown) {
+  if (typeof value === 'number') return value;
+  const text = String(value ?? '')
+    .trim()
+    .replace(/\$/g, '')
+    .replace(/\s/g, '');
+
+  if (!text) return Number.NaN;
+  const normalized = text.includes(',') && text.includes('.')
+    ? text.replace(/\./g, '').replace(',', '.')
+    : text.replace(',', '.');
+
+  return Number.parseFloat(normalized);
+}
+
 export async function POST(req: NextRequest) {
   const s = await requireRol(['admin', 'finanzas']);
   if (!s.ok) return s.response;
@@ -31,15 +56,13 @@ export async function POST(req: NextRequest) {
 
   for (let i = 1; i < rows.length; i++) {
     const row          = rows[i] as (string | number | null | undefined)[];
-    const codigo       = String(row[0] ?? '').trim();
+    const codigo       = normalizeCodigo(row[0]);
     const nombre       = String(row[1] ?? '').trim();
     const unidad_medida = String(row[2] ?? '').trim().toUpperCase() || 'KG';
-    const costo        = typeof row[3] === 'number' ? row[3] : parseFloat(String(row[3] ?? ''));
+    const costo        = parseCosto(row[3]);
     if (!codigo) continue;
-    // 0502xxx = PP terminados — costo calculado por el sistema, nunca desde Softland
-    if (codigo.startsWith('0502')) continue;
     if (!isNaN(costo) && costo > 0) {
-      conCosto.push({ codigo, nombre, unidad_medida, costo: Math.round(costo) });
+      conCosto.push({ codigo, nombre, unidad_medida, costo });
     } else if (!isNaN(costo) && costo === 0) {
       // Softland envía 0 cuando el stock es 0 — conservar último costo conocido
       softlandSinCosto.push(nombre ? `${codigo} — ${nombre}` : codigo);
@@ -65,10 +88,15 @@ export async function POST(req: NextRequest) {
   let insertados    = 0;
   const errores: string[] = [];
 
-  for (const { codigo, costo } of paraActualizar) {
+  for (const { codigo, nombre, unidad_medida, costo } of paraActualizar) {
     const { error } = await supabase
       .from('productos')
-      .update({ costo_promedio: costo })
+      .update({
+        nombre: nombre.trim().toUpperCase(),
+        unidad_medida,
+        costo_promedio: costo,
+        updated_at: new Date().toISOString(),
+      })
       .eq('codigo', codigo);
     if (error) errores.push(`${codigo}: ${error.message}`);
     else actualizados++;

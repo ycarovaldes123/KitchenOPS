@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRol } from '@/lib/auth-server';
 import { createServiceClient } from '@/utils/supabase/server';
 
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+
 function slugify(value: string) {
   return value
     .normalize('NFD')
@@ -26,6 +28,10 @@ export async function POST(req: NextRequest) {
 
   if (!file.type.startsWith('image/')) {
     return NextResponse.json({ error: 'El archivo debe ser una imagen' }, { status: 400 });
+  }
+
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return NextResponse.json({ error: 'La foto es demasiado pesada. Usa una imagen menor a 4 MB.' }, { status: 413 });
   }
 
   const ext = file.name.includes('.') ? file.name.split('.').pop()!.toLowerCase() : 'jpg';

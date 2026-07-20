@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol } from '@/lib/auth-server';
 import { auditLog } from '@/lib/audit';
+import { recalcularCostosPP } from '@/lib/recalcular-pp';
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -129,6 +130,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     const { error: deleteErr } = await supabase.from('productos').delete().eq('codigo', codigo);
     if (deleteErr) return NextResponse.json({ error: deleteErr.message }, { status: 500 });
 
+    const ppResult = await recalcularCostosPP(supabase);
+
     await auditLog(supabase, {
       usuario_email: s.email,
       rol_usuario:   s.rol,
@@ -136,14 +139,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
       tabla:         'productos',
       registro_id:   codigoNuevo,
       datos_anteriores: { codigo },
-      datos_nuevos:  { ...updates, codigo: codigoNuevo },
+      datos_nuevos:  { ...updates, codigo: codigoNuevo, pp_recalculadas: ppResult.recalculadas },
     });
 
-    return NextResponse.json(inserted);
+    return NextResponse.json({ ...inserted, pp_recalculadas: ppResult.recalculadas, pp_errores: ppResult.errores.slice(0, 10) });
   }
 
   const { data, error } = await supabase.from('productos').update(updates).eq('codigo', codigo).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const shouldRecalculate = body.costo_promedio !== undefined || body.unidad_medida !== undefined || body.codigo !== undefined;
+  const ppResult = shouldRecalculate ? await recalcularCostosPP(supabase) : { recalculadas: 0, errores: [] };
 
   await auditLog(supabase, {
     usuario_email: s.email,
@@ -151,8 +157,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     accion:        body.nombre !== undefined ? 'modificar_producto' : 'editar_producto',
     tabla:         'productos',
     registro_id:   codigo,
-    datos_nuevos:  updates,
+    datos_nuevos:  { ...updates, pp_recalculadas: ppResult.recalculadas },
   });
 
-  return NextResponse.json(data);
+  return NextResponse.json({ ...data, pp_recalculadas: ppResult.recalculadas, pp_errores: ppResult.errores.slice(0, 10) });
 }

@@ -1,0 +1,45 @@
+
+> kitchenops@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.0.206:3000
+- Environments: .env.local
+✓ Ready in 1155ms
+
+ GET /login 200 in 560ms (next.js: 164ms, proxy.ts: 13ms, application-code: 384ms)
+ GET /api/auth/csrf 404 in 968ms (next.js: 885ms, proxy.ts: 10ms, application-code: 73ms)
+ POST /api/auth/callback/credentials 404 in 95ms (next.js: 18ms, proxy.ts: 14ms, application-code: 63ms)
+ GET /login 200 in 121ms (next.js: 11ms, proxy.ts: 14ms, application-code: 97ms)
+ GET /login?callbackUrl=http%3A%2F%2Flocalhost%3A3000%2Fdashboard 200 in 99ms (next.js: 5ms, proxy.ts: 10ms, application-code: 84ms)
+○ Compiling /dashboard ...
+ GET /dashboard 200 in 13.9s (next.js: 8.9s, proxy.ts: 1850ms, application-code: 3.2s)
+ GET /api/dashboard?desde=2026-06-06&hasta=2026-07-07 200 in 2.2s (next.js: 880ms, proxy.ts: 19ms, application-code: 1327ms)
+✓ Compiled in 1863ms
+ GET /dashboard 200 in 2.6s (next.js: 300ms, proxy.ts: 1932ms, application-code: 347ms)
+ GET /dashboard 200 in 1019ms (next.js: 8ms, proxy.ts: 720ms, application-code: 292ms)
+ GET /dashboard 200 in 690ms (next.js: 10ms, proxy.ts: 394ms, application-code: 286ms)
+ GET /dashboard 200 in 802ms (next.js: 13ms, proxy.ts: 475ms, application-code: 314ms)
+ GET /dashboard 200 in 699ms (next.js: 6ms, proxy.ts: 433ms, application-code: 261ms)
+ GET /kpis 200 in 1769ms (next.js: 479ms, proxy.ts: 174ms, application-code: 1117ms)
+ GET /api/kpis?desde=2026-07-01&hasta=2026-07-07 200 in 1223ms (next.js: 364ms, proxy.ts: 43ms, application-code: 815ms)
+ GET /dashboard 200 in 1249ms (next.js: 53ms, proxy.ts: 756ms, application-code: 440ms)
+ GET /api/dashboard?desde=2026-06-06&hasta=2026-07-07 200 in 777ms (next.js: 143ms, proxy.ts: 8ms, application-code: 626ms)
+ GET /historial 200 in 3.6s (next.js: 3.2s, proxy.ts: 233ms, application-code: 187ms)
+ GET /historial 200 in 260ms (next.js: 6ms, proxy.ts: 219ms, application-code: 34ms)
+ GET /historial 200 in 211ms (next.js: 7ms, proxy.ts: 173ms, application-code: 32ms)
+ GET /api/historial?tipo=produccion&desde=2026-07-01&hasta=2026-07-07&limit=50&offset=0 200 in 1429ms (next.js: 609ms, proxy.ts: 21ms, application-code: 798ms)
+ GET /api/maestros 200 in 1541ms (next.js: 120ms, proxy.ts: 12ms, application-code: 1409ms)
+ GET /api/maestros 200 in 748ms (next.js: 4ms, proxy.ts: 5ms, application-code: 740ms)
+ GET /kpis 200 in 1294ms (next.js: 183ms, proxy.ts: 842ms, application-code: 268ms)
+ GET /dashboard 200 in 1384ms (next.js: 285ms, proxy.ts: 842ms, application-code: 257ms)
+ GET /dashboard 200 in 572ms (next.js: 119ms, proxy.ts: 321ms, application-code: 132ms)
+ GET /kpis 200 in 573ms (next.js: 17ms, proxy.ts: 509ms, application-code: 47ms)
+ GET /dashboard 200 in 573ms (next.js: 95ms, proxy.ts: 353ms, application-code: 125ms)
+ GET /kpis 200 in 571ms (next.js: 17ms, proxy.ts: 507ms, application-code: 48ms)
+ GET /kpis 200 in 611ms (next.js: 157ms, proxy.ts: 321ms, application-code: 133ms)
+ GET /dashboard 200 in 612ms (next.js: 23ms, proxy.ts: 543ms, application-code: 46ms)
+ GET /api/kpis?desde=2026-06-01&hasta=2026-07-07 200 in 1542ms (next.js: 507ms, proxy.ts: 72ms, application-code: 964ms)
+ GET /api/kpis?desde=2026-06-01&hasta=2026-06-07 200 in 500ms (next.js: 10ms, proxy.ts: 10ms, application-code: 480ms)
+ GET /api/kpis?desde=2026-06-01&hasta=2026-06-30 200 in 395ms (next.js: 6ms, proxy.ts: 6ms, application-code: 382ms)

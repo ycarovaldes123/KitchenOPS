@@ -455,23 +455,21 @@ export async function GET(req: NextRequest) {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rowsFrutas), 'FRUTAS');
 
   const rowsInventario: unknown[][] = [
-    ['Fecha', 'Bodega / Camara', 'Responsable', 'Codigo producto', 'Descripcion', 'UM', 'Cantidad / Stock'],
+    ['Camaras', 'Codigo de producto', 'Nombre o producto', 'Cantidad ingresada', 'Responsable'],
   ];
   for (const inventario of inventarios) {
     for (const detalle of inventario.detalle_inventario ?? []) {
       rowsInventario.push([
-        inventario.fecha,
         detalle.ubicacion,
-        inventario.responsable_nombre,
         detalle.codigo_producto ?? '',
         detalle.nombre_producto,
-        detalle.unidad_medida ?? '',
         detalle.cantidad,
+        inventario.responsable_nombre,
       ]);
     }
 
     if (!inventario.detalle_inventario?.length) {
-      rowsInventario.push([inventario.fecha, '', inventario.responsable_nombre, '', '', '', '']);
+      rowsInventario.push(['', '', '', '', inventario.responsable_nombre]);
     }
   }
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rowsInventario), 'TOMA INVENTARIO');

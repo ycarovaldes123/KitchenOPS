@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol, getSessionRol } from '@/lib/auth-server';
 
+function toFiniteNumber(value: unknown) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function toCLP(value: unknown) {
+  return Math.round(toFiniteNumber(value));
+}
+
 export async function GET(req: NextRequest) {
   const s = await getSessionRol();
   if (!s.ok) return s.response;
@@ -46,7 +55,17 @@ export async function POST(req: NextRequest) {
   if (!detalle?.length)
     return NextResponse.json({ error: 'Ingresa al menos un ingrediente' }, { status: 400 });
 
-  const costo_total = detalle.reduce((s: number, d: { costo_total?: number }) => s + (d.costo_total ?? 0), 0);
+  const detalleRows = detalle.map((d: Record<string, unknown>) => {
+    const cantidad = toFiniteNumber(d.cantidad);
+    const costoUnitario = toCLP(d.costo_unitario);
+    return {
+      ...d,
+      cantidad,
+      costo_unitario: costoUnitario,
+      costo_total: Number.isFinite(Number(d.costo_total)) ? toCLP(d.costo_total) : toCLP(cantidad * costoUnitario),
+    };
+  });
+  const costo_total = detalleRows.reduce((s: number, d: { costo_total?: number }) => s + (d.costo_total ?? 0), 0);
 
   const { data: col, error: cErr } = await supabase
     .from('colacion')
@@ -56,7 +75,7 @@ export async function POST(req: NextRequest) {
 
   const { error: dErr } = await supabase
     .from('detalle_colacion')
-    .insert(detalle.map((d: Record<string, unknown>) => ({ ...d, colacion_id: col.id })));
+    .insert(detalleRows.map((d: Record<string, unknown>) => ({ ...d, colacion_id: col.id })));
   if (dErr) return NextResponse.json({ error: dErr.message }, { status: 500 });
 
   return NextResponse.json({ id: col.id }, { status: 201 });
@@ -117,7 +136,7 @@ export async function PATCH(req: NextRequest) {
       if (!Number.isFinite(cantidad) || cantidad < 0)
         return NextResponse.json({ error: 'Cantidad invalida' }, { status: 400 });
 
-      const cu = cuMap.get(d.id) ?? 0;
+      const cu = toCLP(cuMap.get(d.id) ?? 0);
       const { error } = await supabase
         .from('detalle_colacion')
         .update({
@@ -139,7 +158,7 @@ export async function PATCH(req: NextRequest) {
     const rows = nuevos.map(d => {
       const cantidad = Number(d.cantidad);
       if (!Number.isFinite(cantidad) || cantidad < 0) throw new Error('Cantidad invalida');
-      const costoUnitario = Number(d.costo_unitario) || 0;
+      const costoUnitario = toCLP(d.costo_unitario);
       return {
         colacion_id,
         codigo_producto: d.codigo_producto ?? null,
@@ -147,7 +166,7 @@ export async function PATCH(req: NextRequest) {
         cantidad,
         unidad_medida: d.unidad_medida ?? null,
         costo_unitario: costoUnitario,
-        costo_total: Number.isFinite(Number(d.costo_total)) ? Number(d.costo_total) : Math.round(cantidad * costoUnitario),
+        costo_total: Number.isFinite(Number(d.costo_total)) ? toCLP(d.costo_total) : toCLP(cantidad * costoUnitario),
       };
     });
     try {

@@ -35,8 +35,30 @@ create index if not exists idx_detalle_inventario_ubicacion
 alter table public.inventarios enable row level security;
 alter table public.detalle_inventario enable row level security;
 
-create policy "Acceso autenticado" on public.inventarios
-  for all using (auth.role() = 'authenticated');
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'inventarios'
+      and policyname = 'Acceso autenticado'
+  ) then
+    create policy "Acceso autenticado" on public.inventarios
+      for all using (auth.role() = 'authenticated');
+  end if;
+end $$;
 
-create policy "Acceso autenticado" on public.detalle_inventario
-  for all using (auth.role() = 'authenticated');
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'detalle_inventario'
+      and policyname = 'Acceso autenticado'
+  ) then
+    create policy "Acceso autenticado" on public.detalle_inventario
+      for all using (auth.role() = 'authenticated');
+  end if;
+end $$;
+
+notify pgrst, 'reload schema';

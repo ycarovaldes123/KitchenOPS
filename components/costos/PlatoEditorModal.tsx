@@ -55,6 +55,8 @@ interface Props {
 
 const CATEGORIAS = ['PICADAS', 'CLASICOS', 'CLÁSICOS', 'SANDWICH & BURGERS', 'ENSALADAS', 'POSTRES', 'CATERING'];
 const UNIDADES = ['KG', 'GR', 'LT', 'CC', 'UN', 'UND', 'PR'];
+const FOTO_MAX_DIMENSION = 1600;
+const FOTO_JPEG_QUALITY = 0.82;
 
 function newId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -100,6 +102,50 @@ function rowFromIngrediente(ing: Ingrediente): IngredienteForm {
     unidad_medida: ing.unidad_medida ?? 'KG',
     precio_unitario: ing.precio_unitario?.toString() ?? '',
   };
+}
+
+async function imageToOptimizedJpeg(file: File): Promise<File> {
+  if (file.type === 'image/svg+xml' || file.type === 'image/gif') return file;
+
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+
+    const scale = Math.min(1, FOTO_MAX_DIMENSION / Math.max(img.naturalWidth, img.naturalHeight));
+    const width = Math.max(1, Math.round(img.naturalWidth * scale));
+    const height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('No se pudo preparar la imagen');
+    ctx.drawImage(img, 0, 0, width, height);
+
+    const blob = await new Promise<Blob | null>(resolve => {
+      canvas.toBlob(resolve, 'image/jpeg', FOTO_JPEG_QUALITY);
+    });
+    if (!blob) throw new Error('No se pudo comprimir la foto');
+
+    const baseName = file.name.replace(/\.[^.]+$/, '') || 'foto-plato';
+    return new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function readJsonResponse(res: Response) {
+  const text = await res.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text) as Record<string, string>;
+  } catch {
+    if (res.status === 413 || text.toLowerCase().includes('request entity too large')) {
+      return { error: 'La foto es demasiado pesada. Prueba con otra imagen o una captura mas liviana.' };
+    }
+    return { error: text.slice(0, 180) || 'Respuesta invalida del servidor' };
+  }
 }
 
 export default function PlatoEditorModal({ plato, onClose, onSaved, canDelete = false, onDeleted }: Props) {
@@ -148,14 +194,16 @@ export default function PlatoEditorModal({ plato, onClose, onSaved, canDelete = 
     setUploadingFoto(true);
     setError('');
     try {
+      if (!file.type.startsWith('image/')) throw new Error('Selecciona un archivo de imagen');
+      const uploadFile = await imageToOptimizedJpeg(file);
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', uploadFile);
       formData.append('plato', nombre || plato?.nombre || 'plato');
       const res = await fetch('/api/carta/foto', {
         method: 'POST',
         body: formData,
       });
-      const data = await res.json();
+      const data = await readJsonResponse(res);
       if (!res.ok) throw new Error(data.error ?? 'Error subiendo foto');
       setFotoUrl(data.url ?? '');
     } catch (e) {
