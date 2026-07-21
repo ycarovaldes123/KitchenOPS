@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
       supabase,
       desde,
       hasta,
-      s.rol === 'admin' || s.rol === 'finanzas',
+      s.rol === 'admin' || s.rol === 'finanzas' || s.rol === 'cocina',
     );
 
     return NextResponse.json(payload);

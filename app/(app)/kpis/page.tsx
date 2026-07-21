@@ -86,14 +86,14 @@ function DestacadoCard({ label, fecha, titulo, sub, costo, vacio }: {
   label: string; fecha?: string; titulo?: string; sub?: string; costo?: number; vacio?: string;
 }) {
   return (
-    <div style={{ background: 'var(--sf)', borderRadius: '12px', border: '1px solid var(--bo)', borderLeft: '4px solid #DC2626', padding: '16px 20px' }}>
-      <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px' }}>{label}</p>
+    <div className="kpi-destacado-card" style={{ background: 'var(--sf)', borderRadius: '12px', border: '1px solid var(--bo)', borderLeft: '4px solid #DC2626' }}>
+      <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 10px' }}>{label}</p>
       {vacio ? (
         <p style={{ fontSize: '13px', color: 'var(--ts)', margin: 0 }}>{vacio}</p>
       ) : (
         <>
-          <p style={{ fontSize: '20px', fontWeight: 800, margin: '0 0 2px' }}>{titulo}</p>
-          <p style={{ fontSize: '22px', fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: '#DC2626', margin: '0 0 4px' }}>
+          <p className="destacado-titulo" style={{ fontSize: '20px', fontWeight: 800, margin: '0 0 4px' }}>{titulo}</p>
+          <p className="destacado-costo" style={{ fontSize: '26px', fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: '#DC2626', margin: '0 0 6px' }}>
             {costo != null ? formatCLP(costo) : '—'}
           </p>
           <p style={{ fontSize: '12px', color: 'var(--ts)', margin: 0 }}>{fecha ? formatFechaLarga(fecha) : ''}{sub ? ` · ${sub}` : ''}</p>
@@ -264,7 +264,7 @@ export default function KpisPage() {
           <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px' }}>
             Registros mas caros del periodo
           </p>
-          <div className="kpi-grid" style={{ marginBottom: '18px' }}>
+          <div className="kpi-destacados-grid" style={{ marginBottom: '22px' }}>
             {destacados?.colacion_mas_cara ? (
               <DestacadoCard
                 label="Colacion mas cara"

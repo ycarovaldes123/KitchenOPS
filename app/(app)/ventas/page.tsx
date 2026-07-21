@@ -66,6 +66,7 @@ export default function VentasPage() {
   const [err, setErr] = useState('');
   const [ok, setOk] = useState('');
   const [subcategoriaSeleccionada, setSubcategoriaSeleccionada] = useState<string | null>(null);
+  const [busqueda, setBusqueda] = useState('');
 
   const recipeMap = useMemo(() => {
     const map = new Map<string, CartaItem>();
@@ -134,8 +135,14 @@ export default function VentasPage() {
       map.set(key, prev);
     }
 
-    return Array.from(map.values()).sort((a, b) => b.cantidad - a.cantidad).slice(0, 30);
+    return Array.from(map.values()).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
   }, [data, recipeMap, subcategoriaSeleccionada]);
+
+  const resumenVisible = useMemo(() => {
+    if (!busqueda.trim()) return resumen;
+    const q = normalizeKey(busqueda);
+    return resumen.filter(row => normalizeKey(row.nombre).includes(q) || normalizeKey(row.codigo ?? '').includes(q));
+  }, [resumen, busqueda]);
 
   const subcategoriaPorClave = useMemo(() => {
     const map = new Map<string, string>();
@@ -160,11 +167,14 @@ export default function VentasPage() {
   }, [data, subcategoriaPorClave]);
 
   const puedeSincronizar = rol === 'admin' || rol === 'finanzas' || rol === 'economo';
-  const ventaTotal = resumen.reduce((sum, row) => sum + row.total, 0);
-  const ventaConReceta = resumen.reduce((sum, row) => sum + (row.costo_total != null ? row.total : 0), 0);
-  const costoBrutoTotal = resumen.reduce((sum, row) => sum + (row.costo_bruto_total ?? 0), 0);
-  const pctCostoTotal = ventaConReceta > 0 ? costoBrutoTotal / ventaConReceta : null;
-  const sinReceta = resumen.filter(row => !row.matched).length;
+  const ventaTotal = resumenVisible.reduce((sum, row) => sum + row.total, 0);
+  const costoBrutoTotal = resumenVisible.reduce((sum, row) => sum + (row.costo_bruto_total ?? 0), 0);
+  const ventaConRecetaTotal = resumenVisible.reduce((sum, row) => sum + (row.costo_total != null ? row.total : 0), 0);
+  const pctCostoTotal = ventaConRecetaTotal > 0 ? costoBrutoTotal / ventaConRecetaTotal : null;
+  const sinReceta = resumenVisible.filter(row => !row.matched).length;
+  const masVendido = resumenVisible.reduce<typeof resumenVisible[number] | null>((top, row) => (
+    !top || row.cantidad > top.cantidad ? row : top
+  ), null);
 
   async function cargarMaestros() {
     try {
@@ -259,18 +269,34 @@ export default function VentasPage() {
       {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B', borderRadius: '8px', padding: '12px 16px', marginBottom: '14px', fontSize: '14px' }}>{err}</div>}
       {ok && <div style={{ background: '#ECFDF5', border: '1px solid #6EE7B7', color: '#065F46', borderRadius: '8px', padding: '12px 16px', marginBottom: '14px', fontSize: '14px' }}>{ok}</div>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(130px, 1fr))', gap: '1px', background: 'var(--bo)', border: '1px solid var(--bo)', borderRadius: '8px', overflow: 'hidden', marginBottom: '14px' }}>
-        <KpiCell label="Productos TOTEAT" value={String(resumen.length)} />
-        <KpiCell label="Venta TOTEAT" value={ventaTotal ? formatCLP(Math.round(ventaTotal)) : '-'} />
-        <KpiCell label="Venta con receta" value={ventaConReceta ? formatCLP(Math.round(ventaConReceta)) : '-'} tone="ok" />
-        <KpiCell label="% costo" value={formatPercent(pctCostoTotal)} tone={pctCostoTotal != null && pctCostoTotal > 0.35 ? 'warn' : 'ok'} />
-        <KpiCell label="Sin receta" value={String(sinReceta)} tone={sinReceta > 0 ? 'warn' : 'ok'} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '14px' }}>
+        <KpiCell label="Productos TOTEAT" value={String(resumenVisible.length)} accent="#2563EB" />
+        <KpiCell label="Venta TOTEAT" value={ventaTotal ? formatCLP(Math.round(ventaTotal)) : '-'} accent="var(--ac)" />
+        <KpiCell
+          label="Mas vendido"
+          value={masVendido ? masVendido.nombre : '-'}
+          sub={masVendido ? `${formatQty(masVendido.cantidad)} uds · ${formatCLP(Math.round(masVendido.total))}` : undefined}
+          tone="ok"
+          accent="#059669"
+        />
+        <KpiCell
+          label="% costo"
+          value={formatPercent(pctCostoTotal)}
+          tone={pctCostoTotal != null && pctCostoTotal > 0.35 ? 'warn' : 'ok'}
+          accent={pctCostoTotal != null && pctCostoTotal > 0.35 ? '#DC2626' : '#059669'}
+        />
+        <KpiCell
+          label="Sin receta"
+          value={String(sinReceta)}
+          tone={sinReceta > 0 ? 'warn' : 'ok'}
+          accent={sinReceta > 0 ? '#DC2626' : '#059669'}
+        />
       </div>
 
-      <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '8px', padding: '18px', marginBottom: '14px' }}>
+      <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderLeft: '4px solid var(--ac)', borderRadius: '8px', padding: '18px', marginBottom: '14px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'end', flexWrap: 'wrap' }}>
           <div>
-            <h2 style={{ fontSize: '16px', margin: '0 0 4px', fontWeight: 800 }}>Ventas TOTEAT comida</h2>
+            <h2 style={{ fontSize: '16px', margin: '0 0 4px', fontWeight: 800, color: 'var(--ac)' }}>Ventas TOTEAT comida</h2>
             <p style={{ color: 'var(--ts)', fontSize: '12px', margin: 0 }}>Solo se muestran y sincronizan platos/productos de comida.</p>
           </div>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'end', flexWrap: 'wrap' }}>
@@ -286,7 +312,7 @@ export default function VentasPage() {
               {loading ? 'Consultando...' : 'Consultar'}
             </button>
             {puedeSincronizar && (
-              <button type="button" onClick={sincronizar} disabled={loading || syncing} style={{ ...button, background: '#0D9373', cursor: syncing ? 'wait' : 'pointer' }}>
+              <button type="button" onClick={sincronizar} disabled={loading || syncing} style={{ ...button, background: '#2563EB', cursor: syncing ? 'wait' : 'pointer' }}>
                 {syncing ? 'Sincronizando...' : 'Sincronizar'}
               </button>
             )}
@@ -294,9 +320,9 @@ export default function VentasPage() {
         </div>
       </section>
 
-      <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '8px', overflow: 'hidden', marginBottom: '14px' }}>
+      <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderLeft: '4px solid #2563EB', borderRadius: '8px', overflow: 'hidden', marginBottom: '14px' }}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)' }}>
-          <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--ts)', textTransform: 'uppercase' }}>Ventas por subcategoria (Alimentos)</span>
+          <span style={{ fontSize: '12px', fontWeight: 800, color: '#2563EB', textTransform: 'uppercase' }}>Ventas por subcategoria (Alimentos)</span>
           <div style={{ fontSize: '12px', color: 'var(--ts)', marginTop: '4px' }}>
             Jerarquia TOTEAT para el rango de fechas consultado. Selecciona una fila para ver el detalle de esa subcategoria abajo.
           </div>
@@ -320,7 +346,7 @@ export default function VentasPage() {
                   style={{
                     borderBottom: '1px solid var(--bo)',
                     cursor: 'pointer',
-                    background: subcategoriaSeleccionada === row.subcategoria ? '#F8FAFC' : undefined,
+                    background: subcategoriaSeleccionada === row.subcategoria ? '#EFF6FF' : undefined,
                   }}
                 >
                   <td style={{ padding: '9px 12px', fontSize: '13px', fontWeight: 600 }}>{row.subcategoria}</td>
@@ -333,15 +359,44 @@ export default function VentasPage() {
         </div>
       </section>
 
-      <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '8px', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)' }}>
-          <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--ts)', textTransform: 'uppercase' }}>
-            Ventas de comida con costo de receta{subcategoriaSeleccionada ? ` — ${subcategoriaSeleccionada}` : ''}
-          </span>
-          <div style={{ fontSize: '12px', color: 'var(--ts)', marginTop: '4px' }}>
-            {subcategoriaSeleccionada
-              ? 'Mostrando solo esta subcategoria. Vuelve a hacer clic en la fila para ver todas.'
-              : 'Cruce con el maestro de cartas para estimar el costo de cada plato vendido.'}
+      {!subcategoriaSeleccionada ? (
+        <section style={{ background: '#FFF7ED', border: '1px dashed #FDBA74', borderRadius: '8px', padding: '32px 18px', textAlign: 'center' }}>
+          <p style={{ fontSize: '13px', color: '#9A3412', margin: 0, fontWeight: 600 }}>
+            👆 Selecciona una subcategoria arriba para ver el detalle de ventas.
+          </p>
+        </section>
+      ) : (
+      <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderLeft: '4px solid #DC2626', borderRadius: '8px', overflow: 'hidden' }}>
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div>
+            <span style={{ fontSize: '12px', fontWeight: 800, color: '#DC2626', textTransform: 'uppercase' }}>
+              Ventas de comida con costo de receta — {subcategoriaSeleccionada}
+            </span>
+            <div style={{ fontSize: '12px', color: 'var(--ts)', marginTop: '4px' }}>
+              Vuelve a hacer clic en la fila de la subcategoria para cerrar este detalle. Orden alfabetico.
+            </div>
+          </div>
+          <div style={{ position: 'relative' }}>
+            <span style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: 'var(--ts)', pointerEvents: 'none' }}>
+              🔍
+            </span>
+            <input
+              type="text"
+              value={busqueda}
+              onChange={e => setBusqueda(e.target.value)}
+              placeholder="Buscar plato o producto..."
+              style={{
+                border: '1.5px solid var(--bo)',
+                borderRadius: '8px',
+                padding: '8px 12px 8px 30px',
+                fontSize: '13px',
+                background: 'var(--bg)',
+                color: 'var(--tx)',
+                outline: 'none',
+                fontFamily: 'DM Sans, sans-serif',
+                minWidth: '220px',
+              }}
+            />
           </div>
         </div>
         <div style={{ overflowX: 'auto' }}>
@@ -354,9 +409,9 @@ export default function VentasPage() {
               </tr>
             </thead>
             <tbody>
-              {resumen.length === 0 ? (
-                <tr><td colSpan={8} style={{ padding: '34px 16px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>Sin ventas consultadas</td></tr>
-              ) : resumen.map(row => (
+              {resumenVisible.length === 0 ? (
+                <tr><td colSpan={8} style={{ padding: '34px 16px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>{busqueda.trim() ? 'Sin resultados para la busqueda' : 'Sin ventas consultadas'}</td></tr>
+              ) : resumenVisible.map(row => (
                 <tr
                   key={`${row.codigo ?? ''}-${row.nombre}`}
                   style={{ borderBottom: '1px solid var(--bo)' }}
@@ -375,15 +430,17 @@ export default function VentasPage() {
           </table>
         </div>
       </section>
+      )}
     </div>
   );
 }
 
-function KpiCell({ label, value, tone }: { label: string; value: string; tone?: 'ok' | 'warn' }) {
+function KpiCell({ label, value, sub, tone, accent }: { label: string; value: string; sub?: string; tone?: 'ok' | 'warn'; accent?: string }) {
   return (
-    <div style={{ background: 'var(--sf)', padding: '12px 16px' }}>
+    <div style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderLeft: `4px solid ${accent ?? 'var(--bo)'}`, borderRadius: '8px', padding: '12px 16px' }}>
       <div style={{ fontSize: '11px', color: 'var(--ts)', fontWeight: 700, textTransform: 'uppercase' }}>{label}</div>
-      <div style={{ fontSize: '20px', fontWeight: 800, color: tone === 'warn' ? '#B45309' : tone === 'ok' ? '#047857' : 'var(--tx)' }}>{value}</div>
+      <div style={{ fontSize: '17px', fontWeight: 800, lineHeight: 1.2, wordBreak: 'break-word', color: tone === 'warn' ? '#B45309' : tone === 'ok' ? '#047857' : 'var(--tx)' }}>{value}</div>
+      {sub && <div style={{ fontSize: '11px', color: 'var(--ts)', marginTop: '2px' }}>{sub}</div>}
     </div>
   );
 }

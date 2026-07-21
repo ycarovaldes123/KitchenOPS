@@ -133,6 +133,26 @@ input, select, textarea, button {
   .dash-chart-row { grid-template-columns: 1fr; }
 }
 
+/* ─── KPI destacados grid (registros mas caros) ─────────────── */
+.kpi-destacados-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+@media (max-width: 1023px) {
+  .kpi-destacados-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+}
+@media (max-width: 640px) {
+  .kpi-destacados-grid { grid-template-columns: 1fr; gap: 8px; }
+}
+
+.kpi-destacado-card { padding: 22px 26px; }
+@media (max-width: 1023px) {
+  .kpi-destacado-card { padding: 12px 14px; }
+  .kpi-destacado-card .destacado-titulo { font-size: 15px !important; }
+  .kpi-destacado-card .destacado-costo  { font-size: 17px !important; }
+}
+
 /* ─── Page header row ───────────────────────────────────────── */
 .page-header {
   display: flex;
