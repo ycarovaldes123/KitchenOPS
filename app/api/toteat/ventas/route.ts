@@ -3,14 +3,15 @@ import { requireRol } from '@/lib/auth-server';
 import { fetchToteatSales } from '@/lib/toteat';
 
 export async function GET(req: NextRequest) {
-  const s = await requireRol(['admin', 'finanzas', 'jefatura', 'economo']);
+  const s = await requireRol(['admin', 'finanzas', 'jefatura', 'economo', 'cocina']);
   if (!s.ok) return s.response;
 
   const { searchParams } = new URL(req.url);
   const desde = searchParams.get('desde');
   const hasta = searchParams.get('hasta');
-  const raw = searchParams.get('raw') === '1';
-  const soloComida = searchParams.get('soloComida') !== '0';
+  const esCocina = s.rol === 'cocina';
+  const raw = searchParams.get('raw') === '1' && !esCocina;
+  const soloComida = esCocina ? true : searchParams.get('soloComida') !== '0';
 
   if (!desde || !hasta) {
     return NextResponse.json({ error: 'Debes enviar desde y hasta en formato YYYY-MM-DD' }, { status: 400 });

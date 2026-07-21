@@ -5,7 +5,7 @@ import { getDashboardPayload } from '@/lib/dashboard-data';
 
 // GET /api/kpis?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
 export async function GET(req: NextRequest) {
-  const s = await requireRol(['admin', 'finanzas', 'jefatura']);
+  const s = await requireRol(['admin', 'finanzas', 'jefatura', 'cocina']);
   if (!s.ok) return s.response;
 
   const supabase = await createClient();
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
       s.rol === 'admin' || s.rol === 'finanzas',
     );
 
-    return NextResponse.json(payload.kpis);
+    return NextResponse.json(payload);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error cargando KPIs';
     return NextResponse.json({ error: message }, { status: 500 });

@@ -1,3 +1,5 @@
+import { FOOD_SUBCATEGORIAS } from '@/lib/toteat-catalog';
+
 const DEFAULT_TOTEAT_BASE_URL = 'https://toteatglobal.appspot.com/mw/or/1.0';
 const MAX_DAYS_PER_REQUEST = 15;
 
@@ -31,19 +33,7 @@ export interface ToteatSalesOptions {
   soloComida?: boolean;
 }
 
-const FOOD_CATEGORIES = new Set([
-  'AGREGADOS Y ACOMPANAMIENTOS',
-  'CATERING',
-  'COLACION PERSONAL',
-  'ENSALADAS',
-  'EVENTOS',
-  'PICADAS',
-  'PLATOS',
-  'POSTRES',
-  'SANDWICH Y HAMBURGUESAS',
-  'SANDWICH & HAMBURGUESAS',
-  'SANDWICH & BURGERS',
-]);
+const FOOD_CATEGORIES = new Set(FOOD_SUBCATEGORIAS.map(normalizeText));
 
 const FOOD_CODE_PREFIXES = [
   'K130',

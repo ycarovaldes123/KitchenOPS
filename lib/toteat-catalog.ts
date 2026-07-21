@@ -4,6 +4,29 @@ export interface ToteatCatalogItem {
   nombre_canonico: string;
 }
 
+// Subcategorias reales de Toteat (Reportes 2.0 beta > Ventas Jerarquia > Alimentos).
+export const FOOD_SUBCATEGORIAS = [
+  'AGREGADOS Y ACOMPAÑAMIENTOS',
+  'CATERING',
+  'ENSALADAS',
+  'ENSALADAS PEDIDOS YA',
+  'ONCES ALEMANAS',
+  'OTROS PRODUCTOS ALIMENTOS',
+  'PICADAS',
+  'PICADAS EVENTO',
+  'PICADAS PEDIDOS YA',
+  'PICADAS PROMOCIÓN',
+  'PLATOS',
+  'PLATOS PEDIDOS YA',
+  'PLATOS PROMOCIÓN',
+  'POSTRES',
+  'POSTRES PEDIDOS YA',
+  'SANDWICH PERSONAL',
+  'SANDWICH Y HAMBURGUESAS',
+  'SANDWICH Y HAMBURGUESAS PEDIDOS YA',
+  'SANDWICH Y HAMBURGUESAS PROMOCIÓN',
+] as const;
+
 const RAW_CATALOG: ToteatCatalogItem[] = [
   { codigo: 'K13000', categoria: 'PICADAS', nombre_canonico: '3 EMPANADAS DE QUESO' },
   { codigo: 'K13001', categoria: 'PICADAS', nombre_canonico: '6 EMPANADAS DE QUESO' },

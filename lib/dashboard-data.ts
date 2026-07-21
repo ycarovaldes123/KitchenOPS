@@ -1,10 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-type ProduccionDetalle = { total_producido: number | null; costo_total: number | null };
+type ProduccionDetalle = { total_producido: number | null; costo_total: number | null; nombre_pp: string | null };
 type ProduccionRow = { id?: string; fecha: string; detalle_produccion: ProduccionDetalle[] | null };
-type DetalleMerma = { motivo: string | null; costo_total: number | null };
+type DetalleMerma = { motivo: string | null; costo_total: number | null; nombre_producto: string | null };
 type MermaRow = { id?: string; fecha: string; detalle_mermas: DetalleMerma[] | null };
-type ColacionRow = { id?: string; fecha: string; costo_total: number | null; n_inscritos: number | null };
+type ColacionRow = { id?: string; fecha: string; costo_total: number | null; n_inscritos: number | null; menu: string | null };
 type RendimientoRow = { id?: string; fecha: string; kg_utilizados: number | null; rendimiento_kg: number | null };
 
 export interface DashboardKpis {
@@ -32,10 +32,37 @@ export interface DashboardMotivo {
   count: number;
 }
 
+export interface ColacionDestacada {
+  fecha: string;
+  menu: string;
+  costo_total: number;
+  costo_por_plato: number | null;
+}
+
+export interface MermaDestacada {
+  fecha: string;
+  nombre_producto: string;
+  motivo: string | null;
+  costo_total: number;
+}
+
+export interface ProduccionDestacada {
+  fecha: string;
+  nombre_pp: string;
+  costo_total: number;
+}
+
+export interface DashboardDestacados {
+  colacion_mas_cara: ColacionDestacada | null;
+  merma_mas_cara: MermaDestacada | null;
+  produccion_mas_cara: ProduccionDestacada | null;
+}
+
 export interface DashboardPayload {
   kpis: DashboardKpis;
   dias: DashboardDia[];
   top_motivos: DashboardMotivo[];
+  destacados: DashboardDestacados;
 }
 
 export async function getDashboardPayload(
@@ -135,6 +162,46 @@ export async function getDashboardPayload(
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 
+  // Registros destacados: siempre visibles para todos los roles, sin filtrar por verCostos.
+  let colacion_mas_cara: ColacionDestacada | null = null;
+  for (const c of colRows) {
+    if (c.costo_total != null && (colacion_mas_cara == null || c.costo_total > colacion_mas_cara.costo_total)) {
+      colacion_mas_cara = {
+        fecha: c.fecha,
+        menu: c.menu ?? 'Sin menu registrado',
+        costo_total: c.costo_total,
+        costo_por_plato: c.n_inscritos && c.n_inscritos > 0 ? Math.round(c.costo_total / c.n_inscritos) : null,
+      };
+    }
+  }
+
+  let merma_mas_cara: MermaDestacada | null = null;
+  for (const m of merRows) {
+    for (const d of m.detalle_mermas ?? []) {
+      if (d.costo_total != null && (merma_mas_cara == null || d.costo_total > merma_mas_cara.costo_total)) {
+        merma_mas_cara = {
+          fecha: m.fecha,
+          nombre_producto: d.nombre_producto ?? 'Sin producto',
+          motivo: d.motivo,
+          costo_total: d.costo_total,
+        };
+      }
+    }
+  }
+
+  let produccion_mas_cara: ProduccionDestacada | null = null;
+  for (const p of prodRows) {
+    for (const d of p.detalle_produccion ?? []) {
+      if (d.costo_total != null && (produccion_mas_cara == null || d.costo_total > produccion_mas_cara.costo_total)) {
+        produccion_mas_cara = {
+          fecha: p.fecha,
+          nombre_pp: d.nombre_pp ?? 'Sin producto',
+          costo_total: d.costo_total,
+        };
+      }
+    }
+  }
+
   return {
     kpis: {
       total_informes,
@@ -149,13 +216,14 @@ export async function getDashboardPayload(
     },
     dias,
     top_motivos,
+    destacados: { colacion_mas_cara, merma_mas_cara, produccion_mas_cara },
   };
 }
 
 function queryProducciones(supabase: SupabaseClient, desde: string, hasta: string) {
   let q = supabase
     .from('produccion')
-    .select('id,fecha,detalle_produccion(total_producido,costo_total)');
+    .select('id,fecha,detalle_produccion(total_producido,costo_total,nombre_pp)');
   if (desde) q = q.gte('fecha', desde);
   if (hasta) q = q.lte('fecha', hasta);
   return q.order('fecha');
@@ -164,7 +232,7 @@ function queryProducciones(supabase: SupabaseClient, desde: string, hasta: strin
 function queryMermas(supabase: SupabaseClient, desde: string, hasta: string) {
   let q = supabase
     .from('mermas')
-    .select('id,fecha,detalle_mermas(motivo,costo_total)');
+    .select('id,fecha,detalle_mermas(motivo,costo_total,nombre_producto)');
   if (desde) q = q.gte('fecha', desde);
   if (hasta) q = q.lte('fecha', hasta);
   return q.order('fecha');
@@ -173,7 +241,7 @@ function queryMermas(supabase: SupabaseClient, desde: string, hasta: string) {
 function queryColaciones(supabase: SupabaseClient, desde: string, hasta: string) {
   let q = supabase
     .from('colacion')
-    .select('id,fecha,costo_total,n_inscritos');
+    .select('id,fecha,costo_total,n_inscritos,menu');
   if (desde) q = q.gte('fecha', desde);
   if (hasta) q = q.lte('fecha', hasta);
   return q.order('fecha');

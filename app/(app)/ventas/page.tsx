@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { formatCLP } from '@/lib/calculos';
 import { useRol } from '@/components/RolProvider';
-import { getToteatCanonicalCategory, getToteatCanonicalName } from '@/lib/toteat-catalog';
+import { getToteatCanonicalCategory, getToteatCanonicalName, FOOD_SUBCATEGORIAS } from '@/lib/toteat-catalog';
 
 interface ToteatItem {
   fecha: string;
@@ -21,24 +21,12 @@ interface ToteatResponse {
   items: ToteatItem[];
 }
 
-interface CartaIngrediente {
-  id: string;
-  codigo_producto: string | null;
-  pp_id: string | null;
-  nombre: string | null;
-  cantidad: number;
-  unidad_medida: string | null;
-  precio_unitario: number | null;
-  costo_total: number | null;
-}
-
 interface CartaItem {
   id: string;
   nombre: string;
   categoria: string;
   precio_carta: number | null;
   costo_neto?: number | null;
-  carta_ingredientes?: CartaIngrediente[] | null;
 }
 
 const hoyChile = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago' }).format(new Date());
@@ -77,7 +65,7 @@ export default function VentasPage() {
   const [syncing, setSyncing] = useState(false);
   const [err, setErr] = useState('');
   const [ok, setOk] = useState('');
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [subcategoriaSeleccionada, setSubcategoriaSeleccionada] = useState<string | null>(null);
 
   const recipeMap = useMemo(() => {
     const map = new Map<string, CartaItem>();
@@ -106,10 +94,14 @@ export default function VentasPage() {
     }>();
 
     for (const item of data?.items ?? []) {
+      const categoriaCanonica = getToteatCanonicalCategory(item.product_code, item.category);
+      if (subcategoriaSeleccionada && normalizeKey(categoriaCanonica ?? item.category ?? '') !== normalizeKey(subcategoriaSeleccionada)) {
+        continue;
+      }
+
       const key = item.product_code || item.product_name;
       const canonicalName = getToteatCanonicalName(item.product_code, item.product_name);
       const receta = recipeMap.get(normalizeKey(canonicalName)) ?? recipeMap.get(normalizeKey(item.product_name)) ?? null;
-      const categoriaCanonica = getToteatCanonicalCategory(item.product_code, item.category);
       const prev = map.get(key) ?? {
         key,
         nombre: canonicalName,
@@ -143,11 +135,30 @@ export default function VentasPage() {
     }
 
     return Array.from(map.values()).sort((a, b) => b.cantidad - a.cantidad).slice(0, 30);
-  }, [data, recipeMap]);
+  }, [data, recipeMap, subcategoriaSeleccionada]);
 
-  const activeKey = selectedKey && resumen.some(r => r.key === selectedKey) ? selectedKey : resumen[0]?.key ?? null;
-  const selectedSale = resumen.find(row => row.key === activeKey) ?? resumen[0] ?? null;
-  const selectedRecipe = selectedSale?.receta ?? null;
+  const subcategoriaPorClave = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const sub of FOOD_SUBCATEGORIAS) map.set(normalizeKey(sub), sub);
+    return map;
+  }, []);
+
+  const porSubcategoria = useMemo(() => {
+    const OTROS = 'OTROS PRODUCTOS ALIMENTOS';
+    const map = new Map<string, { subcategoria: string; cantidad: number; total: number }>();
+    for (const sub of FOOD_SUBCATEGORIAS) map.set(sub, { subcategoria: sub, cantidad: 0, total: 0 });
+
+    for (const item of data?.items ?? []) {
+      const categoriaCanonica = getToteatCanonicalCategory(item.product_code, item.category) ?? item.category ?? '';
+      const sub = subcategoriaPorClave.get(normalizeKey(categoriaCanonica)) ?? OTROS;
+      const acc = map.get(sub) ?? map.get(OTROS)!;
+      acc.cantidad += Number(item.quantity) || 0;
+      acc.total += Number(item.gross_amount) || 0;
+    }
+
+    return Array.from(map.values());
+  }, [data, subcategoriaPorClave]);
+
   const puedeSincronizar = rol === 'admin' || rol === 'finanzas' || rol === 'economo';
   const ventaTotal = resumen.reduce((sum, row) => sum + row.total, 0);
   const ventaConReceta = resumen.reduce((sum, row) => sum + (row.costo_total != null ? row.total : 0), 0);
@@ -283,10 +294,55 @@ export default function VentasPage() {
         </div>
       </section>
 
+      <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '8px', overflow: 'hidden', marginBottom: '14px' }}>
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)' }}>
+          <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--ts)', textTransform: 'uppercase' }}>Ventas por subcategoria (Alimentos)</span>
+          <div style={{ fontSize: '12px', color: 'var(--ts)', marginTop: '4px' }}>
+            Jerarquia TOTEAT para el rango de fechas consultado. Selecciona una fila para ver el detalle de esa subcategoria abajo.
+          </div>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '520px' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg)' }}>
+                {['Subcategoria', 'Cantidad', 'Venta TOTEAT'].map(h => (
+                  <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', borderBottom: '1px solid var(--bo)' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {!data ? (
+                <tr><td colSpan={3} style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>Selecciona un rango de fechas y presiona Consultar.</td></tr>
+              ) : porSubcategoria.map(row => (
+                <tr
+                  key={row.subcategoria}
+                  onClick={() => setSubcategoriaSeleccionada(prev => prev === row.subcategoria ? null : row.subcategoria)}
+                  style={{
+                    borderBottom: '1px solid var(--bo)',
+                    cursor: 'pointer',
+                    background: subcategoriaSeleccionada === row.subcategoria ? '#F8FAFC' : undefined,
+                  }}
+                >
+                  <td style={{ padding: '9px 12px', fontSize: '13px', fontWeight: 600 }}>{row.subcategoria}</td>
+                  <td style={{ padding: '9px 12px', fontSize: '13px', fontVariantNumeric: 'tabular-nums', color: row.cantidad > 0 ? 'var(--tx)' : 'var(--ts)' }}>{row.cantidad > 0 ? formatQty(row.cantidad) : '-'}</td>
+                  <td style={{ padding: '9px 12px', fontSize: '13px', fontVariantNumeric: 'tabular-nums', color: row.total > 0 ? 'var(--tx)' : 'var(--ts)' }}>{row.total > 0 ? formatCLP(Math.round(row.total)) : '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '8px', overflow: 'hidden' }}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)' }}>
-          <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--ts)', textTransform: 'uppercase' }}>Ventas de comida con costo de receta</span>
-          <div style={{ fontSize: '12px', color: 'var(--ts)', marginTop: '4px' }}>Cruce con el maestro de cartas para estimar el costo de cada plato vendido.</div>
+          <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--ts)', textTransform: 'uppercase' }}>
+            Ventas de comida con costo de receta{subcategoriaSeleccionada ? ` — ${subcategoriaSeleccionada}` : ''}
+          </span>
+          <div style={{ fontSize: '12px', color: 'var(--ts)', marginTop: '4px' }}>
+            {subcategoriaSeleccionada
+              ? 'Mostrando solo esta subcategoria. Vuelve a hacer clic en la fila para ver todas.'
+              : 'Cruce con el maestro de cartas para estimar el costo de cada plato vendido.'}
+          </div>
         </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1080px' }}>
@@ -303,12 +359,7 @@ export default function VentasPage() {
               ) : resumen.map(row => (
                 <tr
                   key={`${row.codigo ?? ''}-${row.nombre}`}
-                  onClick={() => setSelectedKey(row.key)}
-                  style={{
-                    borderBottom: '1px solid var(--bo)',
-                    cursor: 'pointer',
-                    background: activeKey === row.key ? '#F8FAFC' : '#FFFFFF',
-                  }}
+                  style={{ borderBottom: '1px solid var(--bo)' }}
                 >
                   <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)', fontWeight: 700 }}>{row.codigo ?? '-'}</td>
                   <td style={{ padding: '9px 12px', fontSize: '13px', fontWeight: 600 }}>{row.nombre}</td>
@@ -323,70 +374,7 @@ export default function VentasPage() {
             </tbody>
           </table>
         </div>
-        <div style={{ borderTop: '1px solid var(--bo)', background: '#FAFAFA', padding: '16px 18px' }}>
-          {selectedSale ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(240px, 1fr)', gap: '16px' }}>
-              <div>
-                <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--ts)', textTransform: 'uppercase', marginBottom: '8px' }}>Detalle de receta</div>
-                <div style={{ fontSize: '18px', fontWeight: 800, marginBottom: '4px' }}>{selectedSale.nombre}</div>
-                <div style={{ fontSize: '13px', color: 'var(--ts)', marginBottom: '12px' }}>
-                  Cod. TOTEAT {selectedSale.codigo ?? '-'} - {selectedSale.categoria_toteat ?? selectedSale.categoria ?? '-'} - Vendido {formatQty(selectedSale.cantidad)} - Venta TOTEAT {selectedSale.total ? formatCLP(Math.round(selectedSale.total)) : '-'}
-                </div>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '540px' }}>
-                    <thead>
-                      <tr style={{ background: 'var(--bg)' }}>
-                        {['Insumo', 'Cant/receta', 'Costo unit.', 'Costo bruto total'].map(h => (
-                          <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', borderBottom: '1px solid var(--bo)' }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedRecipe?.carta_ingredientes?.length ? (
-                        selectedRecipe.carta_ingredientes.map(ing => (
-                          <tr key={ing.id} style={{ borderBottom: '1px solid var(--bo)' }}>
-                            <td style={{ padding: '8px 10px', fontSize: '12px', fontWeight: 600 }}>{ing.nombre ?? '-'}</td>
-                            <td style={{ padding: '8px 10px', fontSize: '12px', fontVariantNumeric: 'tabular-nums' }}>{ing.cantidad} {ing.unidad_medida ?? ''}</td>
-                            <td style={{ padding: '8px 10px', fontSize: '12px', fontVariantNumeric: 'tabular-nums' }}>{ing.precio_unitario != null ? formatCLP(Math.round(ing.precio_unitario)) : '-'}</td>
-                            <td style={{ padding: '8px 10px', fontSize: '12px', fontVariantNumeric: 'tabular-nums' }}>{ing.costo_total != null ? formatCLP(Math.round(ing.costo_total * selectedSale.cantidad * IVA_FACTOR)) : '-'}</td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan={4} style={{ padding: '18px 10px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>
-                            No se encontro receta vinculada en carta para este producto.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-              <div style={{ background: '#FFFFFF', border: '1px solid var(--bo)', borderRadius: '8px', padding: '14px' }}>
-                <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--ts)', textTransform: 'uppercase', marginBottom: '10px' }}>Resumen economico</div>
-                <Metric label="Cod. TOTEAT" value={selectedSale.codigo ?? '-'} />
-                <Metric label="Categoria TOTEAT" value={selectedSale.categoria_toteat ?? selectedSale.categoria ?? '-'} />
-                <Metric label="Venta bruta" value={selectedSale.total ? formatCLP(Math.round(selectedSale.total)) : '-'} />
-                <Metric label="Costo receta bruto" value={selectedSale.costo_bruto_total != null ? formatCLP(Math.round(selectedSale.costo_bruto_total)) : '-'} />
-                <Metric label="% costo" value={formatPercent(selectedSale.pct_costo)} tone={selectedSale.pct_costo != null && selectedSale.pct_costo > 0.35 ? 'warn' : 'ok'} />
-                <Metric label="Margen estimado" value={selectedSale.margen != null ? formatCLP(Math.round(selectedSale.margen)) : '-'} tone={selectedSale.margen != null && selectedSale.margen >= 0 ? 'ok' : 'warn'} />
-                <Metric label="Estado receta" value={selectedSale.matched ? 'Vinculada' : 'No encontrada'} tone={selectedSale.matched ? 'ok' : 'warn'} />
-              </div>
-            </div>
-          ) : (
-            <div style={{ color: 'var(--ts)', fontSize: '13px' }}>Sin plato seleccionado.</div>
-          )}
-        </div>
       </section>
-    </div>
-  );
-}
-
-function Metric({ label, value, tone }: { label: string; value: string; tone?: 'ok' | 'warn' }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', padding: '9px 0', borderBottom: '1px solid #E2E8F0' }}>
-      <div style={{ fontSize: '12px', color: 'var(--ts)', fontWeight: 700 }}>{label}</div>
-      <div style={{ fontSize: '13px', fontWeight: 800, color: tone === 'warn' ? '#B45309' : tone === 'ok' ? '#047857' : 'var(--tx)' }}>{value}</div>
     </div>
   );
 }
