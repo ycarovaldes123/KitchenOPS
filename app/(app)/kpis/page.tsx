@@ -45,6 +45,7 @@ interface DiaTendencia {
   clp_produccion:  number | null;
   clp_mermas:      number | null;
   clp_colacion:    number | null;
+  colacion_menu:   string | null;
 }
 interface TopMotivo { motivo: string; count: number }
 interface ColacionDestacada { fecha: string; menu: string; costo_total: number; costo_por_plato: number | null }
@@ -133,6 +134,27 @@ function TooltipCLP({ active, payload, label }: any) {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function TooltipCLPConMenu({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  const menu = payload[0]?.payload?.colacion_menu as string | null | undefined;
+  return (
+    <div style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', maxWidth: '260px' }}>
+      <p style={{ margin: '0 0 6px', fontWeight: 600, color: 'var(--ts)' }}>{label}</p>
+      {payload.map((p: { name: string; value: number; color: string }, i: number) => (
+        <p key={i} style={{ margin: '2px 0', color: p.color, fontWeight: 600 }}>
+          {p.name}: {formatCLP(p.value)}
+        </p>
+      ))}
+      {menu && (
+        <p style={{ margin: '6px 0 0', paddingTop: '6px', borderTop: '1px solid var(--bo)', color: 'var(--tx)', fontWeight: 500 }}>
+          Menu: {menu}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function KpisPage() {
   const [desde,      setDesde]      = useState(mesInicio());
   const [hasta,       setHasta]      = useState(hoyChile());
@@ -184,13 +206,14 @@ export default function KpisPage() {
       const diff  = date.getDate() - day + (day === 0 ? -6 : 1);
       const mon   = new Date(date.setDate(diff));
       const key   = `${mon.getFullYear()}-${String(mon.getMonth() + 1).padStart(2, '0')}-${String(mon.getDate()).padStart(2, '0')}`;
-      const prev  = weeks.get(key) ?? { fecha: key, informes_count: 0, clp_produccion: null, clp_mermas: null, clp_colacion: null };
+      const prev  = weeks.get(key) ?? { fecha: key, informes_count: 0, clp_produccion: null, clp_mermas: null, clp_colacion: null, colacion_menu: null };
       weeks.set(key, {
         fecha: key,
         informes_count:  prev.informes_count + d.informes_count,
         clp_produccion:  prev.clp_produccion != null && d.clp_produccion != null ? prev.clp_produccion + d.clp_produccion : (prev.clp_produccion ?? d.clp_produccion),
         clp_mermas:      prev.clp_mermas != null && d.clp_mermas != null ? prev.clp_mermas + d.clp_mermas : (prev.clp_mermas ?? d.clp_mermas),
         clp_colacion:    prev.clp_colacion != null && d.clp_colacion != null ? prev.clp_colacion + d.clp_colacion : (prev.clp_colacion ?? d.clp_colacion),
+        colacion_menu:   prev.colacion_menu && d.colacion_menu ? `${prev.colacion_menu} / ${d.colacion_menu}` : (prev.colacion_menu ?? d.colacion_menu),
       });
     }
     return Array.from(weeks.values()).sort((a, b) => a.fecha.localeCompare(b.fecha));
@@ -345,7 +368,7 @@ export default function KpisPage() {
                       <YAxis tick={{ fontSize: 11, fill: 'var(--ts)' }} axisLine={false} tickLine={false} width={60}
                         tickFormatter={(v: number) => v >= 1000000 ? `$${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `$${(v / 1000).toFixed(0)}K` : `$${v}`}
                       />
-                      <Tooltip content={<TooltipCLP />} />
+                      <Tooltip content={vistaCosto === 'colacion' ? <TooltipCLPConMenu /> : <TooltipCLP />} />
                       <Area
                         type="monotone"
                         dataKey={vistaCosto === 'produccion' ? 'costo_produccion' : vistaCosto === 'colacion' ? 'costo_colacion' : 'costo_mermas'}

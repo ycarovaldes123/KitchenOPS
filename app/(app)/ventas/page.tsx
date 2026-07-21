@@ -95,8 +95,9 @@ export default function VentasPage() {
     }>();
 
     for (const item of data?.items ?? []) {
-      const categoriaCanonica = getToteatCanonicalCategory(item.product_code, item.category);
-      if (subcategoriaSeleccionada && normalizeKey(categoriaCanonica ?? item.category ?? '') !== normalizeKey(subcategoriaSeleccionada)) {
+      // La categoria real de TOTEAT (jerarquia) manda; el catalogo solo rellena si falta.
+      const categoriaCanonica = item.category ?? getToteatCanonicalCategory(item.product_code, null);
+      if (subcategoriaSeleccionada && normalizeKey(categoriaCanonica ?? '') !== normalizeKey(subcategoriaSeleccionada)) {
         continue;
       }
 
@@ -156,14 +157,16 @@ export default function VentasPage() {
     for (const sub of FOOD_SUBCATEGORIAS) map.set(sub, { subcategoria: sub, cantidad: 0, total: 0 });
 
     for (const item of data?.items ?? []) {
-      const categoriaCanonica = getToteatCanonicalCategory(item.product_code, item.category) ?? item.category ?? '';
+      // La categoria real de TOTEAT (jerarquia) manda; el catalogo solo rellena si falta.
+      const categoriaCanonica = item.category ?? getToteatCanonicalCategory(item.product_code, null) ?? '';
       const sub = subcategoriaPorClave.get(normalizeKey(categoriaCanonica)) ?? OTROS;
       const acc = map.get(sub) ?? map.get(OTROS)!;
       acc.cantidad += Number(item.quantity) || 0;
       acc.total += Number(item.gross_amount) || 0;
     }
 
-    return Array.from(map.values());
+    // Solo subcategorias con movimiento en el rango consultado.
+    return Array.from(map.values()).filter(row => row.cantidad > 0 || row.total > 0);
   }, [data, subcategoriaPorClave]);
 
   const puedeSincronizar = rol === 'admin' || rol === 'finanzas' || rol === 'economo';
@@ -172,9 +175,11 @@ export default function VentasPage() {
   const ventaConRecetaTotal = resumenVisible.reduce((sum, row) => sum + (row.costo_total != null ? row.total : 0), 0);
   const pctCostoTotal = ventaConRecetaTotal > 0 ? costoBrutoTotal / ventaConRecetaTotal : null;
   const sinReceta = resumenVisible.filter(row => !row.matched).length;
-  const masVendido = resumenVisible.reduce<typeof resumenVisible[number] | null>((top, row) => (
-    !top || row.cantidad > top.cantidad ? row : top
-  ), null);
+  const masVendido = resumenVisible
+    .filter(row => row.codigo && normalizeKey(row.codigo).startsWith('K'))
+    .reduce<typeof resumenVisible[number] | null>((top, row) => (
+      !top || row.cantidad > top.cantidad ? row : top
+    ), null);
 
   async function cargarMaestros() {
     try {
@@ -321,10 +326,34 @@ export default function VentasPage() {
       </section>
 
       <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderLeft: '4px solid #2563EB', borderRadius: '8px', overflow: 'hidden', marginBottom: '14px' }}>
-        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)' }}>
-          <span style={{ fontSize: '12px', fontWeight: 800, color: '#2563EB', textTransform: 'uppercase' }}>Ventas por subcategoria (Alimentos)</span>
-          <div style={{ fontSize: '12px', color: 'var(--ts)', marginTop: '4px' }}>
-            Jerarquia TOTEAT para el rango de fechas consultado. Selecciona una fila para ver el detalle de esa subcategoria abajo.
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div>
+            <span style={{ fontSize: '12px', fontWeight: 800, color: '#2563EB', textTransform: 'uppercase' }}>Ventas por subcategoria (Alimentos)</span>
+            <div style={{ fontSize: '12px', color: 'var(--ts)', marginTop: '4px' }}>
+              Jerarquia TOTEAT para el rango de fechas consultado. Selecciona una fila para ver el detalle de esa subcategoria abajo, o busca un plato directamente.
+            </div>
+          </div>
+          <div style={{ position: 'relative' }}>
+            <span style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: 'var(--ts)', pointerEvents: 'none' }}>
+              🔍
+            </span>
+            <input
+              type="text"
+              value={busqueda}
+              onChange={e => setBusqueda(e.target.value)}
+              placeholder="Buscar plato o producto (ej: crudo, ave)..."
+              style={{
+                border: '1.5px solid var(--bo)',
+                borderRadius: '8px',
+                padding: '8px 12px 8px 30px',
+                fontSize: '13px',
+                background: 'var(--bg)',
+                color: 'var(--tx)',
+                outline: 'none',
+                fontFamily: 'DM Sans, sans-serif',
+                minWidth: '260px',
+              }}
+            />
           </div>
         </div>
         <div style={{ overflowX: 'auto' }}>
@@ -339,6 +368,8 @@ export default function VentasPage() {
             <tbody>
               {!data ? (
                 <tr><td colSpan={3} style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>Selecciona un rango de fechas y presiona Consultar.</td></tr>
+              ) : porSubcategoria.length === 0 ? (
+                <tr><td colSpan={3} style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>Sin ventas ni movimiento en el rango seleccionado.</td></tr>
               ) : porSubcategoria.map(row => (
                 <tr
                   key={row.subcategoria}
@@ -359,44 +390,25 @@ export default function VentasPage() {
         </div>
       </section>
 
-      {!subcategoriaSeleccionada ? (
+      {!subcategoriaSeleccionada && !busqueda.trim() ? (
         <section style={{ background: '#FFF7ED', border: '1px dashed #FDBA74', borderRadius: '8px', padding: '32px 18px', textAlign: 'center' }}>
           <p style={{ fontSize: '13px', color: '#9A3412', margin: 0, fontWeight: 600 }}>
-            👆 Selecciona una subcategoria arriba para ver el detalle de ventas.
+            👆 Selecciona una subcategoria arriba, o busca un plato/producto, para ver el detalle de ventas.
           </p>
         </section>
       ) : (
       <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderLeft: '4px solid #DC2626', borderRadius: '8px', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          <div>
-            <span style={{ fontSize: '12px', fontWeight: 800, color: '#DC2626', textTransform: 'uppercase' }}>
-              Ventas de comida con costo de receta — {subcategoriaSeleccionada}
-            </span>
-            <div style={{ fontSize: '12px', color: 'var(--ts)', marginTop: '4px' }}>
-              Vuelve a hacer clic en la fila de la subcategoria para cerrar este detalle. Orden alfabetico.
-            </div>
-          </div>
-          <div style={{ position: 'relative' }}>
-            <span style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: 'var(--ts)', pointerEvents: 'none' }}>
-              🔍
-            </span>
-            <input
-              type="text"
-              value={busqueda}
-              onChange={e => setBusqueda(e.target.value)}
-              placeholder="Buscar plato o producto..."
-              style={{
-                border: '1.5px solid var(--bo)',
-                borderRadius: '8px',
-                padding: '8px 12px 8px 30px',
-                fontSize: '13px',
-                background: 'var(--bg)',
-                color: 'var(--tx)',
-                outline: 'none',
-                fontFamily: 'DM Sans, sans-serif',
-                minWidth: '220px',
-              }}
-            />
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)' }}>
+          <span style={{ fontSize: '12px', fontWeight: 800, color: '#DC2626', textTransform: 'uppercase' }}>
+            Ventas de comida con costo de receta
+            {subcategoriaSeleccionada ? ` — ${subcategoriaSeleccionada}` : ''}
+            {busqueda.trim() ? ` — resultados de "${busqueda.trim()}"` : ''}
+          </span>
+          <div style={{ fontSize: '12px', color: 'var(--ts)', marginTop: '4px' }}>
+            {subcategoriaSeleccionada
+              ? 'Vuelve a hacer clic en la fila de la subcategoria para cerrar este detalle. '
+              : ''}
+            Orden alfabetico.
           </div>
         </div>
         <div style={{ overflowX: 'auto' }}>

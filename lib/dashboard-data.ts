@@ -25,6 +25,7 @@ export interface DashboardDia {
   clp_produccion: number | null;
   clp_mermas: number | null;
   clp_colacion: number | null;
+  colacion_menu: string | null;
 }
 
 export interface DashboardMotivo {
@@ -118,11 +119,11 @@ export async function getDashboardPayload(
     ? Math.round(total_produccion_clp / total_informes)
     : 0;
 
-  const byDate = new Map<string, { informes_count: number; clp_prod: number; clp_mermas: number; clp_colacion: number }>();
+  const byDate = new Map<string, { informes_count: number; clp_prod: number; clp_mermas: number; clp_colacion: number; menus: string[] }>();
 
   for (const p of prodRows) {
     const clp = (p.detalle_produccion ?? []).reduce((sum, d) => sum + (d.costo_total ?? 0), 0);
-    const prev = byDate.get(p.fecha) ?? { informes_count: 0, clp_prod: 0, clp_mermas: 0, clp_colacion: 0 };
+    const prev = byDate.get(p.fecha) ?? { informes_count: 0, clp_prod: 0, clp_mermas: 0, clp_colacion: 0, menus: [] };
     byDate.set(p.fecha, {
       ...prev,
       informes_count: prev.informes_count + 1,
@@ -133,7 +134,7 @@ export async function getDashboardPayload(
   const motivoCount = new Map<string, number>();
   for (const m of merRows) {
     const clp = (m.detalle_mermas ?? []).reduce((sum, d) => sum + (d.costo_total ?? 0), 0);
-    const prev = byDate.get(m.fecha) ?? { informes_count: 0, clp_prod: 0, clp_mermas: 0, clp_colacion: 0 };
+    const prev = byDate.get(m.fecha) ?? { informes_count: 0, clp_prod: 0, clp_mermas: 0, clp_colacion: 0, menus: [] };
     byDate.set(m.fecha, { ...prev, clp_mermas: prev.clp_mermas + clp });
 
     for (const d of m.detalle_mermas ?? []) {
@@ -143,8 +144,12 @@ export async function getDashboardPayload(
   }
 
   for (const c of colRows) {
-    const prev = byDate.get(c.fecha) ?? { informes_count: 0, clp_prod: 0, clp_mermas: 0, clp_colacion: 0 };
-    byDate.set(c.fecha, { ...prev, clp_colacion: prev.clp_colacion + (c.costo_total ?? 0) });
+    const prev = byDate.get(c.fecha) ?? { informes_count: 0, clp_prod: 0, clp_mermas: 0, clp_colacion: 0, menus: [] };
+    byDate.set(c.fecha, {
+      ...prev,
+      clp_colacion: prev.clp_colacion + (c.costo_total ?? 0),
+      menus: c.menu ? [...prev.menus, c.menu] : prev.menus,
+    });
   }
 
   const dias = Array.from(byDate.entries())
@@ -155,6 +160,7 @@ export async function getDashboardPayload(
       clp_produccion: verCostos ? Math.round(v.clp_prod) : null,
       clp_mermas: verCostos ? Math.round(v.clp_mermas) : null,
       clp_colacion: verCostos ? Math.round(v.clp_colacion) : null,
+      colacion_menu: verCostos && v.menus.length > 0 ? v.menus.join(' / ') : null,
     }));
 
   const top_motivos = Array.from(motivoCount.entries())
