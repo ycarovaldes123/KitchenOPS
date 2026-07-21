@@ -235,6 +235,7 @@ function ProductoSelector({
 export default function FrutasPage() {
   const { rol } = useRol();
   const verCostos = rol !== 'cocina';
+  const soloLectura = rol === 'jefatura';
 
   const [maestros, setMaestros] = useState<Maestros | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -287,6 +288,8 @@ export default function FrutasPage() {
     e.preventDefault();
     setErr('');
     setOk('');
+
+    if (soloLectura) return;
 
     if (!responsableId) {
       setErr('Selecciona un responsable antes de guardar.');
@@ -342,7 +345,7 @@ export default function FrutasPage() {
   const rowsValidos = rows.filter(row => row.codigo_producto && parseFloat(row.cantidad) > 0);
   const costoTotal = rows.reduce((sum, row) => sum + calcCostoFila(row), 0);
   const warnings = rows.filter(row => row.codigo_producto && row.costo_unitario === 0).length;
-  const canSave = Boolean(responsableId && rowsValidos.length > 0);
+  const canSave = !soloLectura && Boolean(responsableId && rowsValidos.length > 0);
 
   const inp: CSSProperties = {
     width: '100%',
@@ -396,6 +399,11 @@ export default function FrutasPage() {
       `}</style>
 
       <div className="page" style={{ paddingBottom: '48px' }}>
+        {soloLectura && (
+          <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1E40AF', borderRadius: '8px', padding: '10px 16px', marginBottom: '14px', fontSize: '13px', fontWeight: 600 }}>
+            🔒 Modo solo lectura — tu rol puede ver los registros de frutas pero no registrar ni modificar movimientos.
+          </div>
+        )}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '10px' }}>
           <div>
             <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '22px', fontWeight: 800, margin: '0 0 3px' }}>Frutas</h1>

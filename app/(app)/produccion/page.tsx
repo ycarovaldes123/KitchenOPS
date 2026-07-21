@@ -281,6 +281,7 @@ function EmptyRend({ onAdd }: { onAdd: () => void }) {
 export default function ProduccionPage() {
   const { rol } = useRol();
   const verCostos = rol !== 'cocina';
+  const soloLectura = rol === 'jefatura';
 
   const [maestros,      setMaestros]      = useState<Maestros | null>(null);
   const [cargando,      setCargando]      = useState(true);
@@ -358,6 +359,7 @@ export default function ProduccionPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr(''); setOk('');
+    if (soloLectura) return;
     if (!responsableId)      { setErr('Selecciona un responsable antes de guardar.'); return; }
     if (!observacion.trim()) { setErr('La observación del turno es obligatoria.'); return; }
 
@@ -427,7 +429,7 @@ export default function ProduccionPage() {
   const costoTotal  = ppRows.reduce((s, r) => s + calcCostoFila(r), 0);
   const warnings    = ppRows.filter(r => { const s = getRowStatus(r); return s === 'sin-costo' || s === 'sin-equiv'; }).length;
   const rendCount   = rendRows.filter(r => r.verdura).length;
-  const canSave     = !!responsableId && (ppValidos.length > 0 || rendValidos.length > 0);
+  const canSave     = !soloLectura && !!responsableId && (ppValidos.length > 0 || rendValidos.length > 0);
 
   // ── Shared styles ─────────────────────────────────────────────────────────
 
@@ -468,6 +470,12 @@ export default function ProduccionPage() {
       `}</style>
 
       <div className="page" style={{ paddingBottom: '48px' }}>
+
+        {soloLectura && (
+          <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1E40AF', borderRadius: '8px', padding: '10px 16px', marginBottom: '14px', fontSize: '13px', fontWeight: 600 }}>
+            🔒 Modo solo lectura — tu rol puede ver los informes de producción pero no registrar ni modificar movimientos.
+          </div>
+        )}
 
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '10px' }}>

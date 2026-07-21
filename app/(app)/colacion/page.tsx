@@ -211,6 +211,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
 export default function ColacionPage() {
   const { rol } = useRol();
   const verCostos = rol !== 'cocina';
+  const soloLectura = rol === 'jefatura';
 
   const [maestros,      setMaestros]      = useState<Maestros | null>(null);
   const [cargando,      setCargando]      = useState(true);
@@ -252,6 +253,7 @@ export default function ColacionPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr(''); setOk('');
+    if (soloLectura) return;
     if (!responsableId)    { setErr('Selecciona un responsable antes de guardar.'); return; }
     if (!menu.trim())      { setErr('El menú del día es obligatorio.'); return; }
     const ni = parseInt(nInscritos);
@@ -302,7 +304,7 @@ export default function ColacionPage() {
   const ni           = parseInt(nInscritos) || 0;
   const costoPorPlato = ni > 0 && costoTotal > 0 ? Math.round(costoTotal / ni) : null;
   const warnings     = rows.filter(r => getRowStatus(r) === 'sin-costo').length;
-  const canSave      = !!responsableId && !!menu.trim() && ni > 0 && rowsValidos.length > 0;
+  const canSave      = !soloLectura && !!responsableId && !!menu.trim() && ni > 0 && rowsValidos.length > 0;
 
   // ── Styles ────────────────────────────────────────────────────────────────
 
@@ -339,6 +341,12 @@ export default function ColacionPage() {
       `}</style>
 
       <div className="page" style={{ paddingBottom: '48px' }}>
+
+        {soloLectura && (
+          <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1E40AF', borderRadius: '8px', padding: '10px 16px', marginBottom: '14px', fontSize: '13px', fontWeight: 600 }}>
+            🔒 Modo solo lectura — tu rol puede ver los registros de colación pero no registrar ni modificar movimientos.
+          </div>
+        )}
 
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '10px' }}>

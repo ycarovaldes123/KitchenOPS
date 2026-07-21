@@ -336,6 +336,7 @@ function EmptyState({ onAdd, onAddPlato }: { onAdd: () => void; onAddPlato: () =
 export default function MermasPage() {
   const { rol } = useRol();
   const verCostos = rol !== 'cocina';
+  const soloLectura = rol === 'jefatura';
 
   const [maestros,      setMaestros]      = useState<Maestros | null>(null);
   const [cargando,      setCargando]      = useState(true);
@@ -402,6 +403,7 @@ export default function MermasPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr(''); setOk('');
+    if (soloLectura) return;
     if (!responsableId)      { setErr('Selecciona un responsable antes de guardar.'); return; }
     if (!observacion.trim()) { setErr('La observación es obligatoria.'); return; }
 
@@ -461,7 +463,7 @@ export default function MermasPage() {
   const sinCosto     = rows.filter(r => getRowStatus(r) === 'sin-costo').length + platoRows.filter(r => getPlatoStatus(r) === 'sin-costo').length;
   const totalLineasValidas = rowsValidos.length + platosValidos.length;
   const totalLineas = rows.length + platoRows.length;
-  const canSave      = !!responsableId && !!observacion.trim() && totalLineasValidas > 0;
+  const canSave      = !soloLectura && !!responsableId && !!observacion.trim() && totalLineasValidas > 0;
 
   // ── Styles ────────────────────────────────────────────────────────────────
 
@@ -498,6 +500,12 @@ export default function MermasPage() {
       `}</style>
 
       <div className="page" style={{ paddingBottom: '48px' }}>
+
+        {soloLectura && (
+          <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1E40AF', borderRadius: '8px', padding: '10px 16px', marginBottom: '14px', fontSize: '13px', fontWeight: 600 }}>
+            🔒 Modo solo lectura — tu rol puede ver los registros de mermas pero no registrar ni modificar movimientos.
+          </div>
+        )}
 
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '10px' }}>

@@ -64,11 +64,11 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
 
   jefatura: {
     dashboard:  SOLO_VER,
-    produccion: OPERATIVO,
-    colacion:   OPERATIVO,
-    frutas:     OPERATIVO,
+    produccion: SOLO_VER,
+    colacion:   SOLO_VER,
+    frutas:     SOLO_VER,
     inventario: OPERATIVO,
-    mermas:     OPERATIVO,
+    mermas:     SOLO_VER,
     historial:  SOLO_VER,
     ventas:     SOLO_VER,
     kpis:       SOLO_VER,

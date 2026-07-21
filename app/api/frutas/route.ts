@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const s = await requireRol(['admin', 'jefatura', 'cocina', 'economo']);
+  const s = await requireRol(['admin', 'cocina', 'economo']);
   if (!s.ok) return s.response;
 
   const supabase = await createClient();
