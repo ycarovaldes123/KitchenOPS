@@ -5,7 +5,7 @@ import { getDashboardPayload } from '@/lib/dashboard-data';
 
 // GET /api/tendencia?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
 export async function GET(req: NextRequest) {
-  const s = await requireRol(['admin', 'finanzas', 'jefatura']);
+  const s = await requireRol(['admin', 'finanzas']);
   if (!s.ok) return s.response;
 
   const supabase = await createClient();

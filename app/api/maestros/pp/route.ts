@@ -4,7 +4,7 @@ import { requireRol } from '@/lib/auth-server';
 import { auditLog } from '@/lib/audit';
 
 export async function GET() {
-  const s = await requireRol(['admin', 'finanzas', 'jefatura']);
+  const s = await requireRol(['admin', 'finanzas']);
   if (!s.ok) return s.response;
 
   const supabase = await createClient();

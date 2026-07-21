@@ -145,7 +145,7 @@ function normalizeText(text: unknown) {
 
 // GET /api/export?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
 export async function GET(req: NextRequest) {
-  const s = await requireRol(['admin', 'finanzas', 'jefatura']);
+  const s = await requireRol(['admin', 'finanzas']);
   if (!s.ok) return s.response;
 
   const supabase = await createClient();

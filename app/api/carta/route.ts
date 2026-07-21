@@ -111,13 +111,13 @@ async function prepararIngredientes(
 
 // GET /api/carta — todos los platos activos con costos calculados
 export async function GET() {
-  const s = await requireRol(['admin', 'finanzas']);
+  const s = await requireRol(['admin', 'finanzas', 'jefatura']);
   if (!s.ok) return s.response;
 
   const supabase = await createClient();
   const includeTipoCarta = cartaTipoCartaColumnExists !== false;
 
-  let query = supabase
+  const query = supabase
     .from('carta')
     .select(includeTipoCarta ? (CARTA_SELECT_WITH_TIPO as string) : (CARTA_SELECT_WITHOUT_TIPO as string))
     .eq('activo', true)

@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const s = await requireRol(['admin', 'finanzas', 'jefatura', 'cocina', 'economo']);
+  const s = await requireRol(['admin', 'finanzas', 'cocina', 'economo']);
   if (!s.ok) return s.response;
 
   const body = await req.json().catch(() => ({}));

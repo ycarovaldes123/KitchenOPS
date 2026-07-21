@@ -148,6 +148,7 @@ function PlatoCard({ p, onClick }: { p: Plato; onClick: () => void }) {
 export default function CostosPage() {
   const { rol } = useRol();
   const isAdmin = rol === 'admin';
+  const canManage = rol === 'admin' || rol === 'finanzas';
   const [platos, setPlatos] = useState<Plato[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -241,13 +242,15 @@ export default function CostosPage() {
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={() => setEditor('new')}
-            style={{ border: 'none', background: 'var(--ac)', color: '#fff', borderRadius: '8px', padding: '8px 13px', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'DM Sans, sans-serif', whiteSpace: 'nowrap' }}
-          >
-            + Nuevo plato
-          </button>
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => setEditor('new')}
+              style={{ border: 'none', background: 'var(--ac)', color: '#fff', borderRadius: '8px', padding: '8px 13px', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'DM Sans, sans-serif', whiteSpace: 'nowrap' }}
+            >
+              + Nuevo plato
+            </button>
+          )}
           <div style={{ display: 'flex', background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '8px', overflow: 'hidden' }}>
             {([
               { v: 'lista' as Vista, icon: '☰', label: 'Lista' },
@@ -457,7 +460,7 @@ export default function CostosPage() {
         <FichaTecnicaModal
           plato={modal}
           onClose={() => setModal(null)}
-          onEdit={() => { setEditor(modal); setModal(null); }}
+          onEdit={canManage ? () => { setEditor(modal); setModal(null); } : undefined}
         />
       )}
 

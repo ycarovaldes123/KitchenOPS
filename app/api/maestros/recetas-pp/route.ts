@@ -8,7 +8,7 @@ import { auditLog } from '@/lib/audit';
 // POST /api/maestros/recetas-pp           → { accion: "recalcular" } recalculate all costs from DB
 
 export async function GET() {
-  const s = await requireRol(['admin', 'finanzas', 'jefatura']);
+  const s = await requireRol(['admin', 'finanzas']);
   if (!s.ok) return s.response;
 
   const supabase = await createClient();
