@@ -153,6 +153,18 @@ input, select, textarea, button {
   .kpi-destacado-card .destacado-costo  { font-size: 17px !important; }
 }
 
+/* ─── Ventas: tabla de detalle responsiva ───────────────────── */
+.ventas-detalle-table { min-width: 1080px; }
+.ventas-detalle-table th,
+.ventas-detalle-table td { padding: 9px 12px; }
+
+@media (max-width: 1023px) {
+  .ventas-detalle-table { min-width: 0; width: 100%; }
+  .ventas-detalle-table .col-pc { display: none; }
+  .ventas-detalle-table th,
+  .ventas-detalle-table td { padding: 7px 8px; font-size: 12px; }
+}
+
 /* ─── Page header row ───────────────────────────────────────── */
 .page-header {
   display: flex;

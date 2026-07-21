@@ -412,11 +412,26 @@ export default function VentasPage() {
           </div>
         </div>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1080px' }}>
+          <table className="ventas-detalle-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--bg)' }}>
-                {['Cod. TOTEAT', 'Nombre', 'Categoria TOTEAT', 'Cantidad', 'Venta TOTEAT', 'Costo receta bruto', '% costo', 'Margen'].map(h => (
-                  <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', borderBottom: '1px solid var(--bo)' }}>{h}</th>
+                {[
+                  { label: 'Cod. TOTEAT', pcOnly: true },
+                  { label: 'Nombre', pcOnly: false },
+                  { label: 'Categoria TOTEAT', pcOnly: false },
+                  { label: 'Cantidad', pcOnly: false },
+                  { label: 'Venta TOTEAT', pcOnly: false },
+                  { label: 'Costo receta bruto', pcOnly: true },
+                  { label: '% costo', pcOnly: true },
+                  { label: 'Margen', pcOnly: true },
+                ].map(h => (
+                  <th
+                    key={h.label}
+                    className={h.pcOnly ? 'col-pc' : undefined}
+                    style={{ textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', borderBottom: '1px solid var(--bo)' }}
+                  >
+                    {h.label}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -428,14 +443,14 @@ export default function VentasPage() {
                   key={`${row.codigo ?? ''}-${row.nombre}`}
                   style={{ borderBottom: '1px solid var(--bo)' }}
                 >
-                  <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)', fontWeight: 700 }}>{row.codigo ?? '-'}</td>
-                  <td style={{ padding: '9px 12px', fontSize: '13px', fontWeight: 600 }}>{row.nombre}</td>
-                  <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)' }}>{row.categoria_toteat ?? row.categoria ?? '-'}</td>
-                  <td style={{ padding: '9px 12px', fontSize: '13px', fontVariantNumeric: 'tabular-nums' }}>{formatQty(row.cantidad)}</td>
-                  <td style={{ padding: '9px 12px', fontSize: '13px', fontVariantNumeric: 'tabular-nums' }}>{row.total ? formatCLP(Math.round(row.total)) : '-'}</td>
-                  <td style={{ padding: '9px 12px', fontSize: '13px', fontVariantNumeric: 'tabular-nums', color: row.costo_bruto_total != null ? '#0F766E' : 'var(--ts)' }}>{row.costo_bruto_total != null ? formatCLP(Math.round(row.costo_bruto_total)) : '-'}</td>
-                  <td style={{ padding: '9px 12px', fontSize: '13px', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: row.pct_costo != null && row.pct_costo > 0.35 ? '#B45309' : '#047857' }}>{formatPercent(row.pct_costo)}</td>
-                  <td style={{ padding: '9px 12px', fontSize: '13px', fontVariantNumeric: 'tabular-nums', color: row.margen != null && row.margen >= 0 ? '#047857' : '#B91C1C' }}>{row.margen != null ? formatCLP(Math.round(row.margen)) : '-'}</td>
+                  <td className="col-pc" style={{ fontSize: '12px', color: 'var(--ts)', fontWeight: 700 }}>{row.codigo ?? '-'}</td>
+                  <td style={{ fontSize: '13px', fontWeight: 600 }}>{row.nombre}</td>
+                  <td style={{ fontSize: '12px', color: 'var(--ts)' }}>{row.categoria_toteat ?? row.categoria ?? '-'}</td>
+                  <td style={{ fontSize: '13px', fontVariantNumeric: 'tabular-nums' }}>{formatQty(row.cantidad)}</td>
+                  <td style={{ fontSize: '13px', fontVariantNumeric: 'tabular-nums' }}>{row.total ? formatCLP(Math.round(row.total)) : '-'}</td>
+                  <td className="col-pc" style={{ fontSize: '13px', fontVariantNumeric: 'tabular-nums', color: row.costo_bruto_total != null ? '#0F766E' : 'var(--ts)' }}>{row.costo_bruto_total != null ? formatCLP(Math.round(row.costo_bruto_total)) : '-'}</td>
+                  <td className="col-pc" style={{ fontSize: '13px', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: row.pct_costo != null && row.pct_costo > 0.35 ? '#B45309' : '#047857' }}>{formatPercent(row.pct_costo)}</td>
+                  <td className="col-pc" style={{ fontSize: '13px', fontVariantNumeric: 'tabular-nums', color: row.margen != null && row.margen >= 0 ? '#047857' : '#B91C1C' }}>{row.margen != null ? formatCLP(Math.round(row.margen)) : '-'}</td>
                 </tr>
               ))}
             </tbody>
