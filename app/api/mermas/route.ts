@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol, getSessionRol } from '@/lib/auth-server';
+import { puedeHacer } from '@/lib/permissions';
 
 type PlatoMermaPayload = {
   carta_id?: string | null;
@@ -113,7 +114,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const fecha = searchParams.get('fecha');
 
-  const verCostos = s.rol !== 'cocina';
+  const verCostos = puedeHacer(s.rol, 'mermas', 'verCostos');
   const detalleSelect = verCostos
     ? 'id,nombre_producto,cantidad,unidad_medida,motivo,costo_unitario,costo_total'
     : 'id,nombre_producto,cantidad,unidad_medida,motivo';
@@ -132,7 +133,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const s = await requireRol(['admin', 'cocina', 'economo']);
+  const s = await requireRol(['admin', 'cocina', 'economo', 'bodega']);
   if (!s.ok) return s.response;
 
   const supabase = await createClient();

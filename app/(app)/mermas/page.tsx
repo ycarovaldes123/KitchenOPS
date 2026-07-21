@@ -334,9 +334,9 @@ function EmptyState({ onAdd, onAddPlato }: { onAdd: () => void; onAddPlato: () =
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function MermasPage() {
-  const { rol } = useRol();
-  const verCostos = rol !== 'cocina';
-  const soloLectura = rol === 'jefatura';
+  const { puede } = useRol();
+  const verCostos = puede('mermas', 'verCostos');
+  const soloLectura = !puede('mermas', 'registrar');
 
   const [maestros,      setMaestros]      = useState<Maestros | null>(null);
   const [cargando,      setCargando]      = useState(true);

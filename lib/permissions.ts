@@ -77,6 +77,21 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     maestros:   NADA,
   },
 
+  bodega: {
+    dashboard:  NADA,
+    produccion: NADA,
+    colacion:   NADA,
+    frutas:     NADA,
+    inventario: NADA,
+    mermas:     OPERATIVO,
+    historial:  NADA,
+    ventas:     NADA,
+    kpis:       NADA,
+    costos:     NADA,
+    export:     NADA,
+    maestros:   NADA,
+  },
+
   economo: {
     dashboard:  NADA,
     produccion: NADA,

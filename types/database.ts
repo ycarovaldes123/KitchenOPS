@@ -9,7 +9,7 @@
 
 export type TipoPP        = 'PORCION' | 'CC' | 'UND' | 'DIRECTO';
 export type TurnoType     = 'AM' | 'PM';
-export type RolType       = 'cocina' | 'economo' | 'jefatura' | 'finanzas' | 'admin';
+export type RolType       = 'cocina' | 'economo' | 'bodega' | 'jefatura' | 'finanzas' | 'admin';
 export type EstadoType    = 'REGISTRADO';
 export type MotivoMerma   =
   // Nuevos (desde may-2026):
