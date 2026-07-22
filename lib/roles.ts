@@ -14,7 +14,7 @@ export const RUTAS_ROL: Record<RolType, string[]> = {
   admin:    ['/produccion', '/colacion', '/frutas', '/inventario', '/mermas', '/historial', '/ventas', '/dashboard', '/kpis', '/costos', '/export', '/maestros'],
   finanzas: ['/dashboard', '/produccion', '/colacion', '/frutas', '/inventario', '/mermas', '/historial', '/ventas', '/kpis', '/costos', '/export', '/maestros'],
   jefatura: ['/historial', '/ventas', '/kpis', '/costos'],
-  bodega:   ['/mermas'],
+  bodega:   ['/mermas', '/ventas'],
   economo:  ['/colacion', '/frutas', '/inventario', '/mermas', '/historial', '/ventas'],
   cocina:   ['/produccion', '/mermas', '/ventas', '/kpis'],
 };
@@ -51,7 +51,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/inventario', label: 'Toma Inventario', icon: 'grid', roles: ['admin', 'economo', 'finanzas'] },
   { href: '/mermas',     label: 'Mermas',     icon: 'trending', roles: ['admin', 'cocina', 'economo', 'bodega'] },
   { href: '/historial',  label: 'Historial',  icon: 'clock',    roles: ['admin', 'jefatura', 'finanzas', 'economo'] },
-  { href: '/ventas',     label: 'Ventas',     icon: 'barchart', roles: ['admin', 'cocina', 'finanzas', 'jefatura', 'economo'] },
+  { href: '/ventas',     label: 'Ventas',     icon: 'barchart', roles: ['admin', 'cocina', 'finanzas', 'jefatura', 'economo', 'bodega'] },
   { href: '/dashboard',  label: 'Dashboard',  icon: 'grid',     roles: ['admin', 'finanzas'] },
   { href: '/kpis',       label: 'KPIs',       icon: 'barchart', roles: ['admin', 'finanzas', 'jefatura', 'cocina'] },
   { href: '/costos',     label: 'Costos',     icon: 'dollar',   roles: ['admin', 'finanzas', 'jefatura'] },

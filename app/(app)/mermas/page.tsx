@@ -77,7 +77,8 @@ function getPlatoStatus(row: PlatoRow): RowStatus {
 
 const MOTIVOS: MotivoMerma[] = [
   'Vencimiento', 'Mala manipulación', 'Sobreproducción',
-  'Devolución', 'Corte / limpieza', 'Error de producción', 'Otro',
+  'Devolución', 'Corte / limpieza', 'Error de producción',
+  'Hongos', 'Mal estado', 'Otro',
 ];
 
 const STATUS_CFG: Record<RowStatus, { label: string; color: string; bg: string }> = {
@@ -94,6 +95,8 @@ const MOTIVO_COLOR: Record<string, string> = {
   'Devolución':         '#0EA5E9',
   'Corte / limpieza':   '#0D9373',
   'Error de producción':'#7C3AED',
+  'Hongos':             '#65A30D',
+  'Mal estado':         '#B91C1C',
   'Otro':               '#6B7280',
 };
 

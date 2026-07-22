@@ -1,12 +1,13 @@
 -- ============================================================
 -- KitchenOps — Actualizar lista de responsables
 -- Ejecutar en Supabase → SQL Editor
--- Fecha: 2026-05-20
+-- Fecha: 2026-07-22
 -- ============================================================
 -- Lista aprobada por jefe de cocina:
 --   LUISA FLANDEZ, PAULINA TRONCOSO, JOAQUIN VELASQUEZ,
 --   FELIPE CARO, JAVIERA SEPULVEDA, JOEL MENDEZ,
---   FELIPE VIDAL, PAMELA COLIHUINCA
+--   CAMILO PARADA, PAMELA COLIHUINCA
+-- (2026-07-22: FELIPE VIDAL desactivado, reemplazado por CAMILO PARADA)
 -- ============================================================
 
 -- ── PASO 1: Desactivar todos los responsables actuales ──────
@@ -21,7 +22,7 @@ INSERT INTO responsables (nombre, email, rol, color_hex, iniciales, activo) VALU
   ('FELIPE CARO',        'fcaro@cerveceriakunstmann.cl',           'jefatura',  '#D97706', 'FC', true),
   ('JAVIERA SEPULVEDA',  'jsepulveda@cerveceriakunstmann.cl',      'admin',     '#0D9373', 'JS', true),
   ('JOEL MENDEZ',        NULL,                                     'cocina',    '#DC2626', 'JM', true),
-  ('FELIPE VIDAL',       NULL,                                     'cocina',    '#6366F1', 'FV', true),
+  ('CAMILO PARADA',      NULL,                                     'cocina',    '#EC4899', 'CP', true),
   ('PAMELA COLIHUINCA',  NULL,                                     'cocina',    '#059669', 'PC', true)
 ON CONFLICT (nombre) DO UPDATE SET
   activo    = true,

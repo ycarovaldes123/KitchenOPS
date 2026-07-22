@@ -16,6 +16,7 @@ export type MotivoMerma   =
   | 'Vencimiento' | 'Mala manipulación' | 'Sobreproducción'
   | 'Devolución' | 'Corte / limpieza' | 'Error de producción' | 'Otro'
   | 'Caida' | 'Pelo / contaminacion' | 'Mal preparado' | 'Cliente no recibe'
+  | 'Hongos' | 'Mal estado'
   // Históricos (registros anteriores):
   | 'Daño físico' | 'Sobra producción' | 'Contaminación';
 export type CategoriaCarta = 'PICADAS' | 'CLÁSICOS' | 'SANDWICH & BURGERS' | 'ENSALADAS' | 'POSTRES' | 'CATERING';
