@@ -83,7 +83,7 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     colacion:   NADA,
     frutas:     NADA,
     inventario: NADA,
-    mermas:     OPERATIVO,
+    mermas:     { ...OPERATIVO, verCostos: true },
     historial:  NADA,
     ventas:     OPERATIVO,
     kpis:       NADA,
@@ -109,11 +109,11 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
 
   cocina: {
     dashboard:  NADA,
-    produccion: OPERATIVO,
+    produccion: { ...OPERATIVO, verCostos: true },
     colacion:   NADA,
     frutas:     NADA,
     inventario: NADA,
-    mermas:     OPERATIVO,
+    mermas:     { ...OPERATIVO, verCostos: true },
     historial:  NADA,
     ventas:     OPERATIVO,
     kpis:       { ...NADA, ver: true, verCostos: true },

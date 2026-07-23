@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol, getSessionRol } from '@/lib/auth-server';
 import { calcTotalPP, calcCostoProduccionPP } from '@/lib/calculos';
+import { puedeHacer } from '@/lib/permissions';
 
 export async function GET(req: NextRequest) {
   const s = await getSessionRol();
@@ -11,7 +12,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const fecha = searchParams.get('fecha');
 
-  const verCostos = s.rol !== 'cocina';
+  const verCostos = puedeHacer(s.rol, 'produccion', 'verCostos');
   const detalleSelect = verCostos
     ? 'id,nombre_pp,tipo_pp,cantidad,gramos_por_pp,total_producido,codigo_producto,costo_unitario,costo_total'
     : 'id,nombre_pp,tipo_pp,cantidad,gramos_por_pp,total_producido,codigo_producto';

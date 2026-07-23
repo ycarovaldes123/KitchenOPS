@@ -91,15 +91,7 @@ export async function GET() {
     return { ...pp, unidad_base };
   });
 
-  // Strip costo_promedio for cocina role
-  const isCocina = s.rol === 'cocina';
-  const productosOut = isCocina
-    ? (productos as ProdRow[] ?? []).map((p) => ({
-        codigo: p.codigo,
-        nombre: p.nombre,
-        unidad_medida: p.unidad_medida,
-      }))
-    : (productos ?? []);
+  const productosOut = productos ?? [];
 
   type VerduraRow = { id: string; nombre: string; codigo_producto: string | null };
   const verdurasOut = Array.from(
@@ -123,15 +115,6 @@ export async function GET() {
   };
   const cartaOut = ((cartaRows ?? []) as unknown as CartaRow[]).map(plato => {
     const costo_neto = (plato.carta_ingredientes ?? []).reduce((sum, ing) => sum + (ing.costo_total ?? 0), 0);
-    if (isCocina) {
-      return {
-        id: plato.id,
-        nombre: plato.nombre,
-        categoria: plato.categoria,
-        tipo_carta: plato.tipo_carta ?? 'ANTIGUA',
-        ingredientes_count: plato.carta_ingredientes?.length ?? 0,
-      };
-    }
     return {
       ...plato,
       tipo_carta: plato.tipo_carta ?? 'ANTIGUA',

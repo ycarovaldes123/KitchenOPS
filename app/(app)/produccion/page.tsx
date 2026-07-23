@@ -279,8 +279,8 @@ function EmptyRend({ onAdd }: { onAdd: () => void }) {
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function ProduccionPage() {
-  const { rol } = useRol();
-  const verCostos = rol !== 'cocina';
+  const { rol, puede } = useRol();
+  const verCostos = puede('produccion', 'verCostos');
   const soloLectura = rol === 'jefatura';
 
   const [maestros,      setMaestros]      = useState<Maestros | null>(null);
