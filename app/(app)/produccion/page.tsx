@@ -48,8 +48,8 @@ function totalLabel(row: PPRow): string {
 
 function getInputLabel(row: PPRow): string {
   if (!row.pp_id) return '';
-  if (row.tipo_pp === 'DIRECTO') return row.unidad_base.toLowerCase() || '—';
-  return UNIT_LABEL[row.tipo_pp] ?? 'u.';
+  if (row.tipo_pp === 'DIRECTO') return row.unidad_base || '—';
+  return UNIT_LABEL[row.tipo_pp] ?? (row.unidad_base || '—');
 }
 
 function calcCostoFila(row: PPRow): number {
@@ -88,7 +88,7 @@ const STATUS_CFG: Record<RowStatus, { label: string; color: string; bg: string }
 };
 
 const UNIT_LABEL: Record<string, string> = {
-  PORCION: 'porc.', CC: 'cc', UND: 'und.',
+  PORCION: 'PR', CC: 'CC', UND: 'UN',
 };
 
 // ─── StatusBadge ────────────────────────────────────────────────────────────
@@ -600,32 +600,11 @@ export default function ProduccionPage() {
                   value={observacion}
                   onChange={e => setObservacion(e.target.value)}
                   placeholder="Describe el turno: novedades, incidencias, contexto..."
-                  rows={5}
+                  rows={3}
                   style={{ ...inp, resize: 'vertical', lineHeight: 1.55 }}
                   onFocus={e => (e.currentTarget.style.borderColor = 'var(--ac)')}
                   onBlur={e => (e.currentTarget.style.borderColor = 'var(--bo)')}
                 />
-              </div>
-
-              {/* Atajo rendimiento */}
-              <div style={{ borderTop: '1px solid var(--bo)', paddingTop: '14px' }}>
-                <p style={{ ...lbl, marginBottom: '8px' }}>Rendimiento verduras</p>
-                <button type="button" onClick={addRendRow} style={{
-                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                  background: 'none', border: '1.5px dashed var(--bo)', borderRadius: '8px',
-                  padding: '8px 12px', cursor: 'pointer', fontSize: '12px', color: 'var(--ts)',
-                  fontFamily: 'DM Sans, sans-serif', transition: 'all 0.15s',
-                }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--ac)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--ac)'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--bo)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--ts)'; }}
-                >
-                  + Agregar rendimiento
-                  {rendCount > 0 && (
-                    <span style={{ background: 'var(--ac)', color: '#fff', borderRadius: '10px', padding: '1px 7px', fontSize: '10px', fontWeight: 700 }}>
-                      {rendCount}
-                    </span>
-                  )}
-                </button>
               </div>
             </div>
 
