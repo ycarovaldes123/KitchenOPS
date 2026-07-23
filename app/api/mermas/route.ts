@@ -32,6 +32,32 @@ type PlatoPreparado = {
   }[];
 };
 
+async function calcularCostosDetalle(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  detalle: Record<string, unknown>[],
+): Promise<Record<string, unknown>[]> {
+  const codigos = [...new Set(detalle.map(d => d.codigo_producto).filter(Boolean))] as string[];
+  const costoMap = new Map<string, number>();
+  if (codigos.length) {
+    const { data, error } = await supabase
+      .from('productos')
+      .select('codigo,costo_promedio')
+      .in('codigo', codigos);
+    if (error) throw new Error(error.message);
+    for (const p of data ?? []) costoMap.set(p.codigo as string, Number(p.costo_promedio) || 0);
+  }
+  return detalle.map(d => {
+    const cantidad = Number(d.cantidad) || 0;
+    const codigo = d.codigo_producto as string | null | undefined;
+    const costoUnitarioReal = codigo ? (costoMap.get(codigo) ?? 0) : 0;
+    return {
+      ...d,
+      costo_unitario: Math.round(costoUnitarioReal),
+      costo_total: Math.round(cantidad * costoUnitarioReal),
+    };
+  });
+}
+
 async function prepararPlatos(
   supabase: Awaited<ReturnType<typeof createClient>>,
   platos: PlatoMermaPayload[] | undefined,
@@ -146,13 +172,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Ingresa al menos un producto o plato preparado' }, { status: 400 });
 
   let platosPreparados: PlatoPreparado[] = [];
+  let detalleProductos: Record<string, unknown>[] = [];
   try {
     platosPreparados = await prepararPlatos(supabase, platos);
+    detalleProductos = await calcularCostosDetalle(supabase, Array.isArray(detalle) ? detalle : []);
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Error preparando platos' }, { status: 500 });
   }
 
-  const detalleProductos = Array.isArray(detalle) ? detalle : [];
   const detallePlatos = platosPreparados.map(plato => ({
     codigo_producto: null,
     nombre_producto: `PLATO PREPARADO: ${plato.nombre_plato}`,
@@ -292,21 +319,26 @@ export async function PATCH(req: NextRequest) {
     const nuevos = (detalle as Array<{ id?: string; cantidad: number; codigo_producto?: string | null; nombre_producto?: string | null; unidad_medida?: string | null; motivo?: string | null; costo_unitario?: number | null; costo_total?: number | null }>)
       .filter(d => !d.id);
     if (nuevos.length) {
-      const rows = nuevos.map(d => {
-        const cantidad = Number(d.cantidad);
-        if (!Number.isFinite(cantidad) || cantidad < 0) throw new Error('Cantidad invalida');
-        const costoUnitario = Number(d.costo_unitario) || 0;
-        return {
-          merma_id,
-          codigo_producto: d.codigo_producto ?? null,
-          nombre_producto: d.nombre_producto ?? null,
-          cantidad,
-          unidad_medida: d.unidad_medida ?? null,
-          motivo: d.motivo ?? null,
-          costo_unitario: costoUnitario,
-          costo_total: Number.isFinite(Number(d.costo_total)) ? Number(d.costo_total) : Math.round(cantidad * costoUnitario),
-        };
-      });
+      let rows: Record<string, unknown>[];
+      try {
+        const costeados = await calcularCostosDetalle(supabase, nuevos.map(d => ({ ...d })));
+        rows = costeados.map(d => {
+          const cantidad = Number(d.cantidad);
+          if (!Number.isFinite(cantidad) || cantidad < 0) throw new Error('Cantidad invalida');
+          return {
+            merma_id,
+            codigo_producto: d.codigo_producto ?? null,
+            nombre_producto: d.nombre_producto ?? null,
+            cantidad,
+            unidad_medida: d.unidad_medida ?? null,
+            motivo: d.motivo ?? null,
+            costo_unitario: d.costo_unitario,
+            costo_total: d.costo_total,
+          };
+        });
+      } catch (e) {
+        return NextResponse.json({ error: e instanceof Error ? e.message : 'Error calculando costos' }, { status: 500 });
+      }
       try {
         const { error } = await supabase.from('detalle_mermas').insert(rows);
         if (error) return NextResponse.json({ error: error.message }, { status: 500 });

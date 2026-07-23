@@ -515,7 +515,7 @@ export default function ColacionPage() {
                                   />
                                 </td>
                                 <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)', whiteSpace: 'nowrap' }}>
-                                  {row.unidad_medida === 'KG' ? 'g' : (row.unidad_medida?.toLowerCase() || '—')}
+                                  {row.unidad_medida || '—'}
                                 </td>
                                 {verCostos && (
                                   <td style={{ padding: '9px 12px', fontSize: '13px', whiteSpace: 'nowrap', fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: costo > 0 ? 'var(--tx)' : 'var(--ts)' }}>

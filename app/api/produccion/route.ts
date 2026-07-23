@@ -79,18 +79,19 @@ export async function POST(req: NextRequest) {
   const { data: productos, error: prodErr } = codigos.length
     ? await supabase
         .from('productos')
-        .select('codigo,unidad_medida')
+        .select('codigo,unidad_medida,costo_promedio')
         .in('codigo', codigos)
     : { data: [], error: null };
   if (prodErr) return NextResponse.json({ error: prodErr.message }, { status: 500 });
 
   const unidadPorCodigo = new Map((productos ?? []).map(p => [p.codigo as string, p.unidad_medida as string | null]));
+  const costoPorCodigo = new Map((productos ?? []).map(p => [p.codigo as string, Number(p.costo_promedio) || 0]));
   const detalleRows = detalleValido.map(d => {
     const cantidad = Number(d.cantidad) || 0;
     const tipoPP = d.tipo_pp as string | null | undefined;
     const gramosPorPP = d.gramos_por_pp as number | null | undefined;
     const codigoProducto = d.codigo_producto as string | null | undefined;
-    const costoUnitario = Number(d.costo_unitario) || 0;
+    const costoUnitario = codigoProducto ? (costoPorCodigo.get(codigoProducto) ?? 0) : 0;
     const unidadProducto = codigoProducto ? unidadPorCodigo.get(codigoProducto) : null;
     const costoCalculado = calcCostoProduccionPP(
       cantidad,
@@ -108,7 +109,7 @@ export async function POST(req: NextRequest) {
         unidadProducto
       ),
       costo_unitario: costoUnitario,
-      costo_total: costoCalculado > 0 ? costoCalculado : Number(d.costo_total) || 0,
+      costo_total: costoCalculado,
     };
   });
 
@@ -234,17 +235,18 @@ export async function PATCH(req: NextRequest) {
     const { data: productos, error: prodErr } = codigos.length
       ? await supabase
           .from('productos')
-          .select('codigo,unidad_medida')
+          .select('codigo,unidad_medida,costo_promedio')
           .in('codigo', codigos)
       : { data: [], error: null };
     if (prodErr) return NextResponse.json({ error: prodErr.message }, { status: 500 });
 
     const unidadPorCodigo = new Map((productos ?? []).map(p => [p.codigo as string, p.unidad_medida as string | null]));
+    const costoPorCodigo = new Map((productos ?? []).map(p => [p.codigo as string, Number(p.costo_promedio) || 0]));
 
     const rows = nuevos.map(d => {
       const cantidad = Number(d.cantidad);
       if (!Number.isFinite(cantidad) || cantidad < 0) throw new Error('Cantidad invalida');
-      const costoUnitario = Number(d.costo_unitario) || 0;
+      const costoUnitario = d.codigo_producto ? (costoPorCodigo.get(d.codigo_producto) ?? 0) : 0;
       const unidadProducto = d.codigo_producto ? unidadPorCodigo.get(d.codigo_producto) : null;
       const totalProducido = calcTotalPP(
         cantidad,

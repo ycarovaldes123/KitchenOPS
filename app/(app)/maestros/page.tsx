@@ -72,6 +72,7 @@ export default function MaestrosPage() {
   const [responsables, setResp] = useState<Responsable[]>([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
+  const [ppTipoFiltro, setPPTipoFiltro] = useState<TipoPP | ''>('');
 
   // PP modal
   const [ppModal, setPPModal]   = useState<false | 'new' | PP>(false);
@@ -282,9 +283,14 @@ export default function MaestrosPage() {
       setProdEditSaving(false);
       return;
     }
+    const codigoAnterior = prodEditModal.codigo;
+    const actualizado: Producto = {
+      codigo: data.codigo, nombre: data.nombre, unidad_medida: data.unidad_medida,
+      costo_promedio: data.costo_promedio, activo: data.activo, updated_at: data.updated_at,
+    };
+    setProductos(prev => prev.map(p => p.codigo === codigoAnterior ? actualizado : p));
     setProdEditModal(null);
     setProdEditSaving(false);
-    load();
   }
 
   async function actualizarCostos(file: File) {
@@ -315,7 +321,8 @@ export default function MaestrosPage() {
   // ── Helpers ───────────────────────────────────────────────────
 
   const filteredPP = pps.filter(pp =>
-    pp.nombre.toLowerCase().includes(search.toLowerCase())
+    pp.nombre.toLowerCase().includes(search.toLowerCase()) &&
+    (!ppTipoFiltro || pp.tipo_pp === ppTipoFiltro)
   );
   const filteredProd = productos.filter(p =>
     p.nombre.toLowerCase().includes(search.toLowerCase()) ||
@@ -498,12 +505,34 @@ export default function MaestrosPage() {
             <TableCard>
               <thead>
                 <tr>
-                  {['Nombre', 'Tipo', 'Producto', 'Gramos/PP', ''].map(h => <Th key={h}>{h}</Th>)}
+                  <Th>Nombre</Th>
+                  <Th>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>Tipo</span>
+                      <select
+                        value={ppTipoFiltro}
+                        onChange={e => setPPTipoFiltro(e.target.value as TipoPP | '')}
+                        style={{
+                          fontSize: '11px', fontWeight: 500, textTransform: 'none',
+                          letterSpacing: 'normal', color: 'var(--tx)', background: 'var(--sf)',
+                          border: '1px solid var(--bo)', borderRadius: '6px', padding: '2px 6px',
+                          cursor: 'pointer',
+                        }}
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <option value="">Todos</option>
+                        {TIPOS_PP.map(t => <option key={t} value={t}>{TIPO_LABEL[t]}</option>)}
+                      </select>
+                    </div>
+                  </Th>
+                  <Th>Producto</Th>
+                  <Th>Gramos/PP</Th>
+                  <Th>{''}</Th>
                 </tr>
               </thead>
               <tbody>
                 {filteredPP.length === 0 && (
-                  <tr><td colSpan={5} style={emptyCell}>Sin resultados</td></tr>
+                  <tr><td colSpan={5} style={emptyCell}>Sin resultados{ppTipoFiltro ? ` para tipo "${TIPO_LABEL[ppTipoFiltro]}"` : ''}</td></tr>
                 )}
                 {filteredPP.map(pp => {
                   const prod = productos.find(p => p.codigo === pp.codigo_producto);
