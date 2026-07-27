@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { getSessionRol } from '@/lib/auth-server';
 
-function hoyChile() {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago' }).format(new Date());
-}
-
 const SEARCH_FETCH_LIMIT = 5000;
 const SUMMARY_FETCH_LIMIT = 10000;
 
@@ -162,12 +158,6 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(100, Math.max(1, Number(searchParams.get('limit') ?? '50') || 50));
   const offset = Math.max(0, Number(searchParams.get('offset') ?? '0') || 0);
   const busqueda = searchParams.get('q')?.trim() ?? '';
-
-  if (s.rol === 'cocina') {
-    const hoy = hoyChile();
-    desde = hoy;
-    hasta = hoy;
-  }
 
   const verCostos = s.rol !== 'cocina';
 
