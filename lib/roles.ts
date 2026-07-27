@@ -11,12 +11,12 @@ export const RMAP: Record<string, RolType> = {
 };
 
 export const RUTAS_ROL: Record<RolType, string[]> = {
-  admin:    ['/produccion', '/colacion', '/frutas', '/inventario', '/mermas', '/historial', '/ventas', '/dashboard', '/kpis', '/costos', '/export', '/maestros'],
+  admin:    ['/produccion', '/colacion', '/frutas', '/inventario', '/control-bodegas', '/mermas', '/historial', '/ventas', '/dashboard', '/kpis', '/costos', '/export', '/maestros'],
   finanzas: ['/dashboard', '/produccion', '/colacion', '/frutas', '/inventario', '/mermas', '/historial', '/ventas', '/kpis', '/costos', '/export', '/maestros'],
   jefatura: ['/historial', '/ventas', '/kpis', '/costos'],
-  bodega:   ['/mermas', '/ventas'],
+  bodega:   ['/control-bodegas', '/mermas', '/ventas', '/historial'],
   economo:  ['/colacion', '/frutas', '/inventario', '/mermas', '/historial', '/ventas'],
-  cocina:   ['/produccion', '/mermas', '/ventas', '/kpis'],
+  cocina:   ['/produccion', '/mermas', '/ventas', '/kpis', '/historial'],
 };
 
 export const RUTA_INICIO: Record<RolType, string> = {
@@ -49,8 +49,9 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/colacion',   label: 'Colacion',   icon: 'utensils', roles: ['admin', 'economo'] },
   { href: '/frutas',     label: 'Frutas',     icon: 'utensils', roles: ['admin', 'economo', 'finanzas'] },
   { href: '/inventario', label: 'Toma Inventario', icon: 'grid', roles: ['admin', 'economo', 'finanzas'] },
+  { href: '/control-bodegas', label: 'Control Bodegas', icon: 'grid', roles: ['admin', 'bodega'] },
   { href: '/mermas',     label: 'Mermas',     icon: 'trending', roles: ['admin', 'cocina', 'economo', 'bodega'] },
-  { href: '/historial',  label: 'Historial',  icon: 'clock',    roles: ['admin', 'jefatura', 'finanzas', 'economo'] },
+  { href: '/historial',  label: 'Historial',  icon: 'clock',    roles: ['admin', 'jefatura', 'finanzas', 'economo', 'cocina', 'bodega'] },
   { href: '/ventas',     label: 'Ventas',     icon: 'barchart', roles: ['admin', 'cocina', 'finanzas', 'jefatura', 'economo', 'bodega'] },
   { href: '/dashboard',  label: 'Dashboard',  icon: 'grid',     roles: ['admin', 'finanzas'] },
   { href: '/kpis',       label: 'KPIs',       icon: 'barchart', roles: ['admin', 'finanzas', 'jefatura', 'cocina'] },
