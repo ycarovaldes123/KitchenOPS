@@ -6,7 +6,7 @@ export type Modulo =
   | 'colacion'
   | 'frutas'
   | 'inventario'
-  | 'controlBodegas'
+  | 'controlCarnicos'
   | 'mermas'
   | 'historial'
   | 'ventas'
@@ -40,7 +40,7 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     colacion:   COMPLETO,
     frutas:     COMPLETO,
     inventario: COMPLETO,
-    controlBodegas: COMPLETO,
+    controlCarnicos: COMPLETO,
     mermas:     COMPLETO,
     historial:  COMPLETO,
     ventas:     COMPLETO,
@@ -56,7 +56,7 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     colacion:   FINANCIERO,
     frutas:     FINANCIERO,
     inventario: FINANCIERO,
-    controlBodegas: NADA,
+    controlCarnicos: NADA,
     mermas:     FINANCIERO,
     historial:  FINANCIERO,
     ventas:     FINANCIERO,
@@ -72,7 +72,7 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     colacion:   NADA,
     frutas:     NADA,
     inventario: NADA,
-    controlBodegas: NADA,
+    controlCarnicos: NADA,
     mermas:     NADA,
     historial:  LECTURA_COSTOS,
     ventas:     LECTURA_COSTOS,
@@ -88,7 +88,7 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     colacion:   NADA,
     frutas:     NADA,
     inventario: NADA,
-    controlBodegas: BODEGA_CONTROL,
+    controlCarnicos: BODEGA_CONTROL,
     mermas:     { ...OPERATIVO, verCostos: true },
     historial:  LECTURA_COSTOS,
     ventas:     OPERATIVO,
@@ -104,7 +104,7 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     colacion:   OPERATIVO,
     frutas:     OPERATIVO,
     inventario: OPERATIVO,
-    controlBodegas: NADA,
+    controlCarnicos: NADA,
     mermas:     OPERATIVO,
     historial:  { ...NADA, ver: true, verCostos: true },
     ventas:     { ...NADA, ver: true, registrar: true, verCostos: true },
@@ -120,7 +120,7 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     colacion:   NADA,
     frutas:     NADA,
     inventario: NADA,
-    controlBodegas: NADA,
+    controlCarnicos: NADA,
     mermas:     { ...OPERATIVO, verCostos: true },
     historial:  LECTURA_COSTOS,
     ventas:     OPERATIVO,
