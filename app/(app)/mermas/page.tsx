@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { formatCLP } from '@/lib/calculos';
 import { useRol } from '@/components/RolProvider';
 import type { Responsable, Producto, MotivoMerma } from '@/types/database';
+import { MOTIVO_MERMA_COLOR, MOTIVOS_MERMA_PLATO, MOTIVOS_MERMA_PRODUCTO } from '@/lib/mermas';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -75,11 +76,7 @@ function getPlatoStatus(row: PlatoRow): RowStatus {
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const MOTIVOS: MotivoMerma[] = [
-  'Vencimiento', 'Mala manipulación', 'Sobreproducción',
-  'Devolución', 'Corte / limpieza', 'Error de producción',
-  'Hongos', 'Mal estado', 'Otro',
-];
+const MOTIVOS: MotivoMerma[] = [...MOTIVOS_MERMA_PRODUCTO];
 
 const STATUS_CFG: Record<RowStatus, { label: string; color: string; bg: string }> = {
   ok:          { label: 'OK',           color: '#065F46', bg: '#D1FAE5' },
@@ -88,35 +85,16 @@ const STATUS_CFG: Record<RowStatus, { label: string; color: string; bg: string }
   'sin-costo': { label: 'Sin costo',    color: '#991B1B', bg: '#FEE2E2' },
 };
 
-const MOTIVO_COLOR: Record<string, string> = {
-  'Vencimiento':        '#DC2626',
-  'Mala manipulación':  '#D97706',
-  'Sobreproducción':    '#6366F1',
-  'Devolución':         '#0EA5E9',
-  'Corte / limpieza':   '#0D9373',
-  'Error de producción':'#7C3AED',
-  'Hongos':             '#65A30D',
-  'Mal estado':         '#B91C1C',
-  'Otro':               '#6B7280',
-};
+const MOTIVO_COLOR: Record<string, string> = { ...MOTIVO_MERMA_COLOR };
 
 const UM_COLOR: Record<string, string> = {
   KG: '#0D9373', GR: '#6366F1', LT: '#0EA5E9',
   UN: '#D97706', CC: '#8B5CF6', PR: '#64748B',
 };
 
-const MOTIVOS_PLATO: MotivoMerma[] = [
-  'Devolución', 'Caida', 'Pelo / contaminacion', 'Mal preparado', 'Cliente no recibe', 'Otro',
-];
+const MOTIVOS_PLATO: MotivoMerma[] = [...MOTIVOS_MERMA_PLATO];
 
-const MOTIVO_PLATO_COLOR: Record<string, string> = {
-  'Devolución': '#0EA5E9',
-  'Caida': '#B45309',
-  'Pelo / contaminacion': '#BE123C',
-  'Mal preparado': '#9333EA',
-  'Cliente no recibe': '#0284C7',
-  'Otro': '#6B7280',
-};
+const MOTIVO_PLATO_COLOR: Record<string, string> = { ...MOTIVO_MERMA_COLOR };
 
 // ─── StatusBadge ────────────────────────────────────────────────────────────
 

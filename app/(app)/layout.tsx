@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/utils/supabase/server';
-import { RMAP, ROL_LABEL, NAV_ITEMS } from '@/lib/roles';
+import { RMAP, ROL_LABEL, NAV_ITEMS, RUTAS_ROL, type NavItem } from '@/lib/roles';
 import Sidebar      from '@/components/layout/Sidebar';
 import TopBar       from '@/components/layout/TopBar';
 import BottomNav    from '@/components/layout/BottomNav';
@@ -15,7 +15,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const rol = RMAP[user.email ?? ''];
   if (!rol) redirect('/login?error=unauthorized');
 
-  const navItems  = NAV_ITEMS.filter(item => item.roles.includes(rol));
+  const navItems  = RUTAS_ROL[rol]
+    .map(href => NAV_ITEMS.find(item => item.href === href && item.roles.includes(rol)))
+    .filter((item): item is NavItem => Boolean(item));
   const iniciales = (user.email ?? '').split('@')[0].slice(0, 2).toUpperCase();
   const userInfo  = { email: user.email!, rolLabel: ROL_LABEL[rol], iniciales };
 

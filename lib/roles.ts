@@ -11,7 +11,7 @@ export const RMAP: Record<string, RolType> = {
 };
 
 export const RUTAS_ROL: Record<RolType, string[]> = {
-  admin:    ['/produccion', '/colacion', '/frutas', '/inventario', '/control-bodegas', '/mermas', '/historial', '/ventas', '/dashboard', '/kpis', '/costos', '/export', '/maestros'],
+  admin:    ['/produccion', '/colacion', '/mermas', '/frutas', '/inventario', '/control-bodegas', '/historial', '/ventas', '/dashboard', '/kpis', '/costos', '/export', '/maestros'],
   finanzas: ['/dashboard', '/produccion', '/colacion', '/frutas', '/inventario', '/mermas', '/historial', '/ventas', '/kpis', '/costos', '/export', '/maestros'],
   jefatura: ['/historial', '/ventas', '/kpis', '/costos'],
   bodega:   ['/control-bodegas', '/mermas', '/ventas', '/historial'],

@@ -14,11 +14,13 @@ export type EstadoType    = 'REGISTRADO';
 export type MotivoMerma   =
   // Nuevos (desde may-2026):
   | 'Vencimiento' | 'Mala manipulación' | 'Sobreproducción'
-  | 'Devolución' | 'Corte / limpieza' | 'Error de producción' | 'Otro'
-  | 'Caida' | 'Pelo / contaminacion' | 'Mal preparado' | 'Cliente no recibe'
-  | 'Hongos' | 'Mal estado'
+  | 'Devolución' | 'Corte / limpieza' | 'Error de producción'
+  | 'Hongos' | 'Mal estado' | 'Prueba de plato' | 'Caída' | 'Crudo'
+  | 'Error Garzón' | 'Devolución Cliente' | 'Quemado'
+  | 'Pelo / contaminación' | 'Mal preparado'
   // Históricos (registros anteriores):
-  | 'Daño físico' | 'Sobra producción' | 'Contaminación';
+  | 'Daño físico' | 'Sobra producción' | 'Contaminación'
+  | 'Otro' | 'Cliente no recibe' | 'Caida' | 'Pelo / contaminacion';
 export type CategoriaCarta = 'PICADAS' | 'CLÁSICOS' | 'SANDWICH & BURGERS' | 'ENSALADAS' | 'POSTRES' | 'CATERING';
 export type ColorSemaforo = 'green' | 'yellow' | 'red' | 'gray';
 export type TipoCarta = 'ANTIGUA' | 'NUEVA';

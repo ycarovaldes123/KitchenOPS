@@ -135,20 +135,18 @@ function TooltipCLP({ active, payload, label }: any) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function TooltipCLPConMenu({ active, payload, label }: any) {
+function TooltipCLPConMenu({ active, payload }: any) {
   if (!active || !payload?.length) return null;
   const menu = payload[0]?.payload?.colacion_menu as string | null | undefined;
+  const costo = payload.find((p: { value?: number }) => typeof p.value === 'number')?.value as number | undefined;
   return (
     <div style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', maxWidth: '260px' }}>
-      <p style={{ margin: '0 0 6px', fontWeight: 600, color: 'var(--ts)' }}>{label}</p>
-      {payload.map((p: { name: string; value: number; color: string }, i: number) => (
-        <p key={i} style={{ margin: '2px 0', color: p.color, fontWeight: 600 }}>
-          {p.name}: {formatCLP(p.value)}
-        </p>
-      ))}
+      <p style={{ margin: '0 0 4px', color: COSTO_COLORS.colacion, fontWeight: 700 }}>
+        Costo: {formatCLP(costo ?? 0)}
+      </p>
       {menu && (
-        <p style={{ margin: '6px 0 0', paddingTop: '6px', borderTop: '1px solid var(--bo)', color: 'var(--tx)', fontWeight: 500 }}>
-          Menu: {menu}
+        <p style={{ margin: 0, color: 'var(--tx)', fontWeight: 500 }}>
+          Plato: {menu}
         </p>
       )}
     </div>

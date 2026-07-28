@@ -60,6 +60,29 @@ const SEM_BG: Record<ColorSemaforo, string> = {
 type Vista = 'lista' | 'mosaico';
 type FiltroCarta = 'all' | 'ANTIGUA' | 'NUEVA';
 
+function normalizeSearch(value: unknown) {
+  return String(value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+function ingredienteMatches(ing: Ingrediente, query: string) {
+  const text = normalizeSearch([
+    ing.codigo_producto,
+    ing.nombre,
+    ing.pp_id,
+    ing.unidad_medida,
+  ].filter(Boolean).join(' '));
+  return text.includes(query);
+}
+
+function matchingIngredientes(plato: Plato, query: string) {
+  if (!query) return [];
+  return (plato.carta_ingredientes ?? []).filter(ing => ingredienteMatches(ing, query));
+}
+
 function CartaBadge({ tipo }: { tipo: 'ANTIGUA' | 'NUEVA' }) {
   const nueva = tipo === 'NUEVA';
   return (
@@ -81,7 +104,9 @@ function CartaBadge({ tipo }: { tipo: 'ANTIGUA' | 'NUEVA' }) {
   );
 }
 
-function PlatoCard({ p, onClick }: { p: Plato; onClick: () => void }) {
+function PlatoCard({ p, onClick, productoQuery }: { p: Plato; onClick: () => void; productoQuery: string }) {
+  const matches = matchingIngredientes(p, productoQuery);
+
   return (
     <div
       onClick={onClick}
@@ -140,6 +165,16 @@ function PlatoCard({ p, onClick }: { p: Plato; onClick: () => void }) {
           </span>
           <Semaforo color={p.semaforo} margen={p.margen_pct} compact />
         </div>
+        {productoQuery && (
+          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '4px' }}>
+            {matches.slice(0, 2).map(ing => (
+              <span key={ing.id} style={{ fontSize: '10px', fontWeight: 700, color: '#0F766E', background: '#CCFBF1', border: '1px solid #99F6E4', borderRadius: '4px', padding: '2px 6px', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {ing.nombre ?? ing.codigo_producto}
+              </span>
+            ))}
+            {matches.length > 2 && <span style={{ fontSize: '10px', color: 'var(--ts)', padding: '2px 0' }}>+{matches.length - 2}</span>}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -155,6 +190,7 @@ export default function CostosPage() {
   const [catFiltro, setCatFiltro] = useState('all');
   const [cartaFiltro, setCartaFiltro] = useState<FiltroCarta>('all');
   const [semFiltro, setSemFiltro] = useState<ColorSemaforo | 'all'>('all');
+  const [productoBusqueda, setProductoBusqueda] = useState('');
   const [modal, setModal] = useState<Plato | null>(null);
   const [editor, setEditor] = useState<Plato | 'new' | null>(null);
   const [vista, setVista] = useState<Vista>(() => (
@@ -193,13 +229,16 @@ export default function CostosPage() {
     return [{ value: 'all', label: 'Todas las categorias' }, ...cats.map(c => ({ value: c, label: c }))];
   }, [platos]);
 
+  const productoQuery = useMemo(() => normalizeSearch(productoBusqueda), [productoBusqueda]);
+
   const filtrados = useMemo(() => (
     platos.filter(p =>
       (cartaFiltro === 'all' || (p.tipo_carta ?? 'ANTIGUA') === cartaFiltro) &&
       (catFiltro === 'all' || p.categoria === catFiltro) &&
-      (semFiltro === 'all' || p.semaforo === semFiltro),
+      (semFiltro === 'all' || p.semaforo === semFiltro) &&
+      (!productoQuery || matchingIngredientes(p, productoQuery).length > 0),
     )
-  ), [platos, cartaFiltro, catFiltro, semFiltro]);
+  ), [platos, cartaFiltro, catFiltro, semFiltro, productoQuery]);
 
   const grupos = useMemo(() => {
     const map = new Map<string, Plato[]>();
@@ -315,6 +354,28 @@ export default function CostosPage() {
       </div>
 
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: '1 1 260px', minWidth: '240px', maxWidth: '420px' }}>
+          <input
+            type="search"
+            value={productoBusqueda}
+            onChange={e => setProductoBusqueda(e.target.value)}
+            placeholder="Buscar producto en recetas..."
+            style={{ width: '100%', border: '1.5px solid var(--bo)', borderRadius: '8px', padding: '7px 34px 7px 12px', fontSize: '13px', background: 'var(--bg)', color: 'var(--tx)', fontFamily: 'DM Sans, sans-serif', outline: 'none', boxSizing: 'border-box' }}
+            onFocus={e => (e.currentTarget.style.borderColor = 'var(--ac)')}
+            onBlur={e => (e.currentTarget.style.borderColor = 'var(--bo)')}
+          />
+          {productoBusqueda && (
+            <button
+              type="button"
+              onClick={() => setProductoBusqueda('')}
+              title="Limpiar busqueda"
+              style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', color: 'var(--ts)', cursor: 'pointer', fontSize: '16px', lineHeight: 1, padding: '2px' }}
+            >
+              x
+            </button>
+          )}
+        </div>
+
         <select
           value={cartaFiltro}
           onChange={e => setCartaFiltro(e.target.value as FiltroCarta)}
@@ -360,9 +421,16 @@ export default function CostosPage() {
           ))}
         </div>
 
-        {(cartaFiltro !== 'all' || catFiltro !== 'all' || semFiltro !== 'all') && (
+        {productoQuery && (
+          <span style={{ fontSize: '12px', color: 'var(--ts)', fontWeight: 600 }}>
+            {filtrados.length} plato{filtrados.length !== 1 ? 's' : ''} con ese producto
+          </span>
+        )}
+
+        {(productoBusqueda || cartaFiltro !== 'all' || catFiltro !== 'all' || semFiltro !== 'all') && (
           <button
             onClick={() => {
+              setProductoBusqueda('');
               setCartaFiltro('all');
               setCatFiltro('all');
               setSemFiltro('all');
@@ -376,7 +444,7 @@ export default function CostosPage() {
 
       {filtrados.length === 0 && (
         <div style={{ background: 'var(--sf)', borderRadius: '12px', border: '1px solid var(--bo)', padding: '40px 24px', textAlign: 'center', color: 'var(--ts)', fontSize: '14px' }}>
-          No hay platos que coincidan con los filtros.
+          {productoQuery ? 'No hay platos que contengan ese producto.' : 'No hay platos que coincidan con los filtros.'}
         </div>
       )}
 
@@ -392,7 +460,7 @@ export default function CostosPage() {
               <thead>
                 <tr>
                   <th style={{ width: '48px', borderBottom: '1px solid var(--bo)' }} />
-                  {['Plato', 'Carta', 'Precio carta', 'Costo bruto', 'Margen', 'Estado'].map(h => (
+                  {['Plato', ...(productoQuery ? ['Producto encontrado'] : []), 'Carta', 'Precio carta', 'Costo bruto', 'Margen', 'Estado'].map(h => (
                     <th key={h} style={{ textAlign: 'left', fontSize: '10px', fontWeight: 600, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px', padding: '8px 16px', whiteSpace: 'nowrap', borderBottom: '1px solid var(--bo)' }}>
                       {h}
                     </th>
@@ -416,6 +484,20 @@ export default function CostosPage() {
                       )}
                     </td>
                     <td style={{ padding: '12px 16px', fontSize: '14px', color: 'var(--tx)', fontWeight: 500 }}>{p.nombre}</td>
+                    {productoQuery && (
+                      <td style={{ padding: '12px 16px', maxWidth: '260px' }}>
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                          {matchingIngredientes(p, productoQuery).slice(0, 3).map(ing => (
+                            <span key={ing.id} style={{ fontSize: '11px', fontWeight: 700, color: '#0F766E', background: '#CCFBF1', border: '1px solid #99F6E4', borderRadius: '4px', padding: '2px 7px', whiteSpace: 'nowrap' }}>
+                              {ing.nombre ?? ing.codigo_producto}
+                            </span>
+                          ))}
+                          {matchingIngredientes(p, productoQuery).length > 3 && (
+                            <span style={{ fontSize: '11px', color: 'var(--ts)' }}>+{matchingIngredientes(p, productoQuery).length - 3}</span>
+                          )}
+                        </div>
+                      </td>
+                    )}
                     <td style={{ padding: '12px 16px' }}>
                       <CartaBadge tipo={p.tipo_carta ?? 'ANTIGUA'} />
                     </td>
@@ -450,7 +532,7 @@ export default function CostosPage() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px' }}>
             {items.map(p => (
-              <PlatoCard key={p.id} p={p} onClick={() => setModal(p)} />
+              <PlatoCard key={p.id} p={p} onClick={() => setModal(p)} productoQuery={productoQuery} />
             ))}
           </div>
         </div>

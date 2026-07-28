@@ -264,7 +264,7 @@ CREATE TABLE detalle_mermas (
   nombre_producto TEXT,     -- snapshot
   cantidad        NUMERIC NOT NULL,
   unidad_medida   TEXT,
-  motivo          TEXT,     -- Vencimiento | Daño físico | Sobra producción | Contaminación
+  motivo          TEXT,     -- Validado en app: ver lib/mermas.ts; valores históricos permitidos para lectura
   costo_unitario  INTEGER DEFAULT 0,  -- snapshot
   costo_total     INTEGER DEFAULT 0   -- snapshot
 );

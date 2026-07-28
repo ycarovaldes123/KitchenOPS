@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { calcCostoProduccionPP, calcTotalPP, formatCLP, formatPct, calcMerma } from '@/lib/calculos';
 import { useRol } from '@/components/RolProvider';
+import { MOTIVO_MERMA_COLOR, normalizeMotivoMerma } from '@/lib/mermas';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -1604,13 +1605,7 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos }: { datos: Reco
 }
 
 const MOTIVO_COLOR: Record<string, string> = {
-  'Vencimiento':        '#DC2626',
-  'Mala manipulación':  '#D97706',
-  'Sobreproducción':    '#6366F1',
-  'Devolución':         '#0EA5E9',
-  'Corte / limpieza':   '#0D9373',
-  'Error de producción':'#7C3AED',
-  'Otro':               '#6B7280',
+  ...MOTIVO_MERMA_COLOR,
 };
 
 function TablaMermas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos }: { datos: Record<string, unknown>[]; canEdit: boolean; isAdmin: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[] }) {
@@ -1635,7 +1630,7 @@ function TablaMermas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
     setEditingId(id); setEditValues(vals); setEditFecha(fechaActual); setNewRows([]); setDeletedIds(new Set()); setSaveErr('');
   };
   const cancelEdit = () => { setEditingId(null); setEditValues({}); setEditFecha(''); setNewRows([]); setDeletedIds(new Set()); setSaveErr(''); };
-  const addRow = () => setNewRows(rows => [...rows, { localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`, codigo_producto: '', cantidad: 1, motivo: 'Otro' }]);
+  const addRow = () => setNewRows(rows => [...rows, { localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`, codigo_producto: '', cantidad: 1, motivo: '' }]);
   const removeDetalle = (id: string) => {
     setDeletedIds(prev => {
       const next = new Set(prev);
@@ -1663,7 +1658,7 @@ function TablaMermas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
           nombre_producto: p?.nombre ?? '',
           cantidad,
           unidad_medida: p?.unidad_medida ?? null,
-          motivo: r.motivo || 'Otro',
+          motivo: normalizeMotivoMerma(r.motivo),
           costo_unitario: costoUnitario,
           costo_total: Math.round(cantidad * costoUnitario),
         };
@@ -1708,7 +1703,7 @@ function TablaMermas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
             const preview = det.slice(0, 2).map(d => d.nombre_producto as string);
             const extra   = det.length > 2 ? det.length - 2 : 0;
             // Unique motivos
-            const motivos = [...new Set(det.map(d => d.motivo as string).filter(Boolean))];
+            const motivos = [...new Set(det.map(d => normalizeMotivoMerma(d.motivo)).filter((mot): mot is NonNullable<ReturnType<typeof normalizeMotivoMerma>> => Boolean(mot)))];
 
             return [
               <tr key={id} onClick={() => toggle(id)}
@@ -1792,7 +1787,7 @@ function TablaMermas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             {platos.map((plato, i) => {
                               const insumos = (plato.detalle_mermas_platos_insumos as Record<string, unknown>[] | undefined) ?? [];
-                              const motivo = plato.motivo as string | null;
+                              const motivo = normalizeMotivoMerma(plato.motivo);
                               const motivoColor = motivo ? (MOTIVO_COLOR[motivo] ?? '#6B7280') : '#6B7280';
                               const observacionPlato = String(plato.observacion ?? '');
                               return (
@@ -1873,7 +1868,7 @@ function TablaMermas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
                             {det.filter(d => !deletedIds.has(d.id as string)).map((d, i) => {
                               const isEditing = editingId === id;
                               const qty = isEditing ? (editValues[d.id as string] ?? (d.cantidad as number)) : (d.cantidad as number);
-                              const motivo = d.motivo as string | null;
+                              const motivo = normalizeMotivoMerma(d.motivo);
                               const motivoColor = motivo ? (MOTIVO_COLOR[motivo] ?? '#6B7280') : null;
                               const costoUnitarioEdit = Number(d.costo_unitario) || (Number(d.cantidad) > 0 ? Number(d.costo_total) / Number(d.cantidad) : 0);
                               return (

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol, getSessionRol } from '@/lib/auth-server';
 import { puedeHacer } from '@/lib/permissions';
+import { isMotivoMermaPlatoActivo, isMotivoMermaProductoActivo, normalizeMotivoMerma } from '@/lib/mermas';
 
 type PlatoMermaPayload = {
   carta_id?: string | null;
@@ -50,8 +51,10 @@ async function calcularCostosDetalle(
     const cantidad = Number(d.cantidad) || 0;
     const codigo = d.codigo_producto as string | null | undefined;
     const costoUnitarioReal = codigo ? (costoMap.get(codigo) ?? 0) : 0;
+    if (!isMotivoMermaProductoActivo(d.motivo)) throw new Error('Motivo de merma de producto invalido');
     return {
       ...d,
+      motivo: normalizeMotivoMerma(d.motivo),
       costo_unitario: Math.round(costoUnitarioReal),
       costo_total: Math.round(cantidad * costoUnitarioReal),
     };
@@ -67,12 +70,15 @@ async function prepararPlatos(
       carta_id: p.carta_id?.trim() || null,
       nombre_plato: p.nombre_plato?.trim() || null,
       cantidad: Number(p.cantidad),
-      motivo: p.motivo?.trim() || null,
+      motivo: normalizeMotivoMerma(p.motivo),
       observacion: p.observacion?.trim() || null,
     }))
     .filter(p => p.carta_id && Number.isFinite(p.cantidad) && p.cantidad > 0);
 
   if (!rows.length) return [];
+  if (rows.some(p => !isMotivoMermaPlatoActivo(p.motivo))) {
+    throw new Error('Motivo de merma de plato invalido');
+  }
 
   const ids = [...new Set(rows.map(p => p.carta_id).filter(Boolean))] as string[];
   const { data, error } = await supabase

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { normalizeMotivoMerma } from '@/lib/mermas';
 
 type ProduccionDetalle = { total_producido: number | null; costo_total: number | null; nombre_pp: string | null };
 type ProduccionRow = { id?: string; fecha: string; detalle_produccion: ProduccionDetalle[] | null };
@@ -138,7 +139,7 @@ export async function getDashboardPayload(
     byDate.set(m.fecha, { ...prev, clp_mermas: prev.clp_mermas + clp });
 
     for (const d of m.detalle_mermas ?? []) {
-      const motivo = d.motivo ?? 'Sin motivo';
+      const motivo = normalizeMotivoMerma(d.motivo) ?? 'Sin motivo';
       motivoCount.set(motivo, (motivoCount.get(motivo) ?? 0) + 1);
     }
   }
@@ -188,7 +189,7 @@ export async function getDashboardPayload(
         merma_mas_cara = {
           fecha: m.fecha,
           nombre_producto: d.nombre_producto ?? 'Sin producto',
-          motivo: d.motivo,
+          motivo: normalizeMotivoMerma(d.motivo),
           costo_total: d.costo_total,
         };
       }

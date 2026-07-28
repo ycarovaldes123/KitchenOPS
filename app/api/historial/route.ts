@@ -153,8 +153,8 @@ export async function GET(req: NextRequest) {
   const supabase = await createClient();
   const { searchParams } = new URL(req.url);
   const tipo = searchParams.get('tipo') ?? 'produccion';
-  let desde = searchParams.get('desde') ?? '';
-  let hasta = searchParams.get('hasta') ?? '';
+  const desde = searchParams.get('desde') ?? '';
+  const hasta = searchParams.get('hasta') ?? '';
   const limit = Math.min(100, Math.max(1, Number(searchParams.get('limit') ?? '50') || 50));
   const offset = Math.max(0, Number(searchParams.get('offset') ?? '0') || 0);
   const busqueda = searchParams.get('q')?.trim() ?? '';

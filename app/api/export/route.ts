@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 
 import { requireRol } from '@/lib/auth-server';
 import { createClient } from '@/utils/supabase/server';
+import { normalizeMotivoMerma } from '@/lib/mermas';
 
 type RendRow = {
   fecha: string;
@@ -480,6 +481,7 @@ export async function GET(req: NextRequest) {
   const rowsMer: unknown[][] = [headerMer];
   for (const merma of mermas) {
     for (const detalle of merma.detalle_mermas ?? []) {
+      const motivo = normalizeMotivoMerma(detalle.motivo) ?? '';
       const row: unknown[] = verCostos
         ? [
             merma.fecha,
@@ -489,7 +491,7 @@ export async function GET(req: NextRequest) {
             detalle.nombre_producto,
             detalle.cantidad,
             detalle.unidad_medida ?? '',
-            detalle.motivo ?? '',
+            motivo,
             detalle.costo_unitario,
             detalle.costo_total,
           ]
@@ -501,7 +503,7 @@ export async function GET(req: NextRequest) {
             detalle.nombre_producto,
             detalle.cantidad,
             detalle.unidad_medida ?? '',
-            detalle.motivo ?? '',
+            motivo,
           ];
       rowsMer.push(row);
     }
@@ -522,11 +524,12 @@ export async function GET(req: NextRequest) {
   for (const merma of mermas) {
     for (const plato of merma.detalle_mermas_platos ?? []) {
       const insumos = plato.detalle_mermas_platos_insumos ?? [];
+      const motivo = normalizeMotivoMerma(plato.motivo) ?? '';
 
       if (!insumos.length) {
         const row: unknown[] = verCostos
-          ? [merma.fecha, merma.responsable_nombre, merma.observacion, plato.nombre_plato, plato.cantidad, plato.motivo ?? '', plato.observacion ?? '', '', '', '', '', '', '', plato.costo_total]
-          : [merma.fecha, merma.responsable_nombre, merma.observacion, plato.nombre_plato, plato.cantidad, plato.motivo ?? '', plato.observacion ?? '', '', '', '', '', ''];
+          ? [merma.fecha, merma.responsable_nombre, merma.observacion, plato.nombre_plato, plato.cantidad, motivo, plato.observacion ?? '', '', '', '', '', '', '', plato.costo_total]
+          : [merma.fecha, merma.responsable_nombre, merma.observacion, plato.nombre_plato, plato.cantidad, motivo, plato.observacion ?? '', '', '', '', '', ''];
         rowsMerPlatos.push(row);
         continue;
       }
@@ -539,7 +542,7 @@ export async function GET(req: NextRequest) {
               merma.observacion,
               plato.nombre_plato,
               plato.cantidad,
-              plato.motivo ?? '',
+              motivo,
               plato.observacion ?? '',
               insumo.codigo_producto ?? '',
               insumo.nombre,
@@ -555,7 +558,7 @@ export async function GET(req: NextRequest) {
               merma.observacion,
               plato.nombre_plato,
               plato.cantidad,
-              plato.motivo ?? '',
+              motivo,
               plato.observacion ?? '',
               insumo.codigo_producto ?? '',
               insumo.nombre,
