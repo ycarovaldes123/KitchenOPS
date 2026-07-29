@@ -73,10 +73,11 @@ export default function VentasTab({ maestros }: { maestros: Maestros }) {
   }
 
   async function ingresarVenta() {
-    if (!data) return;
-    const pendientesIngreso = data.consumos.filter(c => !c.ya_registrado);
-    if (pendientesIngreso.length === 0) return;
-    if (!window.confirm(`Registrar ${pendientesIngreso.length} producto(s) como salida de Ventas para ${fecha}?`)) return;
+    if (!data || data.consumos.length === 0) return;
+    const yaRegistrados = data.consumos.filter(c => c.ya_registrado).length;
+    const confirmMsg = `Registrar ${data.consumos.length} producto(s) como salida de Ventas para ${fecha}?`
+      + (yaRegistrados ? ` ${yaRegistrados} ya estaban ingresados y se sobrescribiran (no se duplican).` : '');
+    if (!window.confirm(confirmMsg)) return;
 
     setIngresando(true);
     setResultadoIngreso('');
@@ -86,23 +87,28 @@ export default function VentasTab({ maestros }: { maestros: Maestros }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          fecha, consumos: pendientesIngreso,
+          fecha, consumos: data.consumos,
           responsable_id: responsableId || null,
           responsable_nombre: responsable?.nombre ?? 'Sistema Ventas Toteat',
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Error registrando venta');
-      setResultadoIngreso(`${json.insertados} movimiento(s) registrados${json.omitidos.length ? `, ${json.omitidos.length} ya existian y fueron omitidos` : ''}.`);
-      await consultar();
+      setResultadoIngreso(
+        `${json.insertados} movimiento(s) registrados`
+        + `${json.sobrescritos ? `, ${json.sobrescritos} actualizados (sobrescritos)` : ''}`
+        + `${json.omitidos.length ? `, ${json.omitidos.length} omitidos` : ''}.`
+      );
+      // Limpia los resultados para dejar la pestana lista para consultar otra fecha.
+      setData(null);
+      setExpandidos(new Set());
+      setAdvertenciasAbiertas(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error registrando venta');
     } finally {
       setIngresando(false);
     }
   }
-
-  const totalPendienteIngreso = data ? data.consumos.filter(c => !c.ya_registrado).length : 0;
 
   return (
     <div style={{ display: 'grid', gap: '14px' }}>
@@ -121,9 +127,9 @@ export default function VentasTab({ maestros }: { maestros: Maestros }) {
         <button type="button" onClick={consultar} disabled={loading} style={{ border: 'none', borderRadius: '8px', padding: '10px 18px', background: 'var(--ac)', color: '#fff', fontSize: '13px', fontWeight: 800, cursor: 'pointer' }}>
           {loading ? 'Consultando...' : 'Consultar ventas'}
         </button>
-        {data && totalPendienteIngreso > 0 && (
+        {data && data.consumos.length > 0 && (
           <button type="button" onClick={ingresarVenta} disabled={ingresando} style={{ border: 'none', borderRadius: '8px', padding: '10px 18px', background: '#0D9373', color: '#fff', fontSize: '13px', fontWeight: 800, cursor: 'pointer' }}>
-            {ingresando ? 'Ingresando...' : `Ingresar venta (${totalPendienteIngreso})`}
+            {ingresando ? 'Ingresando...' : `Ingresar venta (${data.consumos.length})`}
           </button>
         )}
       </section>

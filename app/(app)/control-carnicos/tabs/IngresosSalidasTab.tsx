@@ -47,6 +47,7 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
   const [subtipo, setSubtipo] = useState<SubtipoCarnico | ''>('');
   const [filas, setFilas] = useState<FilaMovimiento[]>([]);
   const [guardandoTodo, setGuardandoTodo] = useState(false);
+  const [ok, setOk] = useState('');
 
   const respActual = maestros.responsables.find(r => r.id === responsableId);
   const puedeGuardar = Boolean(responsableId && observacion.trim() && subtipo);
@@ -59,6 +60,7 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
   }
 
   function addFila() {
+    setOk('');
     setFilas(prev => [...prev, emptyFila()]);
   }
 
@@ -70,19 +72,19 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
     setFilas(prev => prev.filter(f => f.localId !== localId));
   }
 
-  async function guardarFila(fila: FilaMovimiento) {
+  async function guardarFila(fila: FilaMovimiento): Promise<boolean> {
     if (!puedeGuardar) {
       updateFila(fila.localId, { estado: 'error', mensaje: 'Falta responsable u observacion del turno.' });
-      return;
+      return false;
     }
     if (!fila.producto) {
       updateFila(fila.localId, { estado: 'error', mensaje: 'Selecciona un producto.' });
-      return;
+      return false;
     }
     const cantidad = Number(fila.cantidad);
     if (!Number.isFinite(cantidad) || cantidad <= 0) {
       updateFila(fila.localId, { estado: 'error', mensaje: 'La cantidad debe ser mayor a 0.' });
-      return;
+      return false;
     }
 
     updateFila(fila.localId, { estado: 'guardando', mensaje: '' });
@@ -100,8 +102,10 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Error guardando movimiento');
       updateFila(fila.localId, { estado: 'guardado', mensaje: 'Movimiento guardado' });
+      return true;
     } catch (error) {
       updateFila(fila.localId, { estado: 'error', mensaje: error instanceof Error ? error.message : 'Error guardando movimiento' });
+      return false;
     }
   }
 
@@ -109,17 +113,31 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
     const pendientes = filas.filter(f => f.estado !== 'guardado');
     if (!pendientes.length) return;
     setGuardandoTodo(true);
+    setOk('');
+    let exitosos = 0;
     for (const fila of pendientes) {
-      await guardarFila(fila);
+      if (await guardarFila(fila)) exitosos++;
     }
     setGuardandoTodo(false);
+    // Si se guardaron todos los pendientes, se refleja de inmediato en el resumen (se calcula en vivo desde los movimientos);
+    // se limpia la lista para dejar la pestana lista para ingresar otro movimiento.
+    if (exitosos === pendientes.length) {
+      setOk(`${exitosos} movimiento${exitosos !== 1 ? 's' : ''} guardado${exitosos !== 1 ? 's' : ''} correctamente.`);
+      setFilas([]);
+    }
   }
 
   const guardadas = useMemo(() => filas.filter(f => f.estado === 'guardado').length, [filas]);
   const pendientesCount = filas.length - guardadas;
 
   return (
-    <div className="carnicos-grid" style={{ display: 'grid', gridTemplateColumns: '310px 1fr', gap: '14px', alignItems: 'start' }}>
+    <div>
+      {ok && (
+        <div style={{ background: '#ECFDF5', border: '1px solid #6EE7B7', color: '#065F46', borderRadius: '10px', padding: '12px 14px', marginBottom: '14px', fontSize: '13px' }}>
+          {ok}
+        </div>
+      )}
+      <div className="carnicos-grid" style={{ display: 'grid', gridTemplateColumns: '310px 1fr', gap: '14px', alignItems: 'start' }}>
       <DatosTurnoCard
         title="MOVIMIENTOS DE BODEGA"
         fecha={fecha} onFecha={setFecha}
@@ -245,6 +263,7 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
           </>
         )}
       </section>
+      </div>
 
       <style>{`
         @media (max-width: 1023px) {
