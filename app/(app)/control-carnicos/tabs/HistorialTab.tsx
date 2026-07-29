@@ -42,6 +42,15 @@ interface InventarioHistorial {
   cantidad: number;
 }
 
+interface GrupoInventario {
+  key: string;
+  fecha: string;
+  bodega: BodegaCarnico;
+  tipo: TipoInventarioCarnico;
+  responsable_nombre: string;
+  items: InventarioHistorial[];
+}
+
 function fmt(value: number) {
   const decimals = Math.abs(value) % 1 === 0 ? 0 : 2;
   return new Intl.NumberFormat('es-CL', { maximumFractionDigits: decimals }).format(value);
@@ -57,9 +66,19 @@ export default function HistorialTab() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
+  const [expandidosInv, setExpandidosInv] = useState<Set<string>>(new Set());
 
   function toggleExpandido(key: string) {
     setExpandidos(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function toggleExpandidoInv(key: string) {
+    setExpandidosInv(prev => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -71,6 +90,7 @@ export default function HistorialTab() {
     setLoading(true);
     setError('');
     setExpandidos(new Set());
+    setExpandidosInv(new Set());
     try {
       const [movRes, invRes] = await Promise.all([
         fetch(`/api/control-carnicos/movimientos?desde=${d}&hasta=${h}`),
@@ -129,6 +149,24 @@ export default function HistorialTab() {
     }
     return Array.from(map.values()).sort((a, b) => b.fecha.localeCompare(a.fecha));
   }, [movimientos]);
+
+  // Mismo criterio que Ingreso/Salida: cada conteo se carga con la misma fecha/bodega/tipo/
+  // responsable para varios productos a la vez (una fila por producto en carnicos_inventarios),
+  // asi que se agrupan por sesion en un solo movimiento expandible.
+  const gruposInventarios = useMemo(() => {
+    if (!inventarios) return [];
+    const map = new Map<string, GrupoInventario>();
+    for (const inv of inventarios) {
+      const key = `${inv.fecha}||${inv.bodega}||${inv.tipo}||${inv.responsable_nombre}`;
+      const existente = map.get(key);
+      if (existente) existente.items.push(inv);
+      else map.set(key, {
+        key, fecha: inv.fecha, bodega: inv.bodega, tipo: inv.tipo,
+        responsable_nombre: inv.responsable_nombre, items: [inv],
+      });
+    }
+    return Array.from(map.values()).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  }, [inventarios]);
 
   return (
     <div style={{ display: 'grid', gap: '14px' }}>
@@ -232,43 +270,70 @@ export default function HistorialTab() {
       <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '14px', overflow: 'hidden' }}>
         <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <p style={{ margin: 0, fontFamily: 'Syne, sans-serif', fontSize: '14px', fontWeight: 800 }}>Conteos de Inventario</p>
-          {inventarios && inventarios.length > 0 && (
-            <span style={{ background: 'var(--ac)', color: '#fff', borderRadius: '10px', padding: '1px 7px', fontSize: '10px', fontWeight: 700 }}>{inventarios.length}</span>
+          {gruposInventarios.length > 0 && (
+            <span style={{ background: 'var(--ac)', color: '#fff', borderRadius: '10px', padding: '1px 7px', fontSize: '10px', fontWeight: 700 }}>{gruposInventarios.length}</span>
           )}
         </div>
-        {!inventarios || inventarios.length === 0 ? (
+        {gruposInventarios.length === 0 ? (
           <div style={{ padding: '30px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>
             {loading ? 'Cargando...' : 'Sin conteos de inventario en el rango seleccionado.'}
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '760px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '680px' }}>
               <thead>
                 <tr style={{ background: 'var(--bg)' }}>
-                  {['Fecha', 'Bodega', 'Tipo', 'Producto', 'Cantidad', 'Responsable'].map(h => (
+                  {['', 'Fecha', 'Bodega', 'Tipo', 'Cantidad de conteos ingresados', 'Responsable'].map(h => (
                     <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', borderBottom: '1px solid var(--bo)', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {inventarios.map(inv => (
-                  <tr key={inv.id} style={{ borderBottom: '1px solid var(--bo)' }}>
-                    <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>{inv.fecha}</td>
-                    <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)' }}>{BODEGA_LABEL[inv.bodega] ?? inv.bodega}</td>
-                    <td style={{ padding: '9px 12px' }}>
-                      <span style={{
-                        display: 'inline-block', padding: '2px 8px', borderRadius: '20px', fontSize: '10px', fontWeight: 700,
-                        background: inv.tipo === 'INICIAL' ? '#DBEAFE' : '#EDE9FE',
-                        color: inv.tipo === 'INICIAL' ? '#1E40AF' : '#5B21B6',
-                      }}>
-                        {inv.tipo === 'INICIAL' ? 'Inicial' : 'Final'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '9px 12px', fontWeight: 700 }}>{inv.producto_nombre}</td>
-                    <td style={{ padding: '9px 12px', fontWeight: 800, whiteSpace: 'nowrap' }}>{fmt(inv.cantidad)} {inv.unidad_medida}</td>
-                    <td style={{ padding: '9px 12px', fontSize: '12px' }}>{inv.responsable_nombre || '-'}</td>
-                  </tr>
-                ))}
+                {gruposInventarios.map(g => {
+                  const abierto = expandidosInv.has(g.key);
+                  return (
+                    <Fragment key={g.key}>
+                      <tr
+                        onClick={() => toggleExpandidoInv(g.key)}
+                        style={{ borderBottom: abierto ? 'none' : '1px solid var(--bo)', cursor: 'pointer' }}
+                      >
+                        <td style={{ padding: '9px 4px 9px 12px', width: '20px' }}>
+                          <span style={{ display: 'inline-block', fontSize: '10px', color: 'var(--ts)', transition: 'transform 0.15s', transform: abierto ? 'rotate(90deg)' : 'none' }}>▸</span>
+                        </td>
+                        <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>{g.fecha}</td>
+                        <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)' }}>{BODEGA_LABEL[g.bodega] ?? g.bodega}</td>
+                        <td style={{ padding: '9px 12px' }}>
+                          <span style={{
+                            display: 'inline-block', padding: '2px 8px', borderRadius: '20px', fontSize: '10px', fontWeight: 700,
+                            background: g.tipo === 'INICIAL' ? '#DBEAFE' : '#EDE9FE',
+                            color: g.tipo === 'INICIAL' ? '#1E40AF' : '#5B21B6',
+                          }}>
+                            {g.tipo === 'INICIAL' ? 'Inicial' : 'Final'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '9px 12px', fontWeight: 800 }}>{g.items.length}</td>
+                        <td style={{ padding: '9px 12px', fontSize: '12px' }}>{g.responsable_nombre || '-'}</td>
+                      </tr>
+                      {abierto && (
+                        <tr style={{ borderBottom: '1px solid var(--bo)' }}>
+                          <td colSpan={6} style={{ padding: 0, background: 'var(--bg)' }}>
+                            <div style={{ padding: '4px 16px 12px 34px', display: 'grid', gap: '5px' }}>
+                              <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '6px 0 2px' }}>
+                                Conteos incluidos ({g.items.length})
+                              </span>
+                              {g.items.map(item => (
+                                <div key={item.id} style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: '10px', fontSize: '12px' }}>
+                                  <span style={{ color: 'var(--tx)', fontWeight: 600 }}>{item.producto_nombre}</span>
+                                  <span style={{ color: 'var(--ts)' }}>{fmt(item.cantidad)} {item.unidad_medida}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
