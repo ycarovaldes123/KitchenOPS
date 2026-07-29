@@ -78,7 +78,7 @@ export default function ControlCarnicosPage() {
       ) : (
         <>
           {tab === 'ingresos-salidas' && <IngresosSalidasTab maestros={maestros} />}
-          {tab === 'ventas' && <VentasTab maestros={maestros} />}
+          {tab === 'ventas' && <VentasTab />}
           {tab === 'inventarios' && <InventariosTab maestros={maestros} />}
           {tab === 'resumen' && <TablaResumenTab />}
         </>

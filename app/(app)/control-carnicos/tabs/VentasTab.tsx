@@ -3,7 +3,6 @@
 import { Fragment, useState, type CSSProperties } from 'react';
 import { hoyChile } from '@/lib/config-carnicos';
 import type { ConsumoCalculado, PendienteVenta } from '@/types/carnicos';
-import type { Maestros } from '../page';
 
 interface ConsultaResponse {
   fecha: string;
@@ -33,14 +32,13 @@ function fmt(value: number) {
   return new Intl.NumberFormat('es-CL', { maximumFractionDigits: decimals }).format(value);
 }
 
-export default function VentasTab({ maestros }: { maestros: Maestros }) {
+export default function VentasTab() {
   const [fecha, setFecha] = useState(hoyChile());
   const [data, setData] = useState<ConsultaResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [ingresando, setIngresando] = useState(false);
   const [resultadoIngreso, setResultadoIngreso] = useState('');
-  const [responsableId, setResponsableId] = useState('');
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
   const [advertenciasAbiertas, setAdvertenciasAbiertas] = useState(false);
 
@@ -82,14 +80,13 @@ export default function VentasTab({ maestros }: { maestros: Maestros }) {
     setIngresando(true);
     setResultadoIngreso('');
     try {
-      const responsable = maestros.responsables.find(r => r.id === responsableId);
       const res = await fetch('/api/control-carnicos/ventas/registrar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fecha, consumos: data.consumos,
-          responsable_id: responsableId || null,
-          responsable_nombre: responsable?.nombre ?? 'Sistema Ventas Toteat',
+          responsable_id: null,
+          responsable_nombre: 'Sistema Ventas Toteat',
         }),
       });
       const json = await res.json();
@@ -116,13 +113,6 @@ export default function VentasTab({ maestros }: { maestros: Maestros }) {
         <div>
           <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', marginBottom: '5px' }}>Fecha</label>
           <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={field} />
-        </div>
-        <div>
-          <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', marginBottom: '5px' }}>Responsable (opcional)</label>
-          <select value={responsableId} onChange={e => setResponsableId(e.target.value)} style={field}>
-            <option value="">Sistema Ventas Toteat</option>
-            {maestros.responsables.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
-          </select>
         </div>
         <button type="button" onClick={consultar} disabled={loading} style={{ border: 'none', borderRadius: '8px', padding: '10px 18px', background: 'var(--ac)', color: '#fff', fontSize: '13px', fontWeight: 800, cursor: 'pointer' }}>
           {loading ? 'Consultando...' : 'Consultar ventas'}
@@ -152,7 +142,6 @@ export default function VentasTab({ maestros }: { maestros: Maestros }) {
             <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '12px', color: 'var(--ts)' }}>Ventas leidas: <strong style={{ color: 'var(--tx)' }}>{data.ventasLeidas}</strong></span>
               <span style={{ fontSize: '12px', color: 'var(--ts)' }}>Productos con consumo: <strong style={{ color: 'var(--tx)' }}>{data.platosConReceta}</strong></span>
-              <span style={{ fontSize: '12px', color: 'var(--ts)' }}>Fuente: <strong style={{ color: 'var(--tx)' }}>{data.fuenteVentas}</strong></span>
             </div>
             {data.consumos.length === 0 ? (
               <div style={{ padding: '30px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>Sin consumo de productos carnicos para esta fecha.</div>

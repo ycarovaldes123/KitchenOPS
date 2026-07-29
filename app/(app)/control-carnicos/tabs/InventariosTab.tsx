@@ -39,6 +39,7 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
   const [bodega, setBodega] = useState<BodegaCarnico>(BODEGAS_CARNICOS[0]);
   const [tipo, setTipo] = useState<TipoInventarioCarnico>('INICIAL');
   const [filas, setFilas] = useState<FilaInventario[]>([]);
+  const [cantidadLineas, setCantidadLineas] = useState('10');
   const [saving, setSaving] = useState(false);
   const [ok, setOk] = useState('');
   const [err, setErr] = useState('');
@@ -46,8 +47,13 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
   const respActual = maestros.responsables.find(r => r.id === responsableId);
   const totalValidas = filas.filter(f => f.producto && Number(f.cantidad) >= 0 && f.cantidad !== '').length;
 
+  function addFilas(cantidad: number) {
+    const safeCantidad = Math.min(Math.max(Math.floor(cantidad) || 1, 1), 100);
+    setFilas(prev => [...prev, ...Array.from({ length: safeCantidad }, () => emptyFila())]);
+  }
+
   function addFila() {
-    setFilas(prev => [...prev, emptyFila()]);
+    addFilas(1);
   }
   function updateFila(localId: string, patch: Partial<FilaInventario>) {
     setFilas(prev => prev.map(f => (f.localId === localId ? { ...f, ...patch } : f)));
@@ -135,9 +141,25 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
 
           {filas.length === 0 ? (
             <div style={{ padding: '48px 32px', textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-              <button type="button" onClick={addFila} style={{ background: 'var(--ac)', color: '#fff', border: 'none', borderRadius: '10px', padding: '10px 22px', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}>
-                + Agregar primer producto
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <button type="button" onClick={addFila} style={{ background: 'var(--ac)', color: '#fff', border: 'none', borderRadius: '10px', padding: '10px 22px', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}>
+                  + Agregar primer producto
+                </button>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="number" min="1" max="100" value={cantidadLineas}
+                    onChange={e => setCantidadLineas(e.target.value)}
+                    aria-label="Cantidad de productos a agregar"
+                    style={{ ...field, width: '76px', padding: '9px 10px' }}
+                  />
+                  <button type="button" onClick={() => addFilas(Number(cantidadLineas))} style={{
+                    background: 'var(--sf)', color: 'var(--ac)', border: '1.5px solid var(--ac)',
+                    borderRadius: '10px', padding: '10px 16px', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
+                  }}>
+                    Agregar cantidad
+                  </button>
+                </div>
+              </div>
             </div>
           ) : (
             <>
@@ -175,10 +197,21 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
                   </tbody>
                 </table>
               </div>
-              <div style={{ padding: '11px 14px', borderTop: '1px solid var(--bo)', display: 'flex', justifyContent: 'center' }}>
+              <div style={{ padding: '11px 14px', borderTop: '1px solid var(--bo)', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                 <button type="button" onClick={addFila} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'none', border: '1.5px dashed var(--bo)', borderRadius: '8px', padding: '8px 18px', cursor: 'pointer', fontSize: '13px', color: 'var(--ts)' }}>
                   + Agregar producto
                 </button>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="number" min="1" max="100" value={cantidadLineas}
+                    onChange={e => setCantidadLineas(e.target.value)}
+                    aria-label="Cantidad de productos a agregar"
+                    style={{ ...field, width: '74px', padding: '8px 10px' }}
+                  />
+                  <button type="button" onClick={() => addFilas(Number(cantidadLineas))} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'none', border: '1.5px dashed var(--bo)', borderRadius: '8px', padding: '8px 18px', cursor: 'pointer', fontSize: '13px', color: 'var(--ts)' }}>
+                    Agregar cantidad
+                  </button>
+                </div>
               </div>
             </>
           )}

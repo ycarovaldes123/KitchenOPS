@@ -110,13 +110,23 @@ export function calcularConsumoCarnicos(
       };
       current.cantidad_calculada += consumoConvertido;
       current.cantidad_platos_vendidos_total += cantidadVendida;
-      current.platos_origen.push({
-        codigo_toteat: plato.codigo_toteat,
-        plato_nombre: plato.plato_nombre,
-        cantidad_vendida: cantidadVendida,
-        cantidad_por_plato: cantidadPorPlato,
-        unidad_receta: plato.unidad_medida,
-      });
+
+      // Si Toteat entrega mas de una fila de venta para el mismo plato el mismo dia (ej. por
+      // turno u orden), se suman en la misma entrada de platos_origen en vez de crear una nueva.
+      // Sin esto, al registrar se generaba una fila por entrada (todas con la misma clave
+      // fecha+codigo_toteat+producto) y solo la ultima quedaba guardada, perdiendo el resto.
+      const origenExistente = current.platos_origen.find(o => o.codigo_toteat === plato.codigo_toteat);
+      if (origenExistente) {
+        origenExistente.cantidad_vendida += cantidadVendida;
+      } else {
+        current.platos_origen.push({
+          codigo_toteat: plato.codigo_toteat,
+          plato_nombre: plato.plato_nombre,
+          cantidad_vendida: cantidadVendida,
+          cantidad_por_plato: cantidadPorPlato,
+          unidad_receta: plato.unidad_medida,
+        });
+      }
       consumos.set(producto.id, current);
     }
   }

@@ -13,31 +13,39 @@ export async function GET(req: NextRequest) {
   if (!s.ok) return s.response;
 
   const { searchParams } = new URL(req.url);
-  const fecha = searchParams.get('fecha');
-  if (!isIsoDate(fecha)) return NextResponse.json({ error: 'Debes enviar fecha en formato YYYY-MM-DD' }, { status: 400 });
+  // Compatibilidad: si solo llega "fecha" (uso anterior de un solo dia), se usa como desde y hasta.
+  const fechaUnica = searchParams.get('fecha');
+  const desde = searchParams.get('desde') ?? fechaUnica;
+  const hasta = searchParams.get('hasta') ?? fechaUnica;
+  if (!isIsoDate(desde) || !isIsoDate(hasta)) return NextResponse.json({ error: 'Debes enviar desde y hasta en formato YYYY-MM-DD' }, { status: 400 });
+  if (desde > hasta) return NextResponse.json({ error: 'La fecha "desde" no puede ser posterior a "hasta"' }, { status: 400 });
 
   const supabase = await createClient();
 
-  const [productosRes, movimientosRes, invIniHoyRes, invFinHoyRes] = await Promise.all([
+  // El "cuadre" se ancla al rango completo: inv_inicial viene del inicio del rango (desde),
+  // inv_final del cierre del rango (hasta), y los movimientos (ingresos/ventas/produccion/
+  // mermas/colacion) se suman en todo el rango. Con desde === hasta el resultado es identico
+  // al comportamiento anterior de un solo dia.
+  const [productosRes, movimientosRes, invIniRes, invFinRes] = await Promise.all([
     supabase.from('carnicos_productos').select('id,nombre,unidad_medida').eq('activo', true).order('nombre'),
-    supabase.from('carnicos_movimientos').select('producto_id,subtipo,cantidad').eq('fecha', fecha),
-    supabase.from('carnicos_inventarios').select('producto_id,cantidad').eq('fecha', fecha).eq('tipo', 'INICIAL'),
-    supabase.from('carnicos_inventarios').select('producto_id,cantidad').eq('fecha', fecha).eq('tipo', 'FINAL'),
+    supabase.from('carnicos_movimientos').select('producto_id,subtipo,cantidad').gte('fecha', desde).lte('fecha', hasta),
+    supabase.from('carnicos_inventarios').select('producto_id,cantidad').eq('fecha', desde).eq('tipo', 'INICIAL'),
+    supabase.from('carnicos_inventarios').select('producto_id,cantidad').eq('fecha', hasta).eq('tipo', 'FINAL'),
   ]);
 
   if (productosRes.error) return NextResponse.json({ error: `${productosRes.error.message}. Ejecuta scripts/supabase_control_carnicos.sql y el importador de Excel.` }, { status: 500 });
   if (movimientosRes.error) return NextResponse.json({ error: movimientosRes.error.message }, { status: 500 });
-  if (invIniHoyRes.error) return NextResponse.json({ error: invIniHoyRes.error.message }, { status: 500 });
-  if (invFinHoyRes.error) return NextResponse.json({ error: invFinHoyRes.error.message }, { status: 500 });
+  if (invIniRes.error) return NextResponse.json({ error: invIniRes.error.message }, { status: 500 });
+  if (invFinRes.error) return NextResponse.json({ error: invFinRes.error.message }, { status: 500 });
 
   const productos = productosRes.data ?? [];
   const movimientos = movimientosRes.data ?? [];
-  const invIniHoy = sumarPorProducto(invIniHoyRes.data ?? []);
-  const invFinHoy = sumarPorProducto(invFinHoyRes.data ?? []);
-  const hayConteoFinalHoy = (invFinHoyRes.data ?? []).length > 0;
+  const invIni = sumarPorProducto(invIniRes.data ?? []);
+  const invFin = sumarPorProducto(invFinRes.data ?? []);
+  const hayConteoFinal = (invFinRes.data ?? []).length > 0;
 
-  const productosSinIniHoy = productos.filter(p => !invIniHoy.has(p.id)).map(p => p.id);
-  const carryForward = await calcularCarryForward(supabase, fecha, productosSinIniHoy);
+  const productosSinIni = productos.filter(p => !invIni.has(p.id)).map(p => p.id);
+  const carryForward = await calcularCarryForward(supabase, desde, productosSinIni);
 
   const filas: ResumenFila[] = productos.map(producto => {
     const movsProducto = movimientos.filter(m => m.producto_id === producto.id);
@@ -45,8 +53,8 @@ export async function GET(req: NextRequest) {
 
     let inv_inicial = 0;
     let inv_inicial_fuente: ResumenFila['inv_inicial_fuente'] = 'cero';
-    if (invIniHoy.has(producto.id)) {
-      inv_inicial = invIniHoy.get(producto.id)!;
+    if (invIni.has(producto.id)) {
+      inv_inicial = invIni.get(producto.id)!;
       inv_inicial_fuente = 'conteo_hoy';
     } else if (carryForward.has(producto.id)) {
       inv_inicial = carryForward.get(producto.id)!;
@@ -59,9 +67,9 @@ export async function GET(req: NextRequest) {
     const mermas = sumaSubtipo('MERMAS');
     const colacion = sumaSubtipo('COLACION');
     const calculo = inv_inicial + ingresos - (ventas + produccion + mermas + colacion);
-    const inv_final = invFinHoy.get(producto.id) ?? 0;
+    const inv_final = invFin.get(producto.id) ?? 0;
 
-    const diferencia = hayConteoFinalHoy ? inv_final - calculo : null;
+    const diferencia = hayConteoFinal ? inv_final - calculo : null;
     const estado: ResumenFila['estado'] = diferencia === null ? 'sin_conteo' : dentroDeTolerancia(diferencia, producto.unidad_medida) ? 'ok' : 'alerta';
 
     return {
@@ -82,7 +90,7 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  return NextResponse.json({ fecha, filas });
+  return NextResponse.json({ desde, hasta, filas });
 }
 
 function sumarPorProducto(rows: { producto_id: string; cantidad: number }[]) {
