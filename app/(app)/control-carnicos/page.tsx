@@ -7,14 +7,16 @@ import IngresosSalidasTab from './tabs/IngresosSalidasTab';
 import VentasTab from './tabs/VentasTab';
 import InventariosTab from './tabs/InventariosTab';
 import TablaResumenTab from './tabs/TablaResumenTab';
+import HistorialTab from './tabs/HistorialTab';
 
-type Tab = 'ingresos-salidas' | 'ventas' | 'inventarios' | 'resumen';
+type Tab = 'ingresos-salidas' | 'ventas' | 'inventarios' | 'resumen' | 'historial';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'ingresos-salidas', label: 'Ingresos / Salidas' },
   { key: 'ventas', label: 'Ventas' },
   { key: 'inventarios', label: 'Inventarios' },
   { key: 'resumen', label: 'Tabla Resumen' },
+  { key: 'historial', label: 'Historial' },
 ];
 
 export interface Maestros {
@@ -81,6 +83,7 @@ export default function ControlCarnicosPage() {
           {tab === 'ventas' && <VentasTab />}
           {tab === 'inventarios' && <InventariosTab maestros={maestros} />}
           {tab === 'resumen' && <TablaResumenTab />}
+          {tab === 'historial' && <HistorialTab />}
         </>
       )}
     </div>

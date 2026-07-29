@@ -13,15 +13,22 @@ export async function GET(req: NextRequest) {
 
   const supabase = await createClient();
   const { searchParams } = new URL(req.url);
-  const fecha = searchParams.get('fecha');
+  const fechaUnica = searchParams.get('fecha');
+  const desde = searchParams.get('desde') ?? fechaUnica;
+  const hasta = searchParams.get('hasta') ?? fechaUnica;
 
   let query = supabase
     .from('carnicos_movimientos')
     .select('id,fecha,responsable_nombre,turno,observacion,bodega,movimiento,subtipo,producto_nombre,unidad_medida,cantidad,origen,created_at')
+    .order('fecha', { ascending: false })
     .order('created_at', { ascending: false });
 
-  if (fecha) query = query.eq('fecha', fecha);
-  else query = query.limit(50);
+  if (desde && hasta) {
+    if (!isIsoDate(desde) || !isIsoDate(hasta)) return NextResponse.json({ error: 'Fechas invalidas' }, { status: 400 });
+    query = query.gte('fecha', desde).lte('fecha', hasta);
+  } else {
+    query = query.limit(50);
+  }
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: `${error.message}. Ejecuta scripts/supabase_control_carnicos.sql en Supabase.` }, { status: 500 });

@@ -20,13 +20,17 @@ export async function GET(req: NextRequest) {
 
   const supabase = await createClient();
   const { searchParams } = new URL(req.url);
-  const fecha = searchParams.get('fecha');
-  if (!isIsoDate(fecha)) return NextResponse.json({ error: 'Debes enviar fecha en formato YYYY-MM-DD' }, { status: 400 });
+  const fechaUnica = searchParams.get('fecha');
+  const desde = searchParams.get('desde') ?? fechaUnica;
+  const hasta = searchParams.get('hasta') ?? fechaUnica;
+  if (!isIsoDate(desde) || !isIsoDate(hasta)) return NextResponse.json({ error: 'Debes enviar fecha (o desde/hasta) en formato YYYY-MM-DD' }, { status: 400 });
 
   const { data, error } = await supabase
     .from('carnicos_inventarios')
     .select('id,fecha,responsable_nombre,turno,bodega,tipo,producto_id,producto_nombre,unidad_medida,cantidad')
-    .eq('fecha', fecha)
+    .gte('fecha', desde)
+    .lte('fecha', hasta)
+    .order('fecha', { ascending: false })
     .order('bodega');
 
   if (error) return NextResponse.json({ error: `${error.message}. Ejecuta scripts/supabase_control_carnicos.sql en Supabase.` }, { status: 500 });
