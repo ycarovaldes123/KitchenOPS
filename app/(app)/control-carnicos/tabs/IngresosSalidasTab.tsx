@@ -119,11 +119,17 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
       if (await guardarFila(fila)) exitosos++;
     }
     setGuardandoTodo(false);
-    // Si se guardaron todos los pendientes, se refleja de inmediato en el resumen (se calcula en vivo desde los movimientos);
-    // se limpia la lista para dejar la pestana lista para ingresar otro movimiento.
+    // Si se guardaron todos los pendientes, se refleja de inmediato en el resumen (se calcula en vivo desde los movimientos).
+    // Igual que en Colacion: se deja la pantalla vacia y lista para ingresar otro movimiento desde cero.
     if (exitosos === pendientes.length) {
       setOk(`${exitosos} movimiento${exitosos !== 1 ? 's' : ''} guardado${exitosos !== 1 ? 's' : ''} correctamente.`);
+      setFecha(hoyChile());
+      setResponsableId('');
+      setMovimiento('INGRESO');
+      setSubtipo('');
+      setObservacion('');
       setFilas([]);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }
 
