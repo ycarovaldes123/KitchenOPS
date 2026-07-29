@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { BODEGA_LABEL, SUBTIPO_LABEL, hoyChile, rangoParaModo, type ModoRangoFecha } from '@/lib/config-carnicos';
 import type { BodegaCarnico, SubtipoCarnico, TipoInventarioCarnico, TipoMovimientoCarnico } from '@/types/carnicos';
 import FiltroRangoFechas from '../components/FiltroRangoFechas';
@@ -18,6 +18,16 @@ interface MovimientoHistorial {
   cantidad: number;
   origen: 'manual' | 'venta_toteat';
   created_at: string;
+}
+
+interface GrupoMovimiento {
+  key: string;
+  fecha: string;
+  movimiento: TipoMovimientoCarnico;
+  subtipo: SubtipoCarnico;
+  responsable_nombre: string;
+  observacion: string | null;
+  cantidadIngresados: number;
 }
 
 interface InventarioHistorial {
@@ -83,6 +93,25 @@ export default function HistorialTab() {
     fetchHistorial(desde, hasta);
   }
 
+  // Cada sesion de Ingreso/Salida se carga con la misma fecha/movimiento/subtipo/responsable/
+  // observacion para varios productos a la vez (una fila por producto en carnicos_movimientos).
+  // Se agrupan aca para mostrar por sesion cuantos movimientos se ingresaron, en vez de listar
+  // producto por producto.
+  const gruposMovimientos = useMemo(() => {
+    if (!movimientos) return [];
+    const map = new Map<string, GrupoMovimiento>();
+    for (const m of movimientos) {
+      const key = `${m.fecha}||${m.movimiento}||${m.subtipo}||${m.responsable_nombre}||${m.observacion ?? ''}`;
+      const existente = map.get(key);
+      if (existente) existente.cantidadIngresados += 1;
+      else map.set(key, {
+        key, fecha: m.fecha, movimiento: m.movimiento, subtipo: m.subtipo,
+        responsable_nombre: m.responsable_nombre, observacion: m.observacion, cantidadIngresados: 1,
+      });
+    }
+    return Array.from(map.values()).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  }, [movimientos]);
+
   return (
     <div style={{ display: 'grid', gap: '14px' }}>
       <FiltroRangoFechas
@@ -106,42 +135,41 @@ export default function HistorialTab() {
       <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '14px', overflow: 'hidden' }}>
         <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <p style={{ margin: 0, fontFamily: 'Syne, sans-serif', fontSize: '14px', fontWeight: 800 }}>Movimientos de Bodega (Ingreso / Salida)</p>
-          {movimientos && movimientos.length > 0 && (
-            <span style={{ background: 'var(--ac)', color: '#fff', borderRadius: '10px', padding: '1px 7px', fontSize: '10px', fontWeight: 700 }}>{movimientos.length}</span>
+          {gruposMovimientos.length > 0 && (
+            <span style={{ background: 'var(--ac)', color: '#fff', borderRadius: '10px', padding: '1px 7px', fontSize: '10px', fontWeight: 700 }}>{gruposMovimientos.length}</span>
           )}
         </div>
-        {!movimientos || movimientos.length === 0 ? (
+        {gruposMovimientos.length === 0 ? (
           <div style={{ padding: '30px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>
             {loading ? 'Cargando...' : 'Sin movimientos en el rango seleccionado.'}
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '760px' }}>
               <thead>
                 <tr style={{ background: 'var(--bg)' }}>
-                  {['Fecha', 'Movimiento', 'Subtipo', 'Producto', 'Cantidad', 'Responsable', 'Observacion'].map(h => (
+                  {['Fecha', 'Tipo de movimiento', 'Subtipo', 'Cantidad de movimientos ingresados', 'Responsable', 'Observacion'].map(h => (
                     <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', borderBottom: '1px solid var(--bo)', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {movimientos.map(m => (
-                  <tr key={m.id} style={{ borderBottom: '1px solid var(--bo)' }}>
-                    <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>{m.fecha}</td>
+                {gruposMovimientos.map(g => (
+                  <tr key={g.key} style={{ borderBottom: '1px solid var(--bo)' }}>
+                    <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>{g.fecha}</td>
                     <td style={{ padding: '9px 12px' }}>
                       <span style={{
                         display: 'inline-block', padding: '2px 8px', borderRadius: '20px', fontSize: '10px', fontWeight: 700,
-                        background: m.movimiento === 'INGRESO' ? '#D1FAE5' : '#FEE2E2',
-                        color: m.movimiento === 'INGRESO' ? '#065F46' : '#991B1B',
+                        background: g.movimiento === 'INGRESO' ? '#D1FAE5' : '#FEE2E2',
+                        color: g.movimiento === 'INGRESO' ? '#065F46' : '#991B1B',
                       }}>
-                        {m.movimiento === 'INGRESO' ? 'Ingreso' : 'Salida'}
+                        {g.movimiento === 'INGRESO' ? 'Ingreso' : 'Salida'}
                       </span>
                     </td>
-                    <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)' }}>{SUBTIPO_LABEL[m.subtipo] ?? m.subtipo}</td>
-                    <td style={{ padding: '9px 12px', fontWeight: 700 }}>{m.producto_nombre}</td>
-                    <td style={{ padding: '9px 12px', fontWeight: 800, whiteSpace: 'nowrap' }}>{fmt(m.cantidad)} {m.unidad_medida}</td>
-                    <td style={{ padding: '9px 12px', fontSize: '12px' }}>{m.responsable_nombre || '-'}</td>
-                    <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)' }}>{m.observacion || '-'}</td>
+                    <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)' }}>{SUBTIPO_LABEL[g.subtipo] ?? g.subtipo}</td>
+                    <td style={{ padding: '9px 12px', fontWeight: 800 }}>{g.cantidadIngresados}</td>
+                    <td style={{ padding: '9px 12px', fontSize: '12px' }}>{g.responsable_nombre || '-'}</td>
+                    <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)' }}>{g.observacion || '-'}</td>
                   </tr>
                 ))}
               </tbody>
