@@ -56,8 +56,16 @@ function fmt(value: number) {
   return new Intl.NumberFormat('es-CL', { maximumFractionDigits: decimals }).format(value);
 }
 
+type SubTab = 'movimientos' | 'inventario';
+
+const SUB_TABS: { id: SubTab; label: string; color: string }[] = [
+  { id: 'movimientos', label: 'Ingreso / Salida', color: 'var(--ac)' },
+  { id: 'inventario', label: 'Inventario', color: '#2563EB' },
+];
+
 export default function HistorialTab() {
   const hoy = hoyChile();
+  const [subTab, setSubTab] = useState<SubTab>('movimientos');
   const [modo, setModo] = useState<ModoRangoFecha>('dia');
   const [desde, setDesde] = useState(hoy);
   const [hasta, setHasta] = useState(hoy);
@@ -189,13 +197,29 @@ export default function HistorialTab() {
 
       {(movimientos || inventarios || loading) && (
       <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '14px', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <p style={{ margin: 0, fontFamily: 'Syne, sans-serif', fontSize: '14px', fontWeight: 800 }}>Movimientos de Bodega (Ingreso / Salida)</p>
-          {gruposMovimientos.length > 0 && (
-            <span style={{ background: 'var(--ac)', color: '#fff', borderRadius: '10px', padding: '1px 7px', fontSize: '10px', fontWeight: 700 }}>{gruposMovimientos.length}</span>
-          )}
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--bo)', background: 'var(--bg)' }}>
+          {SUB_TABS.map(({ id, label, color }) => {
+            const cantidad = id === 'movimientos' ? gruposMovimientos.length : gruposInventarios.length;
+            return (
+              <button key={id} type="button" onClick={() => setSubTab(id)} style={{
+                padding: '13px 20px', background: 'none', border: 'none', cursor: 'pointer',
+                fontSize: '13px', fontWeight: subTab === id ? 700 : 400,
+                color: subTab === id ? 'var(--tx)' : 'var(--ts)',
+                borderBottom: `2px solid ${subTab === id ? color : 'transparent'}`,
+                marginBottom: '-1px', fontFamily: 'DM Sans, sans-serif', transition: 'color 0.15s',
+                display: 'inline-flex', alignItems: 'center', gap: '7px',
+              }}>
+                {label}
+                {cantidad > 0 && (
+                  <span style={{ background: color, color: '#fff', borderRadius: '10px', padding: '1px 7px', fontSize: '10px', fontWeight: 700 }}>{cantidad}</span>
+                )}
+              </button>
+            );
+          })}
         </div>
-        {gruposMovimientos.length === 0 ? (
+
+        {subTab === 'movimientos' && (
+        gruposMovimientos.length === 0 ? (
           <div style={{ padding: '30px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>
             {loading ? 'Cargando...' : 'Sin movimientos en el rango seleccionado.'}
           </div>
@@ -262,19 +286,11 @@ export default function HistorialTab() {
               </tbody>
             </table>
           </div>
+        )
         )}
-      </section>
-      )}
 
-      {(movimientos || inventarios || loading) && (
-      <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '14px', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <p style={{ margin: 0, fontFamily: 'Syne, sans-serif', fontSize: '14px', fontWeight: 800 }}>Conteos de Inventario</p>
-          {gruposInventarios.length > 0 && (
-            <span style={{ background: 'var(--ac)', color: '#fff', borderRadius: '10px', padding: '1px 7px', fontSize: '10px', fontWeight: 700 }}>{gruposInventarios.length}</span>
-          )}
-        </div>
-        {gruposInventarios.length === 0 ? (
+        {subTab === 'inventario' && (
+        gruposInventarios.length === 0 ? (
           <div style={{ padding: '30px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>
             {loading ? 'Cargando...' : 'Sin conteos de inventario en el rango seleccionado.'}
           </div>
@@ -337,6 +353,7 @@ export default function HistorialTab() {
               </tbody>
             </table>
           </div>
+        )
         )}
       </section>
       )}
