@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { BODEGA_LABEL, SUBTIPO_LABEL, hoyChile, rangoParaModo, type ModoRangoFecha } from '@/lib/config-carnicos';
 import type { BodegaCarnico, SubtipoCarnico, TipoInventarioCarnico, TipoMovimientoCarnico } from '@/types/carnicos';
 import FiltroRangoFechas from '../components/FiltroRangoFechas';
@@ -27,7 +27,8 @@ interface GrupoMovimiento {
   subtipo: SubtipoCarnico;
   responsable_nombre: string;
   observacion: string | null;
-  cantidadIngresados: number;
+  esVenta: boolean;
+  items: MovimientoHistorial[];
 }
 
 interface InventarioHistorial {
@@ -55,10 +56,21 @@ export default function HistorialTab() {
   const [inventarios, setInventarios] = useState<InventarioHistorial[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
+
+  function toggleExpandido(key: string) {
+    setExpandidos(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   async function fetchHistorial(d: string, h: string) {
     setLoading(true);
     setError('');
+    setExpandidos(new Set());
     try {
       const [movRes, invRes] = await Promise.all([
         fetch(`/api/control-carnicos/movimientos?desde=${d}&hasta=${h}`),
@@ -95,18 +107,24 @@ export default function HistorialTab() {
 
   // Cada sesion de Ingreso/Salida se carga con la misma fecha/movimiento/subtipo/responsable/
   // observacion para varios productos a la vez (una fila por producto en carnicos_movimientos).
-  // Se agrupan aca para mostrar por sesion cuantos movimientos se ingresaron, en vez de listar
-  // producto por producto.
+  // Las ventas de Toteat son distintas: se registran una fila por plato/producto el mismo dia,
+  // pero cada una trae su propia observacion (el plato de origen), asi que se agrupan solo por
+  // fecha para que la venta del dia quede en un solo movimiento (igual que Produccion en el
+  // Historial general: una fila por lote, se despliega para ver el detalle).
   const gruposMovimientos = useMemo(() => {
     if (!movimientos) return [];
     const map = new Map<string, GrupoMovimiento>();
     for (const m of movimientos) {
-      const key = `${m.fecha}||${m.movimiento}||${m.subtipo}||${m.responsable_nombre}||${m.observacion ?? ''}`;
+      const esVenta = m.subtipo === 'VENTAS';
+      const key = esVenta
+        ? `venta||${m.fecha}`
+        : `${m.fecha}||${m.movimiento}||${m.subtipo}||${m.responsable_nombre}||${m.observacion ?? ''}`;
       const existente = map.get(key);
-      if (existente) existente.cantidadIngresados += 1;
+      if (existente) existente.items.push(m);
       else map.set(key, {
         key, fecha: m.fecha, movimiento: m.movimiento, subtipo: m.subtipo,
-        responsable_nombre: m.responsable_nombre, observacion: m.observacion, cantidadIngresados: 1,
+        responsable_nombre: m.responsable_nombre, observacion: esVenta ? null : m.observacion,
+        esVenta, items: [m],
       });
     }
     return Array.from(map.values()).sort((a, b) => b.fecha.localeCompare(a.fecha));
@@ -145,33 +163,64 @@ export default function HistorialTab() {
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '760px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '780px' }}>
               <thead>
                 <tr style={{ background: 'var(--bg)' }}>
-                  {['Fecha', 'Tipo de movimiento', 'Subtipo', 'Cantidad de movimientos ingresados', 'Responsable', 'Observacion'].map(h => (
+                  {['', 'Fecha', 'Tipo de movimiento', 'Subtipo', 'Cantidad de movimientos ingresados', 'Responsable', 'Observacion'].map(h => (
                     <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', borderBottom: '1px solid var(--bo)', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {gruposMovimientos.map(g => (
-                  <tr key={g.key} style={{ borderBottom: '1px solid var(--bo)' }}>
-                    <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>{g.fecha}</td>
-                    <td style={{ padding: '9px 12px' }}>
-                      <span style={{
-                        display: 'inline-block', padding: '2px 8px', borderRadius: '20px', fontSize: '10px', fontWeight: 700,
-                        background: g.movimiento === 'INGRESO' ? '#D1FAE5' : '#FEE2E2',
-                        color: g.movimiento === 'INGRESO' ? '#065F46' : '#991B1B',
-                      }}>
-                        {g.movimiento === 'INGRESO' ? 'Ingreso' : 'Salida'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)' }}>{SUBTIPO_LABEL[g.subtipo] ?? g.subtipo}</td>
-                    <td style={{ padding: '9px 12px', fontWeight: 800 }}>{g.cantidadIngresados}</td>
-                    <td style={{ padding: '9px 12px', fontSize: '12px' }}>{g.responsable_nombre || '-'}</td>
-                    <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)' }}>{g.observacion || '-'}</td>
-                  </tr>
-                ))}
+                {gruposMovimientos.map(g => {
+                  const abierto = expandidos.has(g.key);
+                  return (
+                    <Fragment key={g.key}>
+                      <tr
+                        onClick={() => toggleExpandido(g.key)}
+                        style={{ borderBottom: abierto ? 'none' : '1px solid var(--bo)', cursor: 'pointer' }}
+                      >
+                        <td style={{ padding: '9px 4px 9px 12px', width: '20px' }}>
+                          <span style={{ display: 'inline-block', fontSize: '10px', color: 'var(--ts)', transition: 'transform 0.15s', transform: abierto ? 'rotate(90deg)' : 'none' }}>▸</span>
+                        </td>
+                        <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>{g.fecha}</td>
+                        <td style={{ padding: '9px 12px' }}>
+                          <span style={{
+                            display: 'inline-block', padding: '2px 8px', borderRadius: '20px', fontSize: '10px', fontWeight: 700,
+                            background: g.movimiento === 'INGRESO' ? '#D1FAE5' : '#FEE2E2',
+                            color: g.movimiento === 'INGRESO' ? '#065F46' : '#991B1B',
+                          }}>
+                            {g.movimiento === 'INGRESO' ? 'Ingreso' : 'Salida'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)' }}>{SUBTIPO_LABEL[g.subtipo] ?? g.subtipo}</td>
+                        <td style={{ padding: '9px 12px', fontWeight: 800 }}>{g.items.length}</td>
+                        <td style={{ padding: '9px 12px', fontSize: '12px' }}>{g.responsable_nombre || '-'}</td>
+                        <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)' }}>{g.esVenta ? 'Ventas Toteat (varios platos)' : (g.observacion || '-')}</td>
+                      </tr>
+                      {abierto && (
+                        <tr style={{ borderBottom: '1px solid var(--bo)' }}>
+                          <td colSpan={7} style={{ padding: 0, background: 'var(--bg)' }}>
+                            <div style={{ padding: '4px 16px 12px 34px', display: 'grid', gap: '5px' }}>
+                              <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '6px 0 2px' }}>
+                                Movimientos incluidos ({g.items.length})
+                              </span>
+                              {g.items.map(item => (
+                                <div key={item.id} style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: '10px', fontSize: '12px' }}>
+                                  <span style={{ color: 'var(--tx)', fontWeight: 600 }}>
+                                    {item.producto_nombre}
+                                    {g.esVenta && item.observacion && <span style={{ color: 'var(--ts)', fontWeight: 400 }}> — {item.observacion}</span>}
+                                  </span>
+                                  <span style={{ color: 'var(--ts)' }}>{fmt(item.cantidad)} {item.unidad_medida}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
