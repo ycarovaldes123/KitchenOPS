@@ -1,8 +1,8 @@
 'use client';
 
 import { useMemo, useState, type CSSProperties } from 'react';
-import { BODEGAS_CARNICOS, BODEGA_LABEL, SUBTIPOS_POR_MOVIMIENTO, hoyChile } from '@/lib/config-carnicos';
-import type { BodegaCarnico, CarnicoProducto, SubtipoCarnico, TipoMovimientoCarnico } from '@/types/carnicos';
+import { BODEGAS_CARNICOS, SUBTIPOS_POR_MOVIMIENTO, hoyChile } from '@/lib/config-carnicos';
+import type { CarnicoProducto, SubtipoCarnico, TipoMovimientoCarnico } from '@/types/carnicos';
 import DatosTurnoCard from '../components/DatosTurnoCard';
 import ProductoCarnicoSelector from '../components/ProductoCarnicoSelector';
 import type { Maestros } from '../page';
@@ -41,14 +41,15 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
   // Turno AM/PM ya no se selecciona en la UI; se mantiene un valor fijo para no alterar el contrato de la API.
   const turno: 'AM' | 'PM' = 'AM';
   const [observacion, setObservacion] = useState('');
-  const [bodega, setBodega] = useState<BodegaCarnico | ''>('');
+  // Bodega ya no se selecciona en esta pestana (no se usa en el calculo de Tabla Resumen); se mantiene un valor fijo para cumplir la restriccion NOT NULL en Supabase.
+  const bodega = BODEGAS_CARNICOS[0];
   const [movimiento, setMovimiento] = useState<TipoMovimientoCarnico>('INGRESO');
   const [subtipo, setSubtipo] = useState<SubtipoCarnico | ''>('');
   const [filas, setFilas] = useState<FilaMovimiento[]>([]);
   const [guardandoTodo, setGuardandoTodo] = useState(false);
 
   const respActual = maestros.responsables.find(r => r.id === responsableId);
-  const puedeGuardar = Boolean(responsableId && observacion.trim() && bodega && subtipo);
+  const puedeGuardar = Boolean(responsableId && observacion.trim() && subtipo);
 
   const subtiposDisponibles = SUBTIPOS_POR_MOVIMIENTO[movimiento];
 
@@ -91,7 +92,7 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fecha, responsable_id: responsableId, responsable_nombre: respActual?.nombre ?? '',
-          turno, observacion: observacion.trim(), bodega: bodega as BodegaCarnico, movimiento, subtipo: subtipo as SubtipoCarnico,
+          turno, observacion: observacion.trim(), bodega, movimiento, subtipo: subtipo as SubtipoCarnico,
           producto_id: fila.producto.id, producto_nombre: fila.producto.nombre,
           unidad_medida: fila.producto.unidad_medida, cantidad,
         }),
@@ -126,13 +127,6 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
         observacion={observacion} onObservacion={setObservacion}
         observacionRequerida
       >
-        <div>
-          <label style={label}>Bodega <span style={{ color: 'var(--rd)' }}>*</span></label>
-          <select value={bodega} onChange={e => setBodega(e.target.value as BodegaCarnico)} style={{ ...field, fontWeight: 700, color: bodega ? 'var(--tx)' : 'var(--ts)' }}>
-            <option value="">Seleccionar bodega...</option>
-            {BODEGAS_CARNICOS.map(b => <option key={b} value={b}>{BODEGA_LABEL[b]}</option>)}
-          </select>
-        </div>
         <div>
           <label style={label}>Movimiento</label>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
@@ -230,7 +224,7 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
             <div style={{ padding: '14px 20px', borderTop: '1px solid var(--bo)', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '10px' }}>
               {!puedeGuardar && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: '8px', padding: '8px 11px', width: '100%' }}>
-                  <span style={{ fontSize: '12px', color: '#991B1B', fontWeight: 600 }}>Completa responsable, bodega, subtipo y observacion del turno para poder guardar.</span>
+                  <span style={{ fontSize: '12px', color: '#991B1B', fontWeight: 600 }}>Completa responsable, subtipo y observacion del turno para poder guardar.</span>
                 </div>
               )}
               <button
