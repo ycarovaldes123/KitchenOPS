@@ -10,7 +10,7 @@ function isIsoDate(value: unknown): value is string {
 }
 
 export async function GET(req: NextRequest) {
-  const s = await requireRol(['admin', 'bodega']);
+  const s = await requireRol(['admin']); // TODO: agregar 'bodega' cuando se habilite el rol
   if (!s.ok) return s.response;
 
   const { searchParams } = new URL(req.url);

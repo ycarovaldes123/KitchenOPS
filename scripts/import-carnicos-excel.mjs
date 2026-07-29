@@ -130,26 +130,31 @@ async function main() {
     };
   });
 
+  const platosPorClave = new Map();
+  for (const p of platos) platosPorClave.set(`${p.codigo_toteat}||${p.producto_nombre}`, p);
+  const platosUnicos = [...platosPorClave.values()];
+  const duplicadosDescartados = platos.length - platosUnicos.length;
+
   let platosInsertados = 0;
   let platosActualizados = 0;
 
   if (!DRY_RUN) {
     const { data: existentesPlatos } = await supabase.from('carnicos_platos').select('codigo_toteat,producto_nombre');
     const existentesPlatosSet = new Set((existentesPlatos ?? []).map(r => `${r.codigo_toteat}||${r.producto_nombre}`));
-    for (const p of platos) {
+    for (const p of platosUnicos) {
       if (existentesPlatosSet.has(`${p.codigo_toteat}||${p.producto_nombre}`)) platosActualizados++;
       else platosInsertados++;
     }
-    const { error: upsertPlatosError } = await supabase.from('carnicos_platos').upsert(platos, { onConflict: 'codigo_toteat,producto_nombre' });
+    const { error: upsertPlatosError } = await supabase.from('carnicos_platos').upsert(platosUnicos, { onConflict: 'codigo_toteat,producto_nombre' });
     if (upsertPlatosError) throw new Error(`Error al insertar carnicos_platos: ${upsertPlatosError.message}`);
   } else {
-    platosInsertados = platos.length;
+    platosInsertados = platosUnicos.length;
   }
 
   console.log('');
   console.log('== Resumen import Control Carnicos ==');
   console.log(`carnicos_productos: ${productos.length} filas (${productosInsertados} insertadas, ${productosActualizados} actualizadas)`);
-  console.log(`carnicos_platos: ${platos.length} filas (${platosInsertados} insertadas, ${platosActualizados} actualizadas)`);
+  console.log(`carnicos_platos: ${platosUnicos.length} filas (${platosInsertados} insertadas, ${platosActualizados} actualizadas)${duplicadosDescartados ? `, ${duplicadosDescartados} duplicada(s) exacta(s) descartada(s)` : ''}`);
   console.log(`ADVERTENCIAS (${advertencias.length}):`);
   for (const a of advertencias) {
     console.log(`  - ${a.codigo_toteat} "${a.plato_nombre}" -> codigo ${a.codigo} / "${a.producto_nombre}": ${a.motivo}`);

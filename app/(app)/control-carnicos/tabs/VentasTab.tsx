@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type CSSProperties } from 'react';
+import { Fragment, useState, type CSSProperties } from 'react';
 import { hoyChile } from '@/lib/config-carnicos';
 import type { ConsumoCalculado, PendienteVenta } from '@/types/carnicos';
 import type { Maestros } from '../page';
@@ -41,11 +41,24 @@ export default function VentasTab({ maestros }: { maestros: Maestros }) {
   const [ingresando, setIngresando] = useState(false);
   const [resultadoIngreso, setResultadoIngreso] = useState('');
   const [responsableId, setResponsableId] = useState('');
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
+  const [advertenciasAbiertas, setAdvertenciasAbiertas] = useState(false);
+
+  function toggleExpandido(productoId: string) {
+    setExpandidos(prev => {
+      const next = new Set(prev);
+      if (next.has(productoId)) next.delete(productoId);
+      else next.add(productoId);
+      return next;
+    });
+  }
 
   async function consultar() {
     setLoading(true);
     setError('');
     setResultadoIngreso('');
+    setExpandidos(new Set());
+    setAdvertenciasAbiertas(false);
     try {
       const res = await fetch(`/api/control-carnicos/ventas/consultar?fecha=${fecha}`);
       const json = await res.json();
@@ -139,40 +152,54 @@ export default function VentasTab({ maestros }: { maestros: Maestros }) {
               <div style={{ padding: '30px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>Sin consumo de productos carnicos para esta fecha.</div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '960px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '480px' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg)' }}>
-                      {['Producto', 'Unidad', 'Cantidad calculada', 'Platos de origen', 'Codigo(s) Toteat', 'Platos vendidos', 'Cant. por plato', 'Total calculado', ''].map(h => (
+                      {['', 'Nombre del producto', 'Total calculado', 'Estado'].map(h => (
                         <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', borderBottom: '1px solid var(--bo)', whiteSpace: 'nowrap' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {data.consumos.map(c => (
-                      <tr key={c.producto_id} style={{ borderBottom: '1px solid var(--bo)' }}>
-                        <td style={{ padding: '9px 12px', fontWeight: 700 }}>{c.producto_nombre}</td>
-                        <td style={{ padding: '9px 12px' }}>{c.unidad_medida}</td>
-                        <td style={{ padding: '9px 12px', fontWeight: 800 }}>{fmt(c.cantidad_calculada)}</td>
-                        <td style={{ padding: '9px 12px' }}>
-                          {c.platos_origen.map(p => `${p.plato_nombre} x${p.cantidad_vendida}`).join(', ')}
-                        </td>
-                        <td style={{ padding: '9px 12px', fontFamily: "'Space Grotesk', sans-serif" }}>
-                          {c.platos_origen.map(p => p.codigo_toteat).join(', ')}
-                        </td>
-                        <td style={{ padding: '9px 12px' }}>{fmt(c.cantidad_platos_vendidos_total)}</td>
-                        <td style={{ padding: '9px 12px' }}>
-                          {c.platos_origen.map(p => `${fmt(p.cantidad_por_plato)} ${p.unidad_receta}`).join(', ')}
-                        </td>
-                        <td style={{ padding: '9px 12px', fontWeight: 800 }}>{fmt(c.cantidad_calculada)} {c.unidad_medida}</td>
-                        <td style={{ padding: '9px 12px' }}>
-                          {c.ya_registrado ? (
-                            <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '20px', fontSize: '10px', fontWeight: 700, background: '#D1FAE5', color: '#065F46' }}>Ya ingresado</span>
-                          ) : (
-                            <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '20px', fontSize: '10px', fontWeight: 700, background: '#FEF3C7', color: '#92400E' }}>Pendiente</span>
+                    {data.consumos.map(c => {
+                      const abierto = expandidos.has(c.producto_id);
+                      return (
+                        <Fragment key={c.producto_id}>
+                          <tr
+                            onClick={() => toggleExpandido(c.producto_id)}
+                            style={{ borderBottom: abierto ? 'none' : '1px solid var(--bo)', cursor: 'pointer' }}
+                          >
+                            <td style={{ padding: '9px 4px 9px 12px', width: '20px' }}>
+                              <span style={{ display: 'inline-block', fontSize: '10px', color: 'var(--ts)', transition: 'transform 0.15s', transform: abierto ? 'rotate(90deg)' : 'none' }}>▸</span>
+                            </td>
+                            <td style={{ padding: '9px 12px', fontWeight: 700 }}>{c.producto_nombre}</td>
+                            <td style={{ padding: '9px 12px', fontWeight: 800 }}>{fmt(c.cantidad_calculada)} {c.unidad_medida}</td>
+                            <td style={{ padding: '9px 12px' }}>
+                              {c.ya_registrado ? (
+                                <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '20px', fontSize: '10px', fontWeight: 700, background: '#D1FAE5', color: '#065F46' }}>Ya ingresado</span>
+                              ) : (
+                                <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '20px', fontSize: '10px', fontWeight: 700, background: '#FEF3C7', color: '#92400E' }}>Pendiente</span>
+                              )}
+                            </td>
+                          </tr>
+                          {abierto && (
+                            <tr style={{ borderBottom: '1px solid var(--bo)' }}>
+                              <td colSpan={4} style={{ padding: 0, background: 'var(--bg)' }}>
+                                <div style={{ padding: '4px 16px 12px 34px', display: 'grid', gap: '5px' }}>
+                                  <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '6px 0 2px' }}>Platos asociados</span>
+                                  {c.platos_origen.map((p, i) => (
+                                    <div key={i} style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: '10px', fontSize: '12px' }}>
+                                      <span style={{ color: 'var(--tx)' }}>{p.plato_nombre} <span style={{ color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>({p.codigo_toteat})</span></span>
+                                      <span style={{ color: 'var(--ts)' }}>{fmt(p.cantidad_vendida)} vendidos x {fmt(p.cantidad_por_plato)} {p.unidad_receta}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
                           )}
-                        </td>
-                      </tr>
-                    ))}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -180,19 +207,31 @@ export default function VentasTab({ maestros }: { maestros: Maestros }) {
           </section>
 
           {data.pendientes.length > 0 && (
-            <section style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '14px', padding: '16px 20px' }}>
-              <p style={{ margin: '0 0 10px', fontFamily: 'Syne, sans-serif', fontSize: '14px', fontWeight: 800, color: '#92400E' }}>
-                Advertencias ({data.pendientes.length})
-              </p>
-              <div style={{ display: 'grid', gap: '8px' }}>
-                {data.pendientes.map((p, i) => (
-                  <div key={i} style={{ fontSize: '12px', color: '#92400E' }}>
-                    <strong>{PENDIENTE_LABEL[p.tipo]}</strong>
-                    {p.codigo_toteat && <> — {p.codigo_toteat}</>}
-                    {p.plato_nombre && <> ({p.plato_nombre})</>}: {p.observacion}
-                  </div>
-                ))}
-              </div>
+            <section style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '14px', overflow: 'hidden' }}>
+              <button
+                type="button"
+                onClick={() => setAdvertenciasAbiertas(v => !v)}
+                style={{
+                  width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer',
+                  padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                }}
+              >
+                <span style={{ fontFamily: 'Syne, sans-serif', fontSize: '14px', fontWeight: 800, color: '#92400E' }}>
+                  Advertencia ({data.pendientes.length} platos reconocidos)
+                </span>
+                <span style={{ fontSize: '11px', color: '#92400E', transition: 'transform 0.15s', transform: advertenciasAbiertas ? 'rotate(180deg)' : 'none' }}>▾</span>
+              </button>
+              {advertenciasAbiertas && (
+                <div style={{ padding: '0 20px 16px', display: 'grid', gap: '8px' }}>
+                  {data.pendientes.map((p, i) => (
+                    <div key={i} style={{ fontSize: '12px', color: '#92400E' }}>
+                      <strong>{PENDIENTE_LABEL[p.tipo]}</strong>
+                      {p.codigo_toteat && <> — {p.codigo_toteat}</>}
+                      {p.plato_nombre && <> ({p.plato_nombre})</>}: {p.observacion}
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
           )}
         </>

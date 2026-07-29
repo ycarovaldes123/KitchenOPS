@@ -38,21 +38,23 @@ const label: CSSProperties = {
 export default function IngresosSalidasTab({ maestros }: { maestros: Maestros }) {
   const [fecha, setFecha] = useState(hoyChile());
   const [responsableId, setResponsableId] = useState('');
-  const [turno, setTurno] = useState<'AM' | 'PM'>('AM');
+  // Turno AM/PM ya no se selecciona en la UI; se mantiene un valor fijo para no alterar el contrato de la API.
+  const turno: 'AM' | 'PM' = 'AM';
   const [observacion, setObservacion] = useState('');
-  const [bodega, setBodega] = useState<BodegaCarnico>(BODEGAS_CARNICOS[0]);
+  const [bodega, setBodega] = useState<BodegaCarnico | ''>('');
   const [movimiento, setMovimiento] = useState<TipoMovimientoCarnico>('INGRESO');
-  const [subtipo, setSubtipo] = useState<SubtipoCarnico>('RECEPCION_BODEGA');
+  const [subtipo, setSubtipo] = useState<SubtipoCarnico | ''>('');
   const [filas, setFilas] = useState<FilaMovimiento[]>([]);
+  const [guardandoTodo, setGuardandoTodo] = useState(false);
 
   const respActual = maestros.responsables.find(r => r.id === responsableId);
-  const puedeGuardar = Boolean(responsableId && observacion.trim());
+  const puedeGuardar = Boolean(responsableId && observacion.trim() && bodega && subtipo);
 
   const subtiposDisponibles = SUBTIPOS_POR_MOVIMIENTO[movimiento];
 
   function cambiarMovimiento(value: TipoMovimientoCarnico) {
     setMovimiento(value);
-    setSubtipo(SUBTIPOS_POR_MOVIMIENTO[value][0].value);
+    setSubtipo('');
   }
 
   function addFila() {
@@ -89,7 +91,7 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fecha, responsable_id: responsableId, responsable_nombre: respActual?.nombre ?? '',
-          turno, observacion: observacion.trim(), bodega, movimiento, subtipo,
+          turno, observacion: observacion.trim(), bodega: bodega as BodegaCarnico, movimiento, subtipo: subtipo as SubtipoCarnico,
           producto_id: fila.producto.id, producto_nombre: fila.producto.nombre,
           unidad_medida: fila.producto.unidad_medida, cantidad,
         }),
@@ -102,57 +104,67 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
     }
   }
 
+  async function guardarTodo() {
+    const pendientes = filas.filter(f => f.estado !== 'guardado');
+    if (!pendientes.length) return;
+    setGuardandoTodo(true);
+    for (const fila of pendientes) {
+      await guardarFila(fila);
+    }
+    setGuardandoTodo(false);
+  }
+
   const guardadas = useMemo(() => filas.filter(f => f.estado === 'guardado').length, [filas]);
+  const pendientesCount = filas.length - guardadas;
 
   return (
     <div className="carnicos-grid" style={{ display: 'grid', gridTemplateColumns: '310px 1fr', gap: '14px', alignItems: 'start' }}>
       <DatosTurnoCard
+        title="MOVIMIENTOS DE BODEGA"
         fecha={fecha} onFecha={setFecha}
         responsableId={responsableId} onResponsable={setResponsableId} responsables={maestros.responsables}
-        turno={turno} onTurno={setTurno}
         observacion={observacion} onObservacion={setObservacion}
         observacionRequerida
-      />
-
-      <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '14px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: '12px' }}>
-          <div>
-            <label style={label}>Bodega</label>
-            <select value={bodega} onChange={e => setBodega(e.target.value as BodegaCarnico)} style={{ ...field, fontWeight: 700 }}>
-              {BODEGAS_CARNICOS.map(b => <option key={b} value={b}>{BODEGA_LABEL[b]}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={label}>Movimiento</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-              {(['INGRESO', 'SALIDA'] as const).map(m => (
-                <button key={m} type="button" onClick={() => cambiarMovimiento(m)} style={{
-                  border: `1.5px solid ${movimiento === m ? 'var(--ac)' : 'var(--bo)'}`,
-                  background: movimiento === m ? 'var(--al)' : 'var(--bg)',
-                  color: movimiento === m ? 'var(--ac)' : 'var(--ts)',
-                  borderRadius: '8px', padding: '9px', fontSize: '12px', fontWeight: 800, cursor: 'pointer',
-                }}>
-                  {m === 'INGRESO' ? 'Ingreso' : 'Salida'}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label style={label}>Subtipo</label>
-            <select value={subtipo} onChange={e => setSubtipo(e.target.value as SubtipoCarnico)} style={field}>
-              {subtiposDisponibles.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
+      >
+        <div>
+          <label style={label}>Bodega <span style={{ color: 'var(--rd)' }}>*</span></label>
+          <select value={bodega} onChange={e => setBodega(e.target.value as BodegaCarnico)} style={{ ...field, fontWeight: 700, color: bodega ? 'var(--tx)' : 'var(--ts)' }}>
+            <option value="">Seleccionar bodega...</option>
+            {BODEGAS_CARNICOS.map(b => <option key={b} value={b}>{BODEGA_LABEL[b]}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={label}>Movimiento</label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            {(['INGRESO', 'SALIDA'] as const).map(m => (
+              <button key={m} type="button" onClick={() => cambiarMovimiento(m)} style={{
+                border: `1.5px solid ${movimiento === m ? 'var(--ac)' : 'var(--bo)'}`,
+                background: movimiento === m ? 'var(--al)' : 'var(--bg)',
+                color: movimiento === m ? 'var(--ac)' : 'var(--ts)',
+                borderRadius: '8px', padding: '9px', fontSize: '12px', fontWeight: 800, cursor: 'pointer',
+              }}>
+                {m === 'INGRESO' ? 'Ingreso' : 'Salida'}
+              </button>
+            ))}
           </div>
         </div>
+        <div>
+          <label style={label}>Subtipo <span style={{ color: 'var(--rd)' }}>*</span></label>
+          <select value={subtipo} onChange={e => setSubtipo(e.target.value as SubtipoCarnico)} style={{ ...field, color: subtipo ? 'var(--tx)' : 'var(--ts)' }}>
+            <option value="">Seleccionar subtipo...</option>
+            {subtiposDisponibles.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
+        </div>
+      </DatosTurnoCard>
 
-        {!puedeGuardar && (
-          <div style={{ margin: '14px 20px 0', display: 'flex', alignItems: 'center', gap: '6px', background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: '8px', padding: '8px 11px', width: 'fit-content' }}>
-            <span style={{ fontSize: '12px', color: '#991B1B', fontWeight: 600 }}>Completa responsable y observacion del turno para poder guardar.</span>
+      <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '14px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <p style={{ margin: 0, fontFamily: 'Syne, sans-serif', fontSize: '14px', fontWeight: 800 }}>Productos a mover</p>
+            {filas.length > 0 && (
+              <span style={{ background: 'var(--ac)', color: '#fff', borderRadius: '10px', padding: '1px 7px', fontSize: '10px', fontWeight: 700 }}>{filas.length}</span>
+            )}
           </div>
-        )}
-
-        <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <p style={{ margin: 0, fontFamily: 'Syne, sans-serif', fontSize: '14px', fontWeight: 800 }}>Productos a mover</p>
           {filas.length > 0 && <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{guardadas}/{filas.length} guardados</span>}
         </div>
 
@@ -168,7 +180,7 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '680px' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg)' }}>
-                    {['Producto o PP', 'Cantidad', 'Estado', ''].map(h => (
+                    {['Producto o PP', 'Unidad de medida', 'Cantidad', 'Estado', ''].map(h => (
                       <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', borderBottom: '1px solid var(--bo)' }}>{h}</th>
                     ))}
                   </tr>
@@ -186,6 +198,7 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
                           onClear={() => updateFila(fila.localId, { producto: null, estado: 'idle', mensaje: '' })}
                         />
                       </td>
+                      <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)' }}>{fila.producto?.unidad_medida ?? '-'}</td>
                       <td style={{ padding: '9px 12px', width: '140px' }}>
                         <input
                           type="number" min={0} step="any" value={fila.cantidad}
@@ -201,16 +214,6 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
                         {fila.estado === 'guardando' && <span style={{ color: 'var(--ts)', fontSize: '12px' }}>Guardando...</span>}
                       </td>
                       <td style={{ padding: '9px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        {fila.estado !== 'guardado' && (
-                          <button
-                            type="button"
-                            onClick={() => guardarFila(fila)}
-                            disabled={fila.estado === 'guardando'}
-                            style={{ border: 'none', borderRadius: '8px', padding: '7px 14px', background: '#0D9373', color: '#fff', fontSize: '12px', fontWeight: 800, cursor: 'pointer', marginRight: '6px' }}
-                          >
-                            Guardar movimiento
-                          </button>
-                        )}
                         <button type="button" onClick={() => removeFila(fila.localId)} title="Quitar fila" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ts)', fontSize: '18px', lineHeight: 1, padding: '4px 6px' }}>x</button>
                       </td>
                     </tr>
@@ -221,6 +224,28 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
             <div style={{ padding: '11px 14px', borderTop: '1px solid var(--bo)', display: 'flex', justifyContent: 'center' }}>
               <button type="button" onClick={addFila} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'none', border: '1.5px dashed var(--bo)', borderRadius: '8px', padding: '8px 18px', cursor: 'pointer', fontSize: '13px', color: 'var(--ts)' }}>
                 + Agregar movimiento
+              </button>
+            </div>
+
+            <div style={{ padding: '14px 20px', borderTop: '1px solid var(--bo)', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '10px' }}>
+              {!puedeGuardar && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: '8px', padding: '8px 11px', width: '100%' }}>
+                  <span style={{ fontSize: '12px', color: '#991B1B', fontWeight: 600 }}>Completa responsable, bodega, subtipo y observacion del turno para poder guardar.</span>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={guardarTodo}
+                disabled={!puedeGuardar || guardandoTodo || pendientesCount === 0}
+                style={{
+                  border: 'none', borderRadius: '10px', padding: '11px 26px',
+                  background: (!puedeGuardar || pendientesCount === 0) ? 'var(--bo)' : '#0D9373',
+                  color: '#fff', fontSize: '13px', fontWeight: 800,
+                  cursor: (!puedeGuardar || guardandoTodo || pendientesCount === 0) ? 'not-allowed' : 'pointer',
+                  minWidth: '180px',
+                }}
+              >
+                {guardandoTodo ? 'Guardando...' : 'Guardar movimiento'}
               </button>
             </div>
           </>

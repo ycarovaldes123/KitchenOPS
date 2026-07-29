@@ -1,6 +1,6 @@
 'use client';
 
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import type { Responsable } from '@/types/database';
 
 const field: CSSProperties = {
@@ -15,26 +15,30 @@ const label: CSSProperties = {
 };
 
 export default function DatosTurnoCard({
+  title = 'Datos del turno',
   fecha, onFecha, responsableId, onResponsable, responsables,
-  turno, onTurno, observacion, onObservacion, observacionRequerida,
+  children,
+  showObservacion = true, observacion = '', onObservacion, observacionRequerida = false,
 }: {
+  title?: string;
   fecha: string;
   onFecha: (value: string) => void;
   responsableId: string;
   onResponsable: (value: string) => void;
   responsables: Responsable[];
-  turno: 'AM' | 'PM';
-  onTurno: (value: 'AM' | 'PM') => void;
-  observacion: string;
-  onObservacion: (value: string) => void;
-  observacionRequerida: boolean;
+  /** Campos adicionales especificos de cada pestana (ej. Bodega, Movimiento, Subtipo, Tipo). Se renderizan despues de Responsable y antes de Observacion. */
+  children?: ReactNode;
+  showObservacion?: boolean;
+  observacion?: string;
+  onObservacion?: (value: string) => void;
+  observacionRequerida?: boolean;
 }) {
   const respActual = responsables.find(r => r.id === responsableId);
 
   return (
     <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '14px', padding: '22px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
       <p style={{ fontFamily: 'Syne, sans-serif', fontSize: '12px', fontWeight: 800, color: 'var(--ts)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-        Datos del turno
+        {title}
       </p>
 
       <div>
@@ -60,40 +64,22 @@ export default function DatosTurnoCard({
         )}
       </div>
 
-      <div>
-        <label style={label}>Turno</label>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-          {(['AM', 'PM'] as const).map(t => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => onTurno(t)}
-              style={{
-                border: `1.5px solid ${turno === t ? 'var(--ac)' : 'var(--bo)'}`,
-                background: turno === t ? 'var(--al)' : 'var(--bg)',
-                color: turno === t ? 'var(--ac)' : 'var(--ts)',
-                borderRadius: '8px', padding: '9px', fontSize: '13px', fontWeight: 800, cursor: 'pointer',
-                fontFamily: 'DM Sans, sans-serif',
-              }}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-      </div>
+      {children}
 
-      <div>
-        <label style={label}>
-          Observacion {observacionRequerida ? <span style={{ color: 'var(--rd)' }}>*</span> : <span style={{ textTransform: 'none', fontWeight: 400 }}>(opcional)</span>}
-        </label>
-        <textarea
-          value={observacion}
-          onChange={e => onObservacion(e.target.value)}
-          rows={2}
-          style={{ ...field, resize: 'vertical', minHeight: '64px', lineHeight: 1.45 }}
-          placeholder={observacionRequerida ? 'Describe el turno (obligatorio)' : 'Opcional'}
-        />
-      </div>
+      {showObservacion && (
+        <div>
+          <label style={label}>
+            Observacion {observacionRequerida ? <span style={{ color: 'var(--rd)' }}>*</span> : <span style={{ textTransform: 'none', fontWeight: 400 }}>(opcional)</span>}
+          </label>
+          <textarea
+            value={observacion}
+            onChange={e => onObservacion?.(e.target.value)}
+            rows={2}
+            style={{ ...field, resize: 'vertical', minHeight: '64px', lineHeight: 1.45 }}
+            placeholder={observacionRequerida ? 'Describe el turno (obligatorio)' : 'Opcional'}
+          />
+        </div>
+      )}
     </section>
   );
 }

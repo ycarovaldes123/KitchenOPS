@@ -15,7 +15,7 @@ type DetalleInventarioPayload = {
 };
 
 export async function GET(req: NextRequest) {
-  const s = await requireRol(['admin', 'bodega']);
+  const s = await requireRol(['admin']); // TODO: agregar 'bodega' cuando se habilite el rol
   if (!s.ok) return s.response;
 
   const supabase = await createClient();
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const s = await requireRol(['admin', 'bodega']);
+  const s = await requireRol(['admin']); // TODO: agregar 'bodega' cuando se habilite el rol
   if (!s.ok) return s.response;
 
   const body = await req.json().catch(() => ({}));

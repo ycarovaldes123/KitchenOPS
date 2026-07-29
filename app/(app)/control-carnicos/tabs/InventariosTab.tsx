@@ -34,8 +34,8 @@ const label: CSSProperties = {
 export default function InventariosTab({ maestros }: { maestros: Maestros }) {
   const [fecha, setFecha] = useState(hoyChile());
   const [responsableId, setResponsableId] = useState('');
-  const [turno, setTurno] = useState<'AM' | 'PM'>('AM');
-  const [observacion, setObservacion] = useState('');
+  // Turno AM/PM ya no se selecciona en la UI; se mantiene un valor fijo para no alterar el contrato de la API.
+  const turno: 'AM' | 'PM' = 'AM';
   const [bodega, setBodega] = useState<BodegaCarnico>(BODEGAS_CARNICOS[0]);
   const [tipo, setTipo] = useState<TipoInventarioCarnico>('INICIAL');
   const [filas, setFilas] = useState<FilaInventario[]>([]);
@@ -93,42 +93,43 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
       {ok && <div style={{ background: '#ECFDF5', border: '1px solid #6EE7B7', color: '#065F46', borderRadius: '10px', padding: '12px 14px', marginBottom: '14px', fontSize: '13px' }}>{ok}</div>}
 
       <div className="carnicos-grid" style={{ display: 'grid', gridTemplateColumns: '310px 1fr', gap: '14px', alignItems: 'start' }}>
-        <div style={{ display: 'grid', gap: '14px' }}>
-          <DatosTurnoCard
-            fecha={fecha} onFecha={setFecha}
-            responsableId={responsableId} onResponsable={setResponsableId} responsables={maestros.responsables}
-            turno={turno} onTurno={setTurno}
-            observacion={observacion} onObservacion={setObservacion}
-            observacionRequerida={false}
-          />
-          <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '14px', padding: '18px', display: 'grid', gap: '14px' }}>
-            <div>
-              <label style={label}>Bodega</label>
-              <select value={bodega} onChange={e => setBodega(e.target.value as BodegaCarnico)} style={{ ...field, fontWeight: 700 }}>
-                {BODEGAS_CARNICOS.map(b => <option key={b} value={b}>{BODEGA_LABEL[b]}</option>)}
-              </select>
+        <DatosTurnoCard
+          title="CONTEO INVENTARIO"
+          fecha={fecha} onFecha={setFecha}
+          responsableId={responsableId} onResponsable={setResponsableId} responsables={maestros.responsables}
+          showObservacion={false}
+        >
+          <div>
+            <label style={label}>Bodega <span style={{ color: 'var(--rd)' }}>*</span></label>
+            <select value={bodega} onChange={e => setBodega(e.target.value as BodegaCarnico)} style={{ ...field, fontWeight: 700 }}>
+              {BODEGAS_CARNICOS.map(b => <option key={b} value={b}>{BODEGA_LABEL[b]}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={label}>Tipo</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              {(['INICIAL', 'FINAL'] as const).map(t => (
+                <button key={t} type="button" onClick={() => setTipo(t)} style={{
+                  border: `1.5px solid ${tipo === t ? 'var(--ac)' : 'var(--bo)'}`,
+                  background: tipo === t ? 'var(--al)' : 'var(--bg)',
+                  color: tipo === t ? 'var(--ac)' : 'var(--ts)',
+                  borderRadius: '8px', padding: '9px', fontSize: '12px', fontWeight: 800, cursor: 'pointer',
+                }}>
+                  {t === 'INICIAL' ? 'Inventario Inicial' : 'Inventario Final'}
+                </button>
+              ))}
             </div>
-            <div>
-              <label style={label}>Tipo</label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                {(['INICIAL', 'FINAL'] as const).map(t => (
-                  <button key={t} type="button" onClick={() => setTipo(t)} style={{
-                    border: `1.5px solid ${tipo === t ? 'var(--ac)' : 'var(--bo)'}`,
-                    background: tipo === t ? 'var(--al)' : 'var(--bg)',
-                    color: tipo === t ? 'var(--ac)' : 'var(--ts)',
-                    borderRadius: '8px', padding: '9px', fontSize: '12px', fontWeight: 800, cursor: 'pointer',
-                  }}>
-                    {t === 'INICIAL' ? 'Inventario Inicial' : 'Inventario Final'}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </section>
-        </div>
+          </div>
+        </DatosTurnoCard>
 
         <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '14px', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: '360px' }}>
           <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)' }}>
-            <span style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase' }}>Conteo — {BODEGA_LABEL[bodega]}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase' }}>Conteo — {BODEGA_LABEL[bodega]}</span>
+              {filas.length > 0 && (
+                <span style={{ background: 'var(--ac)', color: '#fff', borderRadius: '10px', padding: '1px 7px', fontSize: '10px', fontWeight: 700 }}>{filas.length}</span>
+              )}
+            </div>
             <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--ts)' }}>El mismo producto puede contarse en varias bodegas el mismo dia — el resumen las suma automaticamente.</p>
           </div>
 
@@ -144,7 +145,7 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '560px' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg)' }}>
-                      {['Producto', 'Cantidad', 'Unidad', ''].map(h => (
+                      {['Producto', 'Unidad', 'Cantidad', ''].map(h => (
                         <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', borderBottom: '1px solid var(--bo)' }}>{h}</th>
                       ))}
                     </tr>
@@ -162,10 +163,10 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
                             onClear={() => updateFila(fila.localId, { producto: null, cantidad: '' })}
                           />
                         </td>
+                        <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)' }}>{fila.producto?.unidad_medida ?? '-'}</td>
                         <td style={{ padding: '9px 12px', width: '140px' }}>
                           <input type="number" min={0} step="any" value={fila.cantidad} onChange={e => updateFila(fila.localId, { cantidad: e.target.value })} style={{ ...field, width: '110px' }} placeholder="0" />
                         </td>
-                        <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)' }}>{fila.producto?.unidad_medida ?? '-'}</td>
                         <td style={{ padding: '9px 8px', textAlign: 'center', width: '44px' }}>
                           <button type="button" onClick={() => removeFila(fila.localId)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ts)', fontSize: '18px', lineHeight: 1 }}>x</button>
                         </td>
@@ -185,7 +186,7 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
       </div>
 
       <div style={{ marginTop: '14px', background: 'var(--sf)', borderRadius: '14px', border: '1px solid var(--bo)', padding: '16px 22px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px' }}>
-        <span style={{ fontSize: '12px', color: 'var(--ts)', marginRight: 'auto' }}>{totalValidas} producto(s) listo(s) para guardar</span>
+        <span style={{ fontSize: '12px', color: 'var(--ts)', marginRight: 'auto' }}>{totalValidas}/{filas.length} producto(s) listo(s) para guardar</span>
         <button type="submit" disabled={saving || totalValidas === 0} style={{ border: 'none', background: saving ? 'var(--ts)' : totalValidas ? '#0D9373' : 'var(--bo)', color: '#fff', borderRadius: '10px', padding: '12px 28px', cursor: totalValidas ? 'pointer' : 'not-allowed', fontSize: '14px', fontWeight: 800, minWidth: '200px' }}>
           {saving ? 'Guardando...' : 'Guardar conteo'}
         </button>
