@@ -41,11 +41,14 @@ const thHead: CSSProperties = {
   padding: '8px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--ts)',
   textTransform: 'uppercase', borderBottom: '1px solid var(--bo)', whiteSpace: 'nowrap',
 };
-const filtroInput: CSSProperties = {
-  width: '100%', marginTop: '5px', border: '1.5px solid var(--bo)', borderRadius: '6px', padding: '4px 7px',
+const filtroBase: CSSProperties = {
+  marginTop: '5px', border: '1.5px solid var(--bo)', borderRadius: '6px', padding: '4px 7px',
   fontSize: '11px', fontWeight: 400, textTransform: 'none', background: 'var(--bg)', color: 'var(--tx)',
   outline: 'none', fontFamily: 'DM Sans, sans-serif', boxSizing: 'border-box',
 };
+// Los selects de Calculo/Diferencia se dejan angostos y fijos para que no ocupen espacio de mas.
+const filtroSelect: CSSProperties = { ...filtroBase, width: '84px' };
+const filtroBusquedaInput: CSSProperties = { ...filtroBase, width: '110px', paddingLeft: '21px' };
 
 export default function TablaResumenTab() {
   const hoy = hoyChile();
@@ -139,10 +142,16 @@ export default function TablaResumenTab() {
                 <tr style={{ background: 'var(--bg)' }}>
                   <th style={thHead}>
                     Producto
-                    <input
-                      type="text" value={buscarProducto} onChange={e => setBuscarProducto(e.target.value)}
-                      placeholder="Buscar..." style={filtroInput}
-                    />
+                    <div style={{ position: 'relative', display: 'inline-block' }}>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ position: 'absolute', left: '6px', top: '50%', transform: 'translateY(-50%)', color: 'var(--ts)', pointerEvents: 'none' }}>
+                        <circle cx="11" cy="11" r="7" />
+                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                      </svg>
+                      <input
+                        type="text" value={buscarProducto} onChange={e => setBuscarProducto(e.target.value)}
+                        placeholder="Buscar" aria-label="Buscar producto" style={filtroBusquedaInput}
+                      />
+                    </div>
                   </th>
                   <th style={thHead}>Inv. Inicial</th>
                   <th style={thHead}>Ingresos</th>
@@ -152,14 +161,14 @@ export default function TablaResumenTab() {
                   <th style={thHead}>Colacion</th>
                   <th style={thHead}>
                     Calculo
-                    <select value={filtroCalculo} onChange={e => setFiltroCalculo(e.target.value as FiltroSigno)} style={filtroInput}>
+                    <select value={filtroCalculo} onChange={e => setFiltroCalculo(e.target.value as FiltroSigno)} style={filtroSelect}>
                       {OPCIONES_SIGNO.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                   </th>
                   <th style={thHead}>Inv. Final</th>
                   <th style={thHead}>
                     Diferencia
-                    <select value={filtroDiferencia} onChange={e => setFiltroDiferencia(e.target.value as FiltroSigno)} style={filtroInput}>
+                    <select value={filtroDiferencia} onChange={e => setFiltroDiferencia(e.target.value as FiltroSigno)} style={filtroSelect}>
                       {OPCIONES_SIGNO.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                   </th>
