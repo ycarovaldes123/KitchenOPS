@@ -16,6 +16,7 @@ export type MotivoMerma   =
   | 'Vencimiento' | 'Mala manipulación' | 'Sobreproducción'
   | 'Devolución' | 'Corte / limpieza' | 'Error de producción'
   | 'Hongos' | 'Mal estado' | 'Prueba de plato' | 'Caída' | 'Crudo'
+  | 'Roto' | 'Sellado al vacio'
   | 'Error Garzón' | 'Devolución Cliente' | 'Quemado'
   | 'Pelo / contaminación' | 'Mal preparado'
   // Históricos (registros anteriores):
