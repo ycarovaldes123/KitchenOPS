@@ -95,7 +95,10 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'Datos invalidos' }, { status: 400 });
 
   const supabase = await createClient();
-  const { error } = await supabase.from('carnicos_inventarios').delete().eq('id', id);
+  const { data, error } = await supabase.from('carnicos_inventarios').delete().eq('id', id).select('id');
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!data || data.length === 0) {
+    return NextResponse.json({ error: 'No se pudo eliminar: la fila no existe o falta permiso de DELETE (revisa la politica RLS de carnicos_inventarios en Supabase).' }, { status: 403 });
+  }
   return NextResponse.json({ ok: true });
 }

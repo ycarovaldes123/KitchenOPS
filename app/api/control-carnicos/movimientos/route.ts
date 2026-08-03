@@ -121,8 +121,11 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Las salidas por venta se revierten desde la pestaña Ventas, no se editan directamente.' }, { status: 400 });
   }
 
-  const { error } = await supabase.from('carnicos_movimientos').update({ cantidad }).eq('id', id);
+  const { data: actualizado, error } = await supabase.from('carnicos_movimientos').update({ cantidad }).eq('id', id).select('id');
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!actualizado || actualizado.length === 0) {
+    return NextResponse.json({ error: 'No se pudo actualizar: la fila no existe o falta permiso de UPDATE (revisa la politica RLS de carnicos_movimientos en Supabase).' }, { status: 403 });
+  }
   return NextResponse.json({ ok: true });
 }
 
@@ -141,7 +144,10 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Las salidas por venta se revierten desde la pestaña Ventas, no se borran directamente.' }, { status: 400 });
   }
 
-  const { error } = await supabase.from('carnicos_movimientos').delete().eq('id', id);
+  const { data: borrado, error } = await supabase.from('carnicos_movimientos').delete().eq('id', id).select('id');
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!borrado || borrado.length === 0) {
+    return NextResponse.json({ error: 'No se pudo eliminar: la fila no existe o falta permiso de DELETE (revisa la politica RLS de carnicos_movimientos en Supabase).' }, { status: 403 });
+  }
   return NextResponse.json({ ok: true });
 }
