@@ -85,3 +85,17 @@ export async function POST(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, guardados: filas.length });
 }
+
+export async function DELETE(req: NextRequest) {
+  const s = await requireRol(['admin']);
+  if (!s.ok) return s.response;
+
+  const body = await req.json().catch(() => ({}));
+  const id = typeof body.id === 'string' ? body.id : '';
+  if (!id) return NextResponse.json({ error: 'Datos invalidos' }, { status: 400 });
+
+  const supabase = await createClient();
+  const { error } = await supabase.from('carnicos_inventarios').delete().eq('id', id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}

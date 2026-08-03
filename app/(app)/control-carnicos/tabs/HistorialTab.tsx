@@ -79,6 +79,7 @@ export default function HistorialTab() {
   const [editValues, setEditValues] = useState<Record<string, string>>({});
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [deletingKey, setDeletingKey] = useState<string | null>(null);
+  const [deletingKeyInv, setDeletingKeyInv] = useState<string | null>(null);
 
   function toggleExpandido(key: string) {
     setExpandidos(prev => {
@@ -243,6 +244,28 @@ export default function HistorialTab() {
     }
     return Array.from(map.values()).sort((a, b) => b.fecha.localeCompare(a.fecha));
   }, [inventarios]);
+
+  async function eliminarGrupoInventario(g: GrupoInventario) {
+    if (!window.confirm(`¿Eliminar este conteo de inventario completo? Se borrarán ${g.items.length} producto(s).`)) return;
+    setDeletingKeyInv(g.key);
+    setError('');
+    try {
+      for (const item of g.items) {
+        const res = await fetch('/api/control-carnicos/inventarios', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: item.id }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json.error ?? 'Error eliminando conteo de inventario');
+      }
+      await fetchHistorial(desde, hasta);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error eliminando conteo de inventario');
+    } finally {
+      setDeletingKeyInv(null);
+    }
+  }
 
   return (
     <div style={{ display: 'grid', gap: '14px' }}>
@@ -427,7 +450,7 @@ export default function HistorialTab() {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '680px' }}>
               <thead>
                 <tr style={{ background: 'var(--bg)' }}>
-                  {['', 'Fecha', 'Bodega', 'Tipo', 'Cantidad de conteos ingresados', 'Responsable'].map(h => (
+                  {['', 'Fecha', 'Bodega', 'Tipo', 'Cantidad de conteos ingresados', 'Responsable', 'Acciones'].map(h => (
                     <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', borderBottom: '1px solid var(--bo)', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -457,10 +480,21 @@ export default function HistorialTab() {
                         </td>
                         <td style={{ padding: '9px 12px', fontWeight: 800 }}>{g.items.length}</td>
                         <td style={{ padding: '9px 12px', fontSize: '12px' }}>{g.responsable_nombre || '-'}</td>
+                        <td style={{ padding: '9px 12px' }} onClick={e => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => eliminarGrupoInventario(g)}
+                            disabled={deletingKeyInv === g.key}
+                            title="Eliminar conteo de inventario"
+                            style={{ background: 'none', border: '1px solid var(--bo)', borderRadius: '6px', cursor: 'pointer', color: '#DC2626', fontSize: '13px', padding: '4px 7px', lineHeight: 1 }}
+                          >
+                            {deletingKeyInv === g.key ? '...' : '🗑'}
+                          </button>
+                        </td>
                       </tr>
                       {abierto && (
                         <tr style={{ borderBottom: '1px solid var(--bo)' }}>
-                          <td colSpan={6} style={{ padding: 0, background: 'var(--bg)' }}>
+                          <td colSpan={7} style={{ padding: 0, background: 'var(--bg)' }}>
                             <div style={{ padding: '4px 16px 12px 34px', display: 'grid', gap: '5px' }}>
                               <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '6px 0 2px' }}>
                                 Conteos incluidos ({g.items.length})
