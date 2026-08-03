@@ -102,6 +102,30 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ id: data.id }, { status: 201 });
 }
 
+export async function PATCH(req: NextRequest) {
+  const s = await requireRol(['admin']);
+  if (!s.ok) return s.response;
+
+  const body = await req.json().catch(() => ({}));
+  const id = typeof body.id === 'string' ? body.id : '';
+  const cantidad = Number(body.cantidad);
+  if (!id) return NextResponse.json({ error: 'Datos invalidos' }, { status: 400 });
+  if (!Number.isFinite(cantidad) || cantidad <= 0) {
+    return NextResponse.json({ error: 'La cantidad debe ser mayor a 0' }, { status: 400 });
+  }
+
+  const supabase = await createClient();
+  const { data: existente, error: fetchError } = await supabase.from('carnicos_movimientos').select('origen').eq('id', id).single();
+  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+  if (existente?.origen === 'venta_toteat') {
+    return NextResponse.json({ error: 'Las salidas por venta se revierten desde la pestaña Ventas, no se editan directamente.' }, { status: 400 });
+  }
+
+  const { error } = await supabase.from('carnicos_movimientos').update({ cantidad }).eq('id', id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}
+
 export async function DELETE(req: NextRequest) {
   const s = await requireRol(['admin']);
   if (!s.ok) return s.response;

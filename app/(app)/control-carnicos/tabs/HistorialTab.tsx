@@ -75,6 +75,10 @@ export default function HistorialTab() {
   const [error, setError] = useState('');
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
   const [expandidosInv, setExpandidosInv] = useState<Set<string>>(new Set());
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<Record<string, string>>({});
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [deletingKey, setDeletingKey] = useState<string | null>(null);
 
   function toggleExpandido(key: string) {
     setExpandidos(prev => {
@@ -99,6 +103,8 @@ export default function HistorialTab() {
     setError('');
     setExpandidos(new Set());
     setExpandidosInv(new Set());
+    setEditingKey(null);
+    setEditValues({});
     try {
       const [movRes, invRes] = await Promise.all([
         fetch(`/api/control-carnicos/movimientos?desde=${d}&hasta=${h}`),
@@ -157,6 +163,68 @@ export default function HistorialTab() {
     }
     return Array.from(map.values()).sort((a, b) => b.fecha.localeCompare(a.fecha));
   }, [movimientos]);
+
+  function iniciarEdicion(g: GrupoMovimiento) {
+    const valores: Record<string, string> = {};
+    g.items.forEach(item => { valores[item.id] = String(item.cantidad); });
+    setEditValues(valores);
+    setEditingKey(g.key);
+    setExpandidos(prev => new Set(prev).add(g.key));
+  }
+
+  function cancelarEdicion() {
+    setEditingKey(null);
+    setEditValues({});
+  }
+
+  async function guardarEdicion(g: GrupoMovimiento) {
+    setSavingKey(g.key);
+    setError('');
+    try {
+      const cambios = g.items.filter(item => {
+        const v = Number(editValues[item.id]);
+        return Number.isFinite(v) && v > 0 && v !== item.cantidad;
+      });
+      for (const item of cambios) {
+        const res = await fetch('/api/control-carnicos/movimientos', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: item.id, cantidad: Number(editValues[item.id]) }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json.error ?? 'Error guardando cambios');
+      }
+      setEditingKey(null);
+      setEditValues({});
+      await fetchHistorial(desde, hasta);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error guardando cambios');
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  async function eliminarGrupo(g: GrupoMovimiento) {
+    if (!window.confirm(`¿Eliminar este movimiento completo? Se borrarán ${g.items.length} producto(s).`)) return;
+    setDeletingKey(g.key);
+    setError('');
+    try {
+      for (const item of g.items) {
+        const res = await fetch('/api/control-carnicos/movimientos', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: item.id }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json.error ?? 'Error eliminando movimiento');
+      }
+      await fetchHistorial(desde, hasta);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error eliminando movimiento');
+    } finally {
+      setDeletingKey(null);
+    }
+  }
 
   // Mismo criterio que Ingreso/Salida: cada conteo se carga con la misma fecha/bodega/tipo/
   // responsable para varios productos a la vez (una fila por producto en carnicos_inventarios),
@@ -228,7 +296,7 @@ export default function HistorialTab() {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '780px' }}>
               <thead>
                 <tr style={{ background: 'var(--bg)' }}>
-                  {['', 'Fecha', 'Tipo de movimiento', 'Subtipo', 'Cantidad de movimientos ingresados', 'Responsable', 'Observacion'].map(h => (
+                  {['', 'Fecha', 'Tipo de movimiento', 'Subtipo', 'Cantidad de movimientos ingresados', 'Responsable', 'Observacion', 'Acciones'].map(h => (
                     <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', borderBottom: '1px solid var(--bo)', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -259,23 +327,83 @@ export default function HistorialTab() {
                         <td style={{ padding: '9px 12px', fontWeight: 800 }}>{g.items.length}</td>
                         <td style={{ padding: '9px 12px', fontSize: '12px' }}>{g.responsable_nombre || '-'}</td>
                         <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)' }}>{g.esVenta ? 'Ventas Toteat (varios platos)' : (g.observacion || '-')}</td>
+                        <td style={{ padding: '9px 12px' }} onClick={e => e.stopPropagation()}>
+                          {g.esVenta ? (
+                            <span style={{ fontSize: '11px', color: 'var(--ts)' }}>—</span>
+                          ) : (
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <button
+                                type="button"
+                                onClick={() => iniciarEdicion(g)}
+                                disabled={savingKey === g.key || deletingKey === g.key}
+                                title="Editar cantidades"
+                                style={{ background: 'none', border: '1px solid var(--bo)', borderRadius: '6px', cursor: 'pointer', color: 'var(--ts)', fontSize: '13px', padding: '4px 7px', lineHeight: 1 }}
+                              >
+                                ✎
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => eliminarGrupo(g)}
+                                disabled={savingKey === g.key || deletingKey === g.key}
+                                title="Eliminar movimiento"
+                                style={{ background: 'none', border: '1px solid var(--bo)', borderRadius: '6px', cursor: 'pointer', color: '#DC2626', fontSize: '13px', padding: '4px 7px', lineHeight: 1 }}
+                              >
+                                {deletingKey === g.key ? '...' : '🗑'}
+                              </button>
+                            </div>
+                          )}
+                        </td>
                       </tr>
                       {abierto && (
                         <tr style={{ borderBottom: '1px solid var(--bo)' }}>
-                          <td colSpan={7} style={{ padding: 0, background: 'var(--bg)' }}>
+                          <td colSpan={8} style={{ padding: 0, background: 'var(--bg)' }}>
                             <div style={{ padding: '4px 16px 12px 34px', display: 'grid', gap: '5px' }}>
                               <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '6px 0 2px' }}>
                                 Movimientos incluidos ({g.items.length})
                               </span>
                               {g.items.map(item => (
-                                <div key={item.id} style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: '10px', fontSize: '12px' }}>
+                                <div key={item.id} style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '10px', fontSize: '12px' }}>
                                   <span style={{ color: 'var(--tx)', fontWeight: 600 }}>
                                     {item.producto_nombre}
                                     {g.esVenta && item.observacion && <span style={{ color: 'var(--ts)', fontWeight: 400 }}> — {item.observacion}</span>}
                                   </span>
-                                  <span style={{ color: 'var(--ts)' }}>{fmt(item.cantidad)} {item.unidad_medida}</span>
+                                  {editingKey === g.key ? (
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={editValues[item.id] ?? ''}
+                                        onChange={e => setEditValues(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                        style={{ width: '80px', padding: '3px 6px', fontSize: '12px', border: '1px solid var(--bo)', borderRadius: '6px', background: 'var(--sf)', color: 'var(--tx)' }}
+                                      />
+                                      <span style={{ color: 'var(--ts)' }}>{item.unidad_medida}</span>
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: 'var(--ts)' }}>{fmt(item.cantidad)} {item.unidad_medida}</span>
+                                  )}
                                 </div>
                               ))}
+                              {editingKey === g.key && (
+                                <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => guardarEdicion(g)}
+                                    disabled={savingKey === g.key}
+                                    style={{ background: 'var(--ac)', color: '#fff', border: 'none', borderRadius: '8px', padding: '6px 14px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+                                  >
+                                    {savingKey === g.key ? 'Guardando...' : 'Guardar cambios'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={cancelarEdicion}
+                                    disabled={savingKey === g.key}
+                                    style={{ background: 'none', color: 'var(--ts)', border: '1px solid var(--bo)', borderRadius: '8px', padding: '6px 14px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </td>
                         </tr>
