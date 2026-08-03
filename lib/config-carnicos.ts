@@ -1,12 +1,13 @@
 import type { BodegaCarnico, SubtipoCarnico, TipoMovimientoCarnico } from '@/types/carnicos';
 
-export const BODEGAS_CARNICOS: BodegaCarnico[] = ['CAMARA CONGELADOS', 'CAMARA MANTENCION', 'COCINA', 'CAMARA FRIO'];
+export const BODEGAS_CARNICOS: BodegaCarnico[] = ['CAMARA CONGELADOS', 'CAMARA MANTENCION', 'COCINA', 'CAMARA FRIO', 'BODEGAS CONSOLIDADAS'];
 
 export const BODEGA_LABEL: Record<BodegaCarnico, string> = {
   'CAMARA CONGELADOS': 'Camara Congelados',
   'CAMARA MANTENCION': 'Camara Mantencion',
   COCINA: 'Cocina',
   'CAMARA FRIO': 'Camara Frio',
+  'BODEGAS CONSOLIDADAS': 'Bodegas consolidadas',
 };
 
 export const SUBTIPOS_POR_MOVIMIENTO: Record<TipoMovimientoCarnico, { value: SubtipoCarnico; label: string }[]> = {

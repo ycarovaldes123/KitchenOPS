@@ -1,4 +1,4 @@
-export type BodegaCarnico = 'CAMARA CONGELADOS' | 'CAMARA MANTENCION' | 'COCINA' | 'CAMARA FRIO';
+export type BodegaCarnico = 'CAMARA CONGELADOS' | 'CAMARA MANTENCION' | 'COCINA' | 'CAMARA FRIO' | 'BODEGAS CONSOLIDADAS';
 export type TipoMovimientoCarnico = 'INGRESO' | 'SALIDA';
 export type SubtipoCarnico = 'RECEPCION_BODEGA' | 'INGRESO_PP' | 'PRODUCCION' | 'MERMAS' | 'COLACION' | 'VENTAS';
 export type TipoInventarioCarnico = 'INICIAL' | 'FINAL';
