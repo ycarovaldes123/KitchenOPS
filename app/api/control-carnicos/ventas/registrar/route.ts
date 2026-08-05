@@ -20,7 +20,7 @@ interface Entrada {
 }
 
 export async function POST(req: NextRequest) {
-  const s = await requireRol(['admin']); // TODO: agregar 'bodega' cuando se habilite el rol
+  const s = await requireRol(['admin', 'bodega']);
   if (!s.ok) return s.response;
 
   const body = await req.json().catch(() => ({}));

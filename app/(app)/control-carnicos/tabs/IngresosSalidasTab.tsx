@@ -195,7 +195,7 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
         ) : (
           <>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '680px' }}>
+              <table className="carnicos-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '680px' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg)' }}>
                     {['Producto o PP', 'Unidad de medida', 'Cantidad', 'Estado', ''].map(h => (

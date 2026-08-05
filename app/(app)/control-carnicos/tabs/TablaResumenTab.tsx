@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, type CSSProperties } from 'react';
-import { formatFechaCorta, hoyChile, rangoParaModo, type ModoRangoFecha } from '@/lib/config-carnicos';
+import { formatFechaCompacta, formatFechaCorta, hoyChile, rangoParaModo, type ModoRangoFecha } from '@/lib/config-carnicos';
 import type { ResumenFila } from '@/types/carnicos';
 import FiltroRangoFechas from '../components/FiltroRangoFechas';
 
@@ -50,6 +50,39 @@ const filtroBase: CSSProperties = {
 const filtroSelect: CSSProperties = { ...filtroBase, width: '84px' };
 const filtroBusquedaInput: CSSProperties = { ...filtroBase, width: '110px', paddingLeft: '21px' };
 
+const excelBtn: CSSProperties = {
+  border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '12px', fontWeight: 800,
+  background: 'var(--ac)', color: '#fff', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif',
+  display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap',
+};
+const excelBtnDisabled: CSSProperties = { ...excelBtn, cursor: 'default', opacity: 0.5 };
+const fechaConteoInput: CSSProperties = {
+  border: '1.5px solid var(--bo)', borderRadius: '8px', padding: '7px 10px', fontSize: '12px',
+  background: 'var(--bg)', color: 'var(--tx)', outline: 'none', fontFamily: 'DM Sans, sans-serif',
+};
+
+async function descargarArchivo(url: string, filename: string): Promise<string | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error ?? 'Error al generar el archivo');
+    }
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(objectUrl);
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : 'Error al generar el archivo';
+  }
+}
+
 export default function TablaResumenTab() {
   const hoy = hoyChile();
   const [modo, setModo] = useState<ModoRangoFecha>('dia');
@@ -63,6 +96,27 @@ export default function TablaResumenTab() {
   const [buscarProducto, setBuscarProducto] = useState('');
   const [filtroCalculo, setFiltroCalculo] = useState<FiltroSigno>('todos');
   const [filtroDiferencia, setFiltroDiferencia] = useState<FiltroSigno>('todos');
+
+  const [fechaConteo, setFechaConteo] = useState(hoy);
+  const [descargandoConteo, setDescargandoConteo] = useState(false);
+  const [descargandoReporte, setDescargandoReporte] = useState(false);
+
+  async function descargarConteo() {
+    setDescargandoConteo(true);
+    const err = await descargarArchivo(`/api/control-carnicos/resumen/conteo?fecha=${fechaConteo}`, `Conteo_Carnes_${formatFechaCompacta(fechaConteo)}.xlsx`);
+    if (err) setError(err);
+    setDescargandoConteo(false);
+  }
+
+  async function descargarReporte() {
+    if (!rangoConsultado) return;
+    setDescargandoReporte(true);
+    const { desde: d, hasta: h } = rangoConsultado;
+    const filename = d === h ? `Reporte_${formatFechaCompacta(d)}.xlsx` : `Reporte_${formatFechaCompacta(d)}_${formatFechaCompacta(h)}.xlsx`;
+    const err = await descargarArchivo(`/api/control-carnicos/resumen/reporte?desde=${d}&hasta=${h}`, filename);
+    if (err) setError(err);
+    setDescargandoReporte(false);
+  }
 
   async function fetchResumen(d: string, h: string) {
     setLoading(true);
@@ -120,6 +174,20 @@ export default function TablaResumenTab() {
         onConsultar={consultar}
       />
 
+      <div className="carnicos-toolbar" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <button type="button" onClick={descargarConteo} disabled={descargandoConteo} style={descargandoConteo ? excelBtnDisabled : excelBtn}>
+          {descargandoConteo ? 'Generando...' : '↓ Excel Conteo'}
+        </button>
+        <input
+          type="date" value={fechaConteo} onChange={e => setFechaConteo(e.target.value)}
+          aria-label="Fecha del conteo" title="Fecha del conteo (toma el inventario final del dia anterior)"
+          style={fechaConteoInput}
+        />
+        <button type="button" onClick={descargarReporte} disabled={descargandoReporte || !rangoConsultado} style={descargandoReporte || !rangoConsultado ? excelBtnDisabled : excelBtn}>
+          {descargandoReporte ? 'Generando...' : '↓ Excel Reporte'}
+        </button>
+      </div>
+
       {error && <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', borderRadius: '10px', padding: '12px 14px', fontSize: '13px' }}>{error}</div>}
 
       {!filas && !error && !loading && (
@@ -137,7 +205,7 @@ export default function TablaResumenTab() {
             {hayFiltrosActivos && <span>Mostrando <strong style={{ color: 'var(--tx)' }}>{filasFiltradas.length}</strong> de {filas.length} productos</span>}
           </div>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1080px' }}>
+            <table className="carnicos-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1080px' }}>
               <thead>
                 <tr style={{ background: 'var(--bg)' }}>
                   <th style={thHead}>
@@ -182,8 +250,12 @@ export default function TablaResumenTab() {
                   <tr><td colSpan={11} style={{ padding: '30px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>Ningun producto coincide con los filtros.</td></tr>
                 ) : filasFiltradas.map(f => {
                   const badge = ESTADO_BADGE[f.estado];
-                  // El Calculo deberia dar 0 (cuadrado); cualquier desvio, positivo o negativo, se marca en rojo.
-                  const calculoDesviado = Math.abs(f.calculo) > 0.0001;
+                  // Calculo: solo los valores negativos se marcan en rojo; cero y positivos en negro.
+                  const calculoNegativo = f.calculo < -0.0001;
+                  // Diferencia: amarillo para positivos (> 0), rojo para negativos (< 0), neutro en cero/sin conteo.
+                  const diferenciaColor = f.diferencia === null || Math.abs(f.diferencia) < 0.0001
+                    ? 'var(--ts)'
+                    : f.diferencia < 0 ? '#B91C1C' : '#CA8A04';
                   return (
                     <tr key={f.producto_id} style={{ borderBottom: '1px solid var(--bo)' }}>
                       <td style={{ padding: '9px 12px', fontWeight: 700 }}>{f.producto_nombre}</td>
@@ -196,11 +268,11 @@ export default function TablaResumenTab() {
                       <td style={{ padding: '9px 12px' }}>{fmt(f.produccion)} {f.unidad_medida}</td>
                       <td style={{ padding: '9px 12px' }}>{fmt(f.mermas)} {f.unidad_medida}</td>
                       <td style={{ padding: '9px 12px' }}>{fmt(f.colacion)} {f.unidad_medida}</td>
-                      <td style={{ padding: '9px 12px', fontWeight: 800, color: calculoDesviado ? '#B91C1C' : 'var(--tx)' }}>
+                      <td style={{ padding: '9px 12px', fontWeight: 800, color: calculoNegativo ? '#B91C1C' : 'var(--tx)' }}>
                         {fmt(f.calculo)} {f.unidad_medida}
                       </td>
                       <td style={{ padding: '9px 12px', fontWeight: 800 }}>{fmt(f.inv_final)} {f.unidad_medida}</td>
-                      <td style={{ padding: '9px 12px', fontWeight: 800, color: f.diferencia === null ? 'var(--ts)' : Math.abs(f.diferencia) < 0.0001 ? 'var(--ts)' : f.diferencia < 0 ? '#B91C1C' : '#047857' }}>
+                      <td style={{ padding: '9px 12px', fontWeight: 800, color: diferenciaColor }}>
                         {f.diferencia === null ? '-' : `${fmt(f.diferencia)} ${f.unidad_medida}`}
                       </td>
                       <td style={{ padding: '9px 12px' }}>

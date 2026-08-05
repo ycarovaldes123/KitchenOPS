@@ -32,7 +32,7 @@ export default function FiltroRangoFechas({
   consultarLabel?: string;
 }) {
   return (
-    <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '14px', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+    <section className="carnicos-toolbar" style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '14px', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
         {MODOS.map(m => (
           <button

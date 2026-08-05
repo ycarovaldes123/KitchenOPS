@@ -3,7 +3,7 @@ import { createClient } from '@/utils/supabase/server';
 import { requireRol } from '@/lib/auth-server';
 
 export async function GET() {
-  const s = await requireRol(['admin']); // TODO: agregar 'bodega' cuando se habilite el rol
+  const s = await requireRol(['admin', 'bodega']);
   if (!s.ok) return s.response;
 
   const supabase = await createClient();

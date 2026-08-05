@@ -96,6 +96,8 @@ export interface PendienteVenta {
 export interface ResumenFila {
   producto_id: string;
   producto_nombre: string;
+  producto_codigo: string;
+  categoria: string;
   unidad_medida: string;
   inv_inicial: number;
   ingresos: number;

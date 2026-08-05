@@ -88,7 +88,7 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     colacion:   NADA,
     frutas:     NADA,
     inventario: NADA,
-    controlCarnicos: NADA, // TODO: restaurar a BODEGA_CONTROL cuando se habilite el rol
+    controlCarnicos: BODEGA_CONTROL,
     mermas:     { ...OPERATIVO, verCostos: true },
     historial:  LECTURA_COSTOS,
     ventas:     OPERATIVO,

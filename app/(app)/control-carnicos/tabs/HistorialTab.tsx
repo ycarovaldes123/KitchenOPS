@@ -316,7 +316,7 @@ export default function HistorialTab() {
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '780px' }}>
+            <table className="carnicos-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '780px' }}>
               <thead>
                 <tr style={{ background: 'var(--bg)' }}>
                   {['', 'Fecha', 'Tipo de movimiento', 'Subtipo', 'Cantidad de movimientos ingresados', 'Responsable', 'Observacion', 'Acciones'].map(h => (
@@ -447,7 +447,7 @@ export default function HistorialTab() {
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '680px' }}>
+            <table className="carnicos-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '680px' }}>
               <thead>
                 <tr style={{ background: 'var(--bg)' }}>
                   {['', 'Fecha', 'Bodega', 'Tipo', 'Cantidad de conteos ingresados', 'Responsable', 'Acciones'].map(h => (

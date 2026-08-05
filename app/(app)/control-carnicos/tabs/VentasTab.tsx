@@ -109,7 +109,7 @@ export default function VentasTab() {
 
   return (
     <div style={{ display: 'grid', gap: '14px' }}>
-      <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '14px', padding: '16px 20px', display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+      <section className="carnicos-toolbar" style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '14px', padding: '16px 20px', display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div>
           <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', marginBottom: '5px' }}>Fecha</label>
           <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={field} />
@@ -147,7 +147,7 @@ export default function VentasTab() {
               <div style={{ padding: '30px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>Sin consumo de productos carnicos para esta fecha.</div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '480px' }}>
+                <table className="carnicos-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '480px' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg)' }}>
                       {['', 'Nombre del producto', 'Total calculado', 'Estado'].map(h => (

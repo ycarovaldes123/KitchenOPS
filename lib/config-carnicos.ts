@@ -51,6 +51,23 @@ export function hoyChile() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago' }).format(new Date());
 }
 
+// Categorias de carnicos.carnicos_productos.tipo (viene de la columna TIPO del Excel de origen),
+// en el orden pedido para la planilla de Conteo y su etiqueta visible.
+export const ORDEN_CATEGORIAS_CARNICOS = ['CARNES ROJAS', 'CARNES AVE', 'PESCADOS', 'EMBUTIDOS', 'PRODUCTOS PROCESADOS'] as const;
+
+export const CATEGORIA_CARNICO_LABEL: Record<string, string> = {
+  'CARNES ROJAS': 'CARNES ROJAS',
+  'CARNES AVE': 'AVES',
+  PESCADOS: 'PESCADOS',
+  EMBUTIDOS: 'EMBUTIDOS',
+  'PRODUCTOS PROCESADOS': 'P.P',
+};
+
+export function ordenCategoriaCarnico(tipo: string): number {
+  const idx = ORDEN_CATEGORIAS_CARNICOS.indexOf(tipo as (typeof ORDEN_CATEGORIAS_CARNICOS)[number]);
+  return idx === -1 ? ORDEN_CATEGORIAS_CARNICOS.length : idx;
+}
+
 // ── Utilidades de rango de fechas (YYYY-MM-DD), usadas por los filtros Dia/Semana/Mes/
 // Rango personalizado de Tabla Resumen e Historial. Se hace la aritmetica en UTC para
 // evitar corrimientos de dia por la zona horaria del navegador.
@@ -86,6 +103,16 @@ export function finMesISO(fechaStr: string): string {
 export function formatFechaCorta(fechaStr: string): string {
   const [, m, d] = fechaStr.split('-');
   return `${d}/${m}`;
+}
+/** DDMMYYYY sin separadores, para nombres de archivo (ej. "01082026"). */
+export function formatFechaCompacta(fechaStr: string): string {
+  const [y, m, d] = fechaStr.split('-');
+  return `${d}${m}${y}`;
+}
+/** DD-MM-YYYY, para mostrar en encabezados/celdas (ej. "01-08-2026"). */
+export function formatFechaGuion(fechaStr: string): string {
+  const [y, m, d] = fechaStr.split('-');
+  return `${d}-${m}-${y}`;
 }
 /** Calcula desde/hasta para un modo Dia/Semana/Mes anclado a `hoy` (YYYY-MM-DD). */
 export function rangoParaModo(modo: Exclude<ModoRangoFecha, 'personalizado'>, hoy: string): { desde: string; hasta: string } {

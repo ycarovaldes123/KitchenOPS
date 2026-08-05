@@ -164,7 +164,7 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
           ) : (
             <>
               <div style={{ overflowX: 'auto', flex: 1 }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '560px' }}>
+                <table className="carnicos-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '560px' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg)' }}>
                       {['Producto', 'Unidad', 'Cantidad', ''].map(h => (

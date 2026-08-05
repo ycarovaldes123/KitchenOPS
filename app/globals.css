@@ -165,6 +165,16 @@ input, select, textarea, button {
   .ventas-detalle-table td { padding: 7px 8px; font-size: 12px; }
 }
 
+/* ─── Control Carnicos: tablas anchas compactas en tablet ───── */
+@media (max-width: 1023px) {
+  .carnicos-table th,
+  .carnicos-table td { padding: 7px 8px; font-size: 12px; }
+}
+@media (max-width: 1023px) {
+  .carnicos-toolbar button,
+  .carnicos-toolbar input[type="date"] { min-height: 44px; }
+}
+
 /* ─── Page header row ───────────────────────────────────────── */
 .page-header {
   display: flex;
