@@ -31,21 +31,6 @@ export const SUBTIPO_LABEL: Record<SubtipoCarnico, string> = {
   VENTAS: 'Ventas',
 };
 
-// Tolerancia de redondeo para el Estado (verde/rojo) de la Tabla Resumen.
-// Un solo lugar para ajustar -- si en el futuro se vuelve configurable por DB,
-// esta funcion es el unico punto de reemplazo.
-export const TOLERANCIA_CARNICOS = {
-  PESO_KG: 0.05, // productos en KG o GR: tolera +/- 50 g (normalizado)
-  UNIDAD: 1, // productos en UN, PQ o PR: tolera +/- 1 unidad discreta
-} as const;
-
-export function dentroDeTolerancia(diferencia: number | null, unidadMedida: string): boolean {
-  if (diferencia === null) return true;
-  const abs = Math.abs(diferencia);
-  if (unidadMedida === 'KG') return abs <= TOLERANCIA_CARNICOS.PESO_KG;
-  if (unidadMedida === 'GR') return abs <= TOLERANCIA_CARNICOS.PESO_KG * 1000;
-  return abs <= TOLERANCIA_CARNICOS.UNIDAD;
-}
 
 export function hoyChile() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago' }).format(new Date());

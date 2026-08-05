@@ -1,5 +1,4 @@
 import type { createClient } from '@/utils/supabase/server';
-import { dentroDeTolerancia } from './config-carnicos';
 import type { ResumenFila } from '@/types/carnicos';
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -58,8 +57,9 @@ export async function calcularResumenFilas(
     const calculo = inv_inicial + ingresos - (ventas + produccion + mermas + colacion);
     const inv_final = invFin.get(producto.id) ?? 0;
 
-    const diferencia = hayConteoFinal ? inv_final - calculo : null;
-    const estado: ResumenFila['estado'] = diferencia === null ? 'sin_conteo' : dentroDeTolerancia(diferencia, producto.unidad_medida) ? 'ok' : 'alerta';
+    const diferencia = hayConteoFinal ? round4(inv_final - calculo) : null;
+    // Estado estricto: 0 exacto es OK, cualquier diferencia positiva o negativa es Alerta (sin tolerancia).
+    const estado: ResumenFila['estado'] = diferencia === null ? 'sin_conteo' : diferencia === 0 ? 'ok' : 'alerta';
 
     return {
       producto_id: producto.id,
@@ -75,7 +75,7 @@ export async function calcularResumenFilas(
       colacion: round4(colacion),
       calculo: round4(calculo),
       inv_final: round4(inv_final),
-      diferencia: diferencia === null ? null : round4(diferencia),
+      diferencia,
       estado,
       inv_inicial_fuente,
     };
