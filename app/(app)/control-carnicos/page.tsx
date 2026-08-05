@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { CarnicoProducto } from '@/types/carnicos';
 import type { Responsable } from '@/types/database';
+import { useRol } from '@/components/RolProvider';
 import IngresosSalidasTab from './tabs/IngresosSalidasTab';
 import VentasTab from './tabs/VentasTab';
 import InventariosTab from './tabs/InventariosTab';
@@ -25,7 +26,12 @@ export interface Maestros {
 }
 
 export default function ControlCarnicosPage() {
-  const [tab, setTab] = useState<Tab>('ingresos-salidas');
+  const { puede } = useRol();
+  // Roles sin permiso de registrar (ej. jefatura/fcaro) solo ven la Tabla Resumen, en solo lectura.
+  const soloResumen = !puede('controlCarnicos', 'registrar');
+  const tabsDisponibles = soloResumen ? TABS.filter(t => t.key === 'resumen') : TABS;
+
+  const [tab, setTab] = useState<Tab>(soloResumen ? 'resumen' : 'ingresos-salidas');
   const [maestros, setMaestros] = useState<Maestros | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -50,8 +56,9 @@ export default function ControlCarnicosPage() {
         </p>
       </div>
 
+      {tabsDisponibles.length > 1 && (
       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '16px', borderBottom: '1px solid var(--bo)' }}>
-        {TABS.map(item => (
+        {tabsDisponibles.map(item => (
           <button
             key={item.key}
             type="button"
@@ -68,6 +75,7 @@ export default function ControlCarnicosPage() {
           </button>
         ))}
       </div>
+      )}
 
       {error && (
         <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', borderRadius: '10px', padding: '12px 14px', marginBottom: '14px', fontSize: '13px' }}>

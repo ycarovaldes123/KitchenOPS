@@ -13,7 +13,7 @@ export const RMAP: Record<string, RolType> = {
 export const RUTAS_ROL: Record<RolType, string[]> = {
   admin:    ['/produccion', '/colacion', '/mermas', '/frutas', '/inventario', '/control-carnicos', '/historial', '/ventas', '/dashboard', '/kpis', '/costos', '/export', '/maestros'],
   finanzas: ['/dashboard', '/produccion', '/colacion', '/frutas', '/inventario', '/mermas', '/historial', '/ventas', '/kpis', '/costos', '/export', '/maestros'],
-  jefatura: ['/historial', '/ventas', '/kpis', '/costos'],
+  jefatura: ['/historial', '/ventas', '/kpis', '/costos', '/control-carnicos'],
   bodega:   ['/mermas', '/ventas', '/historial', '/control-carnicos'],
   economo:  ['/colacion', '/frutas', '/inventario', '/mermas', '/historial', '/ventas'],
   cocina:   ['/produccion', '/mermas', '/ventas', '/kpis', '/historial'],
@@ -49,7 +49,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/colacion',   label: 'Colacion',   icon: 'utensils', roles: ['admin', 'economo'] },
   { href: '/frutas',     label: 'Frutas',     icon: 'utensils', roles: ['admin', 'economo', 'finanzas'] },
   { href: '/inventario', label: 'Toma Inventario', icon: 'grid', roles: ['admin', 'economo', 'finanzas'] },
-  { href: '/control-carnicos', label: 'Control Carnicos', icon: 'grid', roles: ['admin', 'bodega'] },
+  { href: '/control-carnicos', label: 'Control Carnicos', icon: 'grid', roles: ['admin', 'bodega', 'jefatura'] },
   { href: '/mermas',     label: 'Mermas',     icon: 'trending', roles: ['admin', 'cocina', 'economo', 'bodega'] },
   { href: '/historial',  label: 'Historial',  icon: 'clock',    roles: ['admin', 'jefatura', 'finanzas', 'economo', 'cocina', 'bodega'] },
   { href: '/ventas',     label: 'Ventas',     icon: 'barchart', roles: ['admin', 'cocina', 'finanzas', 'jefatura', 'economo', 'bodega'] },

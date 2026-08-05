@@ -3,6 +3,7 @@
 import { useMemo, useState, type CSSProperties } from 'react';
 import { formatFechaCompacta, formatFechaCorta, hoyChile, rangoParaModo, type ModoRangoFecha } from '@/lib/config-carnicos';
 import type { ResumenFila } from '@/types/carnicos';
+import { useRol } from '@/components/RolProvider';
 import FiltroRangoFechas from '../components/FiltroRangoFechas';
 
 function fmt(value: number) {
@@ -84,6 +85,8 @@ async function descargarArchivo(url: string, filename: string): Promise<string |
 }
 
 export default function TablaResumenTab() {
+  const { puede } = useRol();
+  const puedeExportar = puede('controlCarnicos', 'exportar');
   const hoy = hoyChile();
   const [modo, setModo] = useState<ModoRangoFecha>('dia');
   const [desde, setDesde] = useState(hoy);
@@ -174,6 +177,7 @@ export default function TablaResumenTab() {
         onConsultar={consultar}
       />
 
+      {puedeExportar && (
       <div className="carnicos-toolbar" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
         <button type="button" onClick={descargarConteo} disabled={descargandoConteo} style={descargandoConteo ? excelBtnDisabled : excelBtn}>
           {descargandoConteo ? 'Generando...' : '↓ Excel Conteo'}
@@ -187,6 +191,7 @@ export default function TablaResumenTab() {
           {descargandoReporte ? 'Generando...' : '↓ Excel Reporte'}
         </button>
       </div>
+      )}
 
       {error && <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', borderRadius: '10px', padding: '12px 14px', fontSize: '13px' }}>{error}</div>}
 

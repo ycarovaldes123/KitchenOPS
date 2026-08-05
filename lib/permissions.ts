@@ -74,7 +74,8 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     colacion:   NADA,
     frutas:     NADA,
     inventario: NADA,
-    controlCarnicos: NADA,
+    // Fcaro (jefatura/chef): solo ver la pestaña Tabla Resumen para revisar diferencias por fecha.
+    controlCarnicos: { ...NADA, ver: true },
     mermas:     NADA,
     historial:  LECTURA_COSTOS,
     ventas:     LECTURA_COSTOS,
