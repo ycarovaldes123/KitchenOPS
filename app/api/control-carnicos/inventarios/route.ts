@@ -86,6 +86,40 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true, guardados: filas.length });
 }
 
+export async function PATCH(req: NextRequest) {
+  // Solo admin: editar conteos de inventario ya guardados (cantidad y/o fecha) queda restringido (bodega solo registra/ve).
+  const s = await requireRol(['admin']);
+  if (!s.ok) return s.response;
+
+  const body = await req.json().catch(() => ({}));
+  const id = typeof body.id === 'string' ? body.id : '';
+  if (!id) return NextResponse.json({ error: 'Datos invalidos' }, { status: 400 });
+
+  const updates: Record<string, unknown> = {};
+  if (body.cantidad !== undefined) {
+    const cantidad = Number(body.cantidad);
+    if (!Number.isFinite(cantidad) || cantidad < 0) {
+      return NextResponse.json({ error: 'La cantidad debe ser un numero valido (0 o mayor)' }, { status: 400 });
+    }
+    updates.cantidad = cantidad;
+  }
+  if (body.fecha !== undefined) {
+    if (!isIsoDate(body.fecha)) return NextResponse.json({ error: 'Fecha invalida' }, { status: 400 });
+    updates.fecha = body.fecha;
+  }
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: 'Nada para actualizar' }, { status: 400 });
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.from('carnicos_inventarios').update(updates).eq('id', id).select('id');
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!data || data.length === 0) {
+    return NextResponse.json({ error: 'No se pudo actualizar: la fila no existe o falta permiso de UPDATE (revisa la politica RLS de carnicos_inventarios en Supabase).' }, { status: 403 });
+  }
+  return NextResponse.json({ ok: true });
+}
+
 export async function DELETE(req: NextRequest) {
   // Solo admin: eliminar conteos de inventario ya guardados queda restringido (bodega solo registra/ve).
   const s = await requireRol(['admin']);

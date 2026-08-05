@@ -85,6 +85,10 @@ export default function HistorialTab() {
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [deletingKey, setDeletingKey] = useState<string | null>(null);
   const [deletingKeyInv, setDeletingKeyInv] = useState<string | null>(null);
+  const [editingKeyInv, setEditingKeyInv] = useState<string | null>(null);
+  const [editValuesInv, setEditValuesInv] = useState<Record<string, string>>({});
+  const [editFechaInv, setEditFechaInv] = useState('');
+  const [savingKeyInv, setSavingKeyInv] = useState<string | null>(null);
 
   function toggleExpandido(key: string) {
     setExpandidos(prev => {
@@ -111,6 +115,9 @@ export default function HistorialTab() {
     setExpandidosInv(new Set());
     setEditingKey(null);
     setEditValues({});
+    setEditingKeyInv(null);
+    setEditValuesInv({});
+    setEditFechaInv('');
     try {
       const [movRes, invRes] = await Promise.all([
         fetch(`/api/control-carnicos/movimientos?desde=${d}&hasta=${h}`),
@@ -249,6 +256,55 @@ export default function HistorialTab() {
     }
     return Array.from(map.values()).sort((a, b) => b.fecha.localeCompare(a.fecha));
   }, [inventarios]);
+
+  function iniciarEdicionInv(g: GrupoInventario) {
+    const valores: Record<string, string> = {};
+    g.items.forEach(item => { valores[item.id] = String(item.cantidad); });
+    setEditValuesInv(valores);
+    setEditFechaInv(g.fecha);
+    setEditingKeyInv(g.key);
+    setExpandidosInv(prev => new Set(prev).add(g.key));
+  }
+
+  function cancelarEdicionInv() {
+    setEditingKeyInv(null);
+    setEditValuesInv({});
+    setEditFechaInv('');
+  }
+
+  async function guardarEdicionInv(g: GrupoInventario) {
+    setSavingKeyInv(g.key);
+    setError('');
+    try {
+      const fechaCambio = editFechaInv && editFechaInv !== g.fecha ? editFechaInv : null;
+      const cambios = g.items.filter(item => {
+        const v = Number(editValuesInv[item.id]);
+        const cantidadCambio = Number.isFinite(v) && v >= 0 && v !== item.cantidad;
+        return cantidadCambio || fechaCambio;
+      });
+      for (const item of cambios) {
+        const body: Record<string, unknown> = { id: item.id };
+        const v = Number(editValuesInv[item.id]);
+        if (Number.isFinite(v) && v >= 0 && v !== item.cantidad) body.cantidad = v;
+        if (fechaCambio) body.fecha = fechaCambio;
+        const res = await fetch('/api/control-carnicos/inventarios', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json.error ?? 'Error guardando cambios');
+      }
+      setEditingKeyInv(null);
+      setEditValuesInv({});
+      setEditFechaInv('');
+      await fetchHistorial(desde, hasta);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error guardando cambios');
+    } finally {
+      setSavingKeyInv(null);
+    }
+  }
 
   async function eliminarGrupoInventario(g: GrupoInventario) {
     if (!window.confirm(`¿Eliminar este conteo de inventario completo? Se borrarán ${g.items.length} producto(s).`)) return;
@@ -490,18 +546,33 @@ export default function HistorialTab() {
                         <td style={{ padding: '9px 12px', fontWeight: 800 }}>{g.items.length}</td>
                         <td style={{ padding: '9px 12px', fontSize: '12px' }}>{g.responsable_nombre || '-'}</td>
                         <td style={{ padding: '9px 12px' }} onClick={e => e.stopPropagation()}>
-                          {puedeEliminar ? (
-                            <button
-                              type="button"
-                              onClick={() => eliminarGrupoInventario(g)}
-                              disabled={deletingKeyInv === g.key}
-                              title="Eliminar conteo de inventario"
-                              style={{ background: 'none', border: '1px solid var(--bo)', borderRadius: '6px', cursor: 'pointer', color: '#DC2626', fontSize: '13px', padding: '4px 7px', lineHeight: 1 }}
-                            >
-                              {deletingKeyInv === g.key ? '...' : '🗑'}
-                            </button>
-                          ) : (
+                          {!puedeEditar && !puedeEliminar ? (
                             <span style={{ fontSize: '11px', color: 'var(--ts)' }}>—</span>
+                          ) : (
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              {puedeEditar && (
+                                <button
+                                  type="button"
+                                  onClick={() => iniciarEdicionInv(g)}
+                                  disabled={savingKeyInv === g.key || deletingKeyInv === g.key}
+                                  title="Editar cantidades y fecha"
+                                  style={{ background: 'none', border: '1px solid var(--bo)', borderRadius: '6px', cursor: 'pointer', color: 'var(--ts)', fontSize: '13px', padding: '4px 7px', lineHeight: 1 }}
+                                >
+                                  ✎
+                                </button>
+                              )}
+                              {puedeEliminar && (
+                                <button
+                                  type="button"
+                                  onClick={() => eliminarGrupoInventario(g)}
+                                  disabled={savingKeyInv === g.key || deletingKeyInv === g.key}
+                                  title="Eliminar conteo de inventario"
+                                  style={{ background: 'none', border: '1px solid var(--bo)', borderRadius: '6px', cursor: 'pointer', color: '#DC2626', fontSize: '13px', padding: '4px 7px', lineHeight: 1 }}
+                                >
+                                  {deletingKeyInv === g.key ? '...' : '🗑'}
+                                </button>
+                              )}
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -512,12 +583,57 @@ export default function HistorialTab() {
                               <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '6px 0 2px' }}>
                                 Conteos incluidos ({g.items.length})
                               </span>
+                              {editingKeyInv === g.key && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase' }}>Fecha</span>
+                                  <input
+                                    type="date"
+                                    value={editFechaInv}
+                                    onChange={e => setEditFechaInv(e.target.value)}
+                                    style={{ padding: '3px 6px', fontSize: '12px', border: '1px solid var(--bo)', borderRadius: '6px', background: 'var(--sf)', color: 'var(--tx)' }}
+                                  />
+                                </div>
+                              )}
                               {g.items.map(item => (
-                                <div key={item.id} style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: '10px', fontSize: '12px' }}>
+                                <div key={item.id} style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '10px', fontSize: '12px' }}>
                                   <span style={{ color: 'var(--tx)', fontWeight: 600 }}>{item.producto_nombre}</span>
-                                  <span style={{ color: 'var(--ts)' }}>{fmt(item.cantidad)} {item.unidad_medida}</span>
+                                  {editingKeyInv === g.key ? (
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={editValuesInv[item.id] ?? ''}
+                                        onChange={e => setEditValuesInv(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                        style={{ width: '80px', padding: '3px 6px', fontSize: '12px', border: '1px solid var(--bo)', borderRadius: '6px', background: 'var(--sf)', color: 'var(--tx)' }}
+                                      />
+                                      <span style={{ color: 'var(--ts)' }}>{item.unidad_medida}</span>
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: 'var(--ts)' }}>{fmt(item.cantidad)} {item.unidad_medida}</span>
+                                  )}
                                 </div>
                               ))}
+                              {editingKeyInv === g.key && (
+                                <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => guardarEdicionInv(g)}
+                                    disabled={savingKeyInv === g.key}
+                                    style={{ background: 'var(--ac)', color: '#fff', border: 'none', borderRadius: '8px', padding: '6px 14px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+                                  >
+                                    {savingKeyInv === g.key ? 'Guardando...' : 'Guardar cambios'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={cancelarEdicionInv}
+                                    disabled={savingKeyInv === g.key}
+                                    style={{ background: 'none', color: 'var(--ts)', border: '1px solid var(--bo)', borderRadius: '8px', padding: '6px 14px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </td>
                         </tr>
