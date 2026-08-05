@@ -103,7 +103,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const s = await requireRol(['admin', 'bodega']);
+  // Solo admin: editar movimientos ya guardados queda restringido (bodega solo registra/ve).
+  const s = await requireRol(['admin']);
   if (!s.ok) return s.response;
 
   const body = await req.json().catch(() => ({}));
@@ -130,7 +131,8 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const s = await requireRol(['admin', 'bodega']);
+  // Solo admin: eliminar movimientos ya guardados queda restringido (bodega solo registra/ve).
+  const s = await requireRol(['admin']);
   if (!s.ok) return s.response;
 
   const body = await req.json().catch(() => ({}));

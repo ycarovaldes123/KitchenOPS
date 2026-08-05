@@ -3,6 +3,7 @@
 import { Fragment, useMemo, useState } from 'react';
 import { BODEGA_LABEL, SUBTIPO_LABEL, hoyChile, rangoParaModo, type ModoRangoFecha } from '@/lib/config-carnicos';
 import type { BodegaCarnico, SubtipoCarnico, TipoInventarioCarnico, TipoMovimientoCarnico } from '@/types/carnicos';
+import { useRol } from '@/components/RolProvider';
 import FiltroRangoFechas from '../components/FiltroRangoFechas';
 
 interface MovimientoHistorial {
@@ -64,6 +65,10 @@ const SUB_TABS: { id: SubTab; label: string; color: string }[] = [
 ];
 
 export default function HistorialTab() {
+  const { puede } = useRol();
+  // Solo admin puede editar/eliminar movimientos e inventarios ya guardados (bodega/jmendez solo registra y ve).
+  const puedeEditar = puede('controlCarnicos', 'editar');
+  const puedeEliminar = puede('controlCarnicos', 'eliminar');
   const hoy = hoyChile();
   const [subTab, setSubTab] = useState<SubTab>('movimientos');
   const [modo, setModo] = useState<ModoRangoFecha>('dia');
@@ -351,28 +356,32 @@ export default function HistorialTab() {
                         <td style={{ padding: '9px 12px', fontSize: '12px' }}>{g.responsable_nombre || '-'}</td>
                         <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)' }}>{g.esVenta ? 'Ventas Toteat (varios platos)' : (g.observacion || '-')}</td>
                         <td style={{ padding: '9px 12px' }} onClick={e => e.stopPropagation()}>
-                          {g.esVenta ? (
+                          {g.esVenta || (!puedeEditar && !puedeEliminar) ? (
                             <span style={{ fontSize: '11px', color: 'var(--ts)' }}>—</span>
                           ) : (
                             <div style={{ display: 'flex', gap: '4px' }}>
-                              <button
-                                type="button"
-                                onClick={() => iniciarEdicion(g)}
-                                disabled={savingKey === g.key || deletingKey === g.key}
-                                title="Editar cantidades"
-                                style={{ background: 'none', border: '1px solid var(--bo)', borderRadius: '6px', cursor: 'pointer', color: 'var(--ts)', fontSize: '13px', padding: '4px 7px', lineHeight: 1 }}
-                              >
-                                ✎
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => eliminarGrupo(g)}
-                                disabled={savingKey === g.key || deletingKey === g.key}
-                                title="Eliminar movimiento"
-                                style={{ background: 'none', border: '1px solid var(--bo)', borderRadius: '6px', cursor: 'pointer', color: '#DC2626', fontSize: '13px', padding: '4px 7px', lineHeight: 1 }}
-                              >
-                                {deletingKey === g.key ? '...' : '🗑'}
-                              </button>
+                              {puedeEditar && (
+                                <button
+                                  type="button"
+                                  onClick={() => iniciarEdicion(g)}
+                                  disabled={savingKey === g.key || deletingKey === g.key}
+                                  title="Editar cantidades"
+                                  style={{ background: 'none', border: '1px solid var(--bo)', borderRadius: '6px', cursor: 'pointer', color: 'var(--ts)', fontSize: '13px', padding: '4px 7px', lineHeight: 1 }}
+                                >
+                                  ✎
+                                </button>
+                              )}
+                              {puedeEliminar && (
+                                <button
+                                  type="button"
+                                  onClick={() => eliminarGrupo(g)}
+                                  disabled={savingKey === g.key || deletingKey === g.key}
+                                  title="Eliminar movimiento"
+                                  style={{ background: 'none', border: '1px solid var(--bo)', borderRadius: '6px', cursor: 'pointer', color: '#DC2626', fontSize: '13px', padding: '4px 7px', lineHeight: 1 }}
+                                >
+                                  {deletingKey === g.key ? '...' : '🗑'}
+                                </button>
+                              )}
                             </div>
                           )}
                         </td>
@@ -481,15 +490,19 @@ export default function HistorialTab() {
                         <td style={{ padding: '9px 12px', fontWeight: 800 }}>{g.items.length}</td>
                         <td style={{ padding: '9px 12px', fontSize: '12px' }}>{g.responsable_nombre || '-'}</td>
                         <td style={{ padding: '9px 12px' }} onClick={e => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            onClick={() => eliminarGrupoInventario(g)}
-                            disabled={deletingKeyInv === g.key}
-                            title="Eliminar conteo de inventario"
-                            style={{ background: 'none', border: '1px solid var(--bo)', borderRadius: '6px', cursor: 'pointer', color: '#DC2626', fontSize: '13px', padding: '4px 7px', lineHeight: 1 }}
-                          >
-                            {deletingKeyInv === g.key ? '...' : '🗑'}
-                          </button>
+                          {puedeEliminar ? (
+                            <button
+                              type="button"
+                              onClick={() => eliminarGrupoInventario(g)}
+                              disabled={deletingKeyInv === g.key}
+                              title="Eliminar conteo de inventario"
+                              style={{ background: 'none', border: '1px solid var(--bo)', borderRadius: '6px', cursor: 'pointer', color: '#DC2626', fontSize: '13px', padding: '4px 7px', lineHeight: 1 }}
+                            >
+                              {deletingKeyInv === g.key ? '...' : '🗑'}
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: '11px', color: 'var(--ts)' }}>—</span>
+                          )}
                         </td>
                       </tr>
                       {abierto && (

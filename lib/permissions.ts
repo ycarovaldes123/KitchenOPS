@@ -30,7 +30,9 @@ const NADA: PermisoModulo      = { ver: false, registrar: false, editar: false, 
 const FINANCIERO: PermisoModulo = { ...NADA, ver: true, verCostos: true };
 const LECTURA_COSTOS: PermisoModulo = { ...NADA, ver: true, verCostos: true };
 const OPERATIVO: PermisoModulo = { ...NADA, ver: true, registrar: true };
-const BODEGA_CONTROL: PermisoModulo = { ...NADA, ver: true, registrar: true, editar: true, exportar: true };
+// editar/eliminar quedan en false a proposito: en Historial solo el administrador puede
+// editar o eliminar movimientos/conteos ya guardados de Control Carnicos.
+const BODEGA_CONTROL: PermisoModulo = { ...NADA, ver: true, registrar: true, exportar: true };
 const COMPLETO: PermisoModulo  = { ver: true, registrar: true, editar: true, eliminar: true, aprobar: true, exportar: true, verCostos: true, soloHoy: false };
 
 export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
