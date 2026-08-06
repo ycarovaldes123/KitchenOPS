@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type CSSProperties, type FormEvent } from 'react';
+import { useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { BODEGAS_CARNICOS, BODEGA_LABEL, hoyChile } from '@/lib/config-carnicos';
 import type { BodegaCarnico, CarnicoProducto, TipoInventarioCarnico } from '@/types/carnicos';
 import DatosTurnoCard from '../components/DatosTurnoCard';
@@ -11,6 +11,17 @@ interface FilaInventario {
   localId: string;
   producto: CarnicoProducto | null;
   cantidad: string;
+}
+
+interface LoteImportado {
+  bodega: BodegaCarnico;
+  bodegaLabel: string;
+  detalle: {
+    producto_id: string;
+    producto_nombre: string;
+    unidad_medida: string;
+    cantidad: number;
+  }[];
 }
 
 function newId() {
@@ -39,13 +50,19 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
   const [bodega, setBodega] = useState<BodegaCarnico>(BODEGAS_CARNICOS[0]);
   const [tipo, setTipo] = useState<TipoInventarioCarnico>('INICIAL');
   const [filas, setFilas] = useState<FilaInventario[]>([]);
+  const [lotesImportados, setLotesImportados] = useState<LoteImportado[] | null>(null);
+  const [importando, setImportando] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [cantidadLineas, setCantidadLineas] = useState('10');
   const [saving, setSaving] = useState(false);
   const [ok, setOk] = useState('');
   const [err, setErr] = useState('');
 
   const respActual = maestros.responsables.find(r => r.id === responsableId);
-  const totalValidas = filas.filter(f => f.producto && Number(f.cantidad) >= 0 && f.cantidad !== '').length;
+  const totalImportadas = lotesImportados?.reduce((sum, lote) => sum + lote.detalle.length, 0) ?? 0;
+  const totalValidas = lotesImportados
+    ? totalImportadas
+    : filas.filter(f => f.producto && Number(f.cantidad) >= 0 && f.cantidad !== '').length;
 
   function addFilas(cantidad: number) {
     const safeCantidad = Math.min(Math.max(Math.floor(cantidad) || 1, 1), 100);
@@ -62,6 +79,42 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
     setFilas(prev => prev.filter(f => f.localId !== localId));
   }
 
+  function cambiarTipo(nuevoTipo: TipoInventarioCarnico) {
+    setTipo(nuevoTipo);
+    if (nuevoTipo !== 'FINAL') setLotesImportados(null);
+  }
+
+  async function importarInventarioFinal(file: File | null) {
+    if (!file) return;
+    setErr('');
+    setOk('');
+    setImportando(true);
+    setLotesImportados(null);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch('/api/control-carnicos/inventarios/importar-final', {
+        method: 'POST',
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Error importando inventario final');
+      const lotes = Array.isArray(data.lotes) ? data.lotes as LoteImportado[] : [];
+      if (!lotes.length) throw new Error('El archivo no tiene conteos validos por bodega.');
+      setLotesImportados(lotes);
+      setFilas([]);
+      const detalleErrores = Array.isArray(data.errores) && data.errores.length
+        ? ` ${data.errores.length} fila(s) quedaron con advertencia.`
+        : '';
+      setOk(`Inventario final importado: ${data.total ?? lotes.reduce((sum, lote) => sum + lote.detalle.length, 0)} conteo(s) separados por bodega.${detalleErrores}`);
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : 'Error importando inventario final');
+    } finally {
+      setImportando(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setErr('');
@@ -72,20 +125,32 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
       .filter(f => f.producto && f.cantidad !== '' && Number(f.cantidad) >= 0)
       .map(f => ({ producto_id: f.producto!.id, producto_nombre: f.producto!.nombre, unidad_medida: f.producto!.unidad_medida, cantidad: Number(f.cantidad) }));
 
-    if (!detalle.length) { setErr('Agrega al menos un producto con cantidad valida.'); return; }
-    if (!window.confirm(`Guardar inventario ${tipo === 'INICIAL' ? 'Inicial' : 'Final'} de ${BODEGA_LABEL[bodega]} con ${detalle.length} producto(s)?`)) return;
+    if (lotesImportados) {
+      if (!lotesImportados.length || totalImportadas === 0) { setErr('Primero importa un archivo valido.'); return; }
+      const resumen = lotesImportados.map(lote => `${lote.bodegaLabel}: ${lote.detalle.length}`).join(', ');
+      if (!window.confirm(`Guardar inventario Final importado con ${totalImportadas} conteo(s)? ${resumen}`)) return;
+    } else {
+      if (!detalle.length) { setErr('Agrega al menos un producto con cantidad valida.'); return; }
+      if (!window.confirm(`Guardar inventario ${tipo === 'INICIAL' ? 'Inicial' : 'Final'} de ${BODEGA_LABEL[bodega]} con ${detalle.length} producto(s)?`)) return;
+    }
 
     setSaving(true);
     try {
       const res = await fetch('/api/control-carnicos/inventarios', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fecha, responsable_id: responsableId, responsable_nombre: respActual?.nombre ?? '', turno, bodega, tipo, detalle }),
+        body: JSON.stringify(lotesImportados
+          ? { fecha, responsable_id: responsableId, responsable_nombre: respActual?.nombre ?? '', turno, tipo: 'FINAL', lotes: lotesImportados.map(lote => ({ bodega: lote.bodega, detalle: lote.detalle })) }
+          : { fecha, responsable_id: responsableId, responsable_nombre: respActual?.nombre ?? '', turno, bodega, tipo, detalle }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Error guardando inventario');
-      setOk(`Inventario guardado: ${detalle.length} producto(s) en ${BODEGA_LABEL[bodega]}.`);
+      const porBodega = data.porBodega && typeof data.porBodega === 'object'
+        ? Object.entries(data.porBodega as Record<string, number>).map(([bod, total]) => `${BODEGA_LABEL[bod as BodegaCarnico] ?? bod}: ${total}`).join(', ')
+        : `${detalle.length} producto(s) en ${BODEGA_LABEL[bodega]}`;
+      setOk(`Inventario guardado: ${porBodega}.`);
       setFilas([]);
+      setLotesImportados(null);
     } catch (error) {
       setErr(error instanceof Error ? error.message : 'Error guardando inventario');
     } finally {
@@ -115,7 +180,7 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
             <label style={label}>Tipo</label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               {(['INICIAL', 'FINAL'] as const).map(t => (
-                <button key={t} type="button" onClick={() => setTipo(t)} style={{
+                <button key={t} type="button" onClick={() => cambiarTipo(t)} style={{
                   border: `1.5px solid ${tipo === t ? 'var(--ac)' : 'var(--bo)'}`,
                   background: tipo === t ? 'var(--al)' : 'var(--bg)',
                   color: tipo === t ? 'var(--ac)' : 'var(--ts)',
@@ -126,6 +191,25 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
               ))}
             </div>
           </div>
+          {tipo === 'FINAL' && (
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={e => void importarInventarioFinal(e.target.files?.[0] ?? null)}
+                style={{ display: 'none' }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={importando}
+                style={{ width: '100%', border: '1.5px solid var(--ac)', background: 'var(--sf)', color: 'var(--ac)', borderRadius: '8px', padding: '9px', fontSize: '12px', fontWeight: 800, cursor: importando ? 'wait' : 'pointer' }}
+              >
+                {importando ? 'Validando archivo...' : 'Subir Inventario Final'}
+              </button>
+            </div>
+          )}
         </DatosTurnoCard>
 
         <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '14px', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: '360px' }}>
@@ -139,7 +223,39 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
             <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--ts)' }}>El mismo producto puede contarse en varias bodegas el mismo dia — el resumen las suma automaticamente.</p>
           </div>
 
-          {filas.length === 0 ? (
+          {lotesImportados ? (
+            <div style={{ padding: '18px 20px', display: 'grid', gap: '10px' }}>
+              <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#065F46', borderRadius: '10px', padding: '12px 14px', fontSize: '13px', fontWeight: 700 }}>
+                Archivo validado. Revisa el resumen por bodega y presiona Guardar conteo para registrar el inventario final.
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table className="carnicos-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '520px' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg)' }}>
+                      {['Bodega', 'Conteos', 'Primeros productos'].map(h => (
+                        <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', borderBottom: '1px solid var(--bo)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lotesImportados.map(lote => (
+                      <tr key={lote.bodega} style={{ borderBottom: '1px solid var(--bo)' }}>
+                        <td style={{ padding: '9px 12px', fontWeight: 800 }}>{lote.bodegaLabel}</td>
+                        <td style={{ padding: '9px 12px' }}>{lote.detalle.length}</td>
+                        <td style={{ padding: '9px 12px', fontSize: '12px', color: 'var(--ts)' }}>
+                          {lote.detalle.slice(0, 4).map(d => d.producto_nombre).join(', ')}
+                          {lote.detalle.length > 4 ? ` y ${lote.detalle.length - 4} mas` : ''}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <button type="button" onClick={() => setLotesImportados(null)} style={{ justifySelf: 'start', border: '1px solid var(--bo)', background: 'var(--sf)', color: 'var(--ts)', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>
+                Descartar importacion
+              </button>
+            </div>
+          ) : filas.length === 0 ? (
             <div style={{ padding: '48px 32px', textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
                 <button type="button" onClick={addFila} style={{ background: 'var(--ac)', color: '#fff', border: 'none', borderRadius: '10px', padding: '10px 22px', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}>
@@ -219,7 +335,9 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
       </div>
 
       <div style={{ marginTop: '14px', background: 'var(--sf)', borderRadius: '14px', border: '1px solid var(--bo)', padding: '16px 22px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px' }}>
-        <span style={{ fontSize: '12px', color: 'var(--ts)', marginRight: 'auto' }}>{totalValidas}/{filas.length} producto(s) listo(s) para guardar</span>
+        <span style={{ fontSize: '12px', color: 'var(--ts)', marginRight: 'auto' }}>
+          {lotesImportados ? `${totalValidas} conteo(s) importado(s) listo(s) para guardar` : `${totalValidas}/${filas.length} producto(s) listo(s) para guardar`}
+        </span>
         <button type="submit" disabled={saving || totalValidas === 0} style={{ border: 'none', background: saving ? 'var(--ts)' : totalValidas ? '#0D9373' : 'var(--bo)', color: '#fff', borderRadius: '10px', padding: '12px 28px', cursor: totalValidas ? 'pointer' : 'not-allowed', fontSize: '14px', fontWeight: 800, minWidth: '200px' }}>
           {saving ? 'Guardando...' : 'Guardar conteo'}
         </button>

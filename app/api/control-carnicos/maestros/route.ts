@@ -2,6 +2,14 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol } from '@/lib/auth-server';
 
+function normalizarNombre(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase();
+}
+
 export async function GET() {
   const s = await requireRol(['admin', 'bodega', 'jefatura']);
   if (!s.ok) return s.response;
@@ -17,8 +25,10 @@ export async function GET() {
   }
   if (responsablesRes.error) return NextResponse.json({ error: responsablesRes.error.message }, { status: 500 });
 
+  const responsablesPermitidos = new Set(['JOEL MENDEZ', 'JAVIERA SEPULVEDA']);
+
   return NextResponse.json({
     productos: productosRes.data ?? [],
-    responsables: responsablesRes.data ?? [],
+    responsables: (responsablesRes.data ?? []).filter(r => responsablesPermitidos.has(normalizarNombre(r.nombre))),
   });
 }

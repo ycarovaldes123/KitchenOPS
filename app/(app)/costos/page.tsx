@@ -5,6 +5,7 @@ import { formatCLP } from '@/lib/calculos';
 import Semaforo from '@/components/costos/Semaforo';
 import FichaTecnicaModal from '@/components/costos/FichaTecnicaModal';
 import PlatoEditorModal from '@/components/costos/PlatoEditorModal';
+import ConsumoVentasPanel from '@/components/costos/ConsumoVentasPanel';
 import { useRol } from '@/components/RolProvider';
 import type { ColorSemaforo } from '@/types/database';
 
@@ -22,6 +23,7 @@ interface Ingrediente {
 interface Plato {
   id: string;
   cod_softland: string | null;
+  codigo_toteat?: string | null;
   nombre: string;
   categoria: string;
   tipo_carta: 'ANTIGUA' | 'NUEVA';
@@ -59,6 +61,7 @@ const SEM_BG: Record<ColorSemaforo, string> = {
 
 type Vista = 'lista' | 'mosaico';
 type FiltroCarta = 'all' | 'ANTIGUA' | 'NUEVA';
+type SeccionCostos = 'carta' | 'consumo';
 
 function normalizeSearch(value: unknown) {
   return String(value ?? '')
@@ -193,6 +196,8 @@ export default function CostosPage() {
   const [productoBusqueda, setProductoBusqueda] = useState('');
   const [modal, setModal] = useState<Plato | null>(null);
   const [editor, setEditor] = useState<Plato | 'new' | null>(null);
+  const [copyFrom, setCopyFrom] = useState<Plato | null>(null);
+  const [seccion, setSeccion] = useState<SeccionCostos>('carta');
   const [vista, setVista] = useState<Vista>(() => (
     typeof window !== 'undefined' && window.innerWidth < 760 ? 'mosaico' : 'lista'
   ));
@@ -281,16 +286,16 @@ export default function CostosPage() {
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, flexWrap: 'wrap' }}>
-          {canManage && (
+          {seccion === 'carta' && canManage && (
             <button
               type="button"
-              onClick={() => setEditor('new')}
+              onClick={() => { setCopyFrom(null); setEditor('new'); }}
               style={{ border: 'none', background: 'var(--ac)', color: '#fff', borderRadius: '8px', padding: '8px 13px', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'DM Sans, sans-serif', whiteSpace: 'nowrap' }}
             >
               + Nuevo plato
             </button>
           )}
-          <div style={{ display: 'flex', background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '8px', overflow: 'hidden' }}>
+          {seccion === 'carta' && <div style={{ display: 'flex', background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '8px', overflow: 'hidden' }}>
             {([
               { v: 'lista' as Vista, icon: '☰', label: 'Lista' },
               { v: 'mosaico' as Vista, icon: '⊞', label: 'Mosaico' },
@@ -316,9 +321,41 @@ export default function CostosPage() {
                 <span style={{ fontSize: '14px' }}>{icon}</span> {label}
               </button>
             ))}
-          </div>
+          </div>}
         </div>
       </div>
+
+      <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid var(--bo)', marginBottom: '16px' }}>
+        {([
+          { id: 'carta' as SeccionCostos, label: 'Carta' },
+          { id: 'consumo' as SeccionCostos, label: 'Consumo ventas' },
+        ]).map(tab => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setSeccion(tab.id)}
+            style={{
+              border: 'none',
+              borderBottom: `2px solid ${seccion === tab.id ? 'var(--ac)' : 'transparent'}`,
+              background: 'transparent',
+              color: seccion === tab.id ? 'var(--tx)' : 'var(--ts)',
+              padding: '9px 14px',
+              marginBottom: '-1px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              fontWeight: seccion === tab.id ? 800 : 600,
+              fontFamily: 'DM Sans, sans-serif',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {seccion === 'consumo' ? (
+        <ConsumoVentasPanel />
+      ) : (
+      <>
 
       {resumen.sin_datos > 0 && (
         <div style={{ background: '#FEF9C3', border: '1px solid #CA8A04', borderRadius: '10px', padding: '10px 16px', marginBottom: '16px', fontSize: '13px', color: '#854D0E', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -543,17 +580,23 @@ export default function CostosPage() {
           plato={modal}
           onClose={() => setModal(null)}
           onEdit={canManage ? () => { setEditor(modal); setModal(null); } : undefined}
+          onCopy={isAdmin ? () => { setCopyFrom(modal); setEditor('new'); setModal(null); } : undefined}
         />
       )}
 
       {editor && (
         <PlatoEditorModal
-          plato={editor === 'new' ? null : editor}
-          onClose={() => setEditor(null)}
-          onSaved={() => { setEditor(null); setModal(null); cargarCarta(); }}
-          canDelete={isAdmin}
-          onDeleted={() => { setEditor(null); setModal(null); cargarCarta(); }}
+          plato={editor === 'new' ? copyFrom : editor}
+          copyFrom={null}
+          defaultTipoCarta={cartaFiltro === 'NUEVA' ? 'NUEVA' : 'ANTIGUA'}
+          forceCreate={editor === 'new' && !!copyFrom}
+          onClose={() => { setEditor(null); setCopyFrom(null); }}
+          onSaved={() => { setEditor(null); setCopyFrom(null); setModal(null); cargarCarta(); }}
+          canDelete={isAdmin && !(editor === 'new' && !!copyFrom)}
+          onDeleted={() => { setEditor(null); setCopyFrom(null); setModal(null); cargarCarta(); }}
         />
+      )}
+      </>
       )}
 
       <style>{`

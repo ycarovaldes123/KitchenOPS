@@ -26,6 +26,7 @@ interface Ingrediente {
 interface PlatoEditable {
   id: string;
   cod_softland?: string | null;
+  codigo_toteat?: string | null;
   nombre: string;
   categoria: string;
   tipo_carta?: 'ANTIGUA' | 'NUEVA';
@@ -47,6 +48,9 @@ interface IngredienteForm {
 
 interface Props {
   plato: PlatoEditable | null;
+  copyFrom?: PlatoEditable | null;
+  defaultTipoCarta?: 'ANTIGUA' | 'NUEVA';
+  forceCreate?: boolean;
   onClose: () => void;
   onSaved: () => void;
   canDelete?: boolean;
@@ -148,23 +152,26 @@ async function readJsonResponse(res: Response) {
   }
 }
 
-export default function PlatoEditorModal({ plato, onClose, onSaved, canDelete = false, onDeleted }: Props) {
+export default function PlatoEditorModal({ plato, copyFrom = null, defaultTipoCarta = 'ANTIGUA', forceCreate = false, onClose, onSaved, canDelete = false, onDeleted }: Props) {
+  const source = plato ?? copyFrom;
+  const isCopy = forceCreate || (!plato && !!copyFrom);
   const [productos, setProductos] = useState<ProductoMaestro[]>([]);
   const [loadingProductos, setLoadingProductos] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
 
-  const [codSoftland, setCodSoftland] = useState(plato?.cod_softland ?? '');
-  const [nombre, setNombre] = useState(plato?.nombre ?? '');
+  const [codSoftland, setCodSoftland] = useState(source?.cod_softland ?? '');
+  const [codigoToteat, setCodigoToteat] = useState(source?.codigo_toteat ?? '');
+  const [nombre, setNombre] = useState(source?.nombre ?? '');
   const [categoria, setCategoria] = useState(plato?.categoria ?? 'CLÁSICOS');
-  const [tipoCarta, setTipoCarta] = useState<'ANTIGUA' | 'NUEVA'>(plato?.tipo_carta ?? 'ANTIGUA');
-  const [precioCarta, setPrecioCarta] = useState(plato?.precio_carta?.toString() ?? '');
-  const [fotoUrl, setFotoUrl] = useState(plato?.foto_url ?? '');
-  const [activo, setActivo] = useState(plato?.activo !== false);
+  const [tipoCarta, setTipoCarta] = useState<'ANTIGUA' | 'NUEVA'>(source?.tipo_carta ?? defaultTipoCarta);
+  const [precioCarta, setPrecioCarta] = useState(source?.precio_carta?.toString() ?? '');
+  const [fotoUrl, setFotoUrl] = useState(source?.foto_url ?? '');
+  const [activo, setActivo] = useState(source?.activo !== false);
   const [uploadingFoto, setUploadingFoto] = useState(false);
   const [ingredientes, setIngredientes] = useState<IngredienteForm[]>(
-    plato?.carta_ingredientes?.length ? plato.carta_ingredientes.map(rowFromIngrediente) : [emptyRow()],
+    source?.carta_ingredientes?.length ? source.carta_ingredientes.map(rowFromIngrediente) : [emptyRow()],
   );
 
   useEffect(() => {
@@ -277,8 +284,9 @@ export default function PlatoEditorModal({ plato, onClose, onSaved, canDelete = 
     setError('');
     try {
       const payload = {
-        id: plato?.id,
+        id: forceCreate ? undefined : plato?.id,
         cod_softland: codSoftland,
+        codigo_toteat: codigoToteat,
         nombre,
         categoria,
         tipo_carta: tipoCarta,
@@ -298,7 +306,7 @@ export default function PlatoEditorModal({ plato, onClose, onSaved, canDelete = 
       };
 
       const res = await fetch('/api/carta', {
-        method: plato ? 'PATCH' : 'POST',
+        method: plato && !forceCreate ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
@@ -313,7 +321,7 @@ export default function PlatoEditorModal({ plato, onClose, onSaved, canDelete = 
   }
 
   async function deletePlato() {
-    if (!plato || !canDelete) return;
+    if (!plato || forceCreate || !canDelete) return;
     const ok = window.confirm(`¿Eliminar "${plato.nombre}" de la carta? El plato dejará de aparecer en Costos, pero se conserva el registro histórico.`);
     if (!ok) return;
 
@@ -348,7 +356,7 @@ export default function PlatoEditorModal({ plato, onClose, onSaved, canDelete = 
         <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--bo)', display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ flex: 1 }}>
             <p style={{ margin: '0 0 3px', color: 'var(--ts)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700 }}>
-              {plato ? 'Editar plato' : 'Nuevo plato'}
+              {isCopy ? 'Copiar plato' : plato ? 'Editar plato' : 'Nuevo plato'}
             </p>
             <h2 style={{ margin: 0, fontFamily: 'Syne, sans-serif', fontSize: '18px', fontWeight: 800, color: 'var(--tx)' }}>
               {nombre.trim() || 'Ficha de plato'}
@@ -368,6 +376,10 @@ export default function PlatoEditorModal({ plato, onClose, onSaved, canDelete = 
             <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: 'var(--ts)', fontWeight: 700 }}>
               Código
               <input value={codSoftland} onChange={e => setCodSoftland(e.target.value)} className="field-input" style={{ minHeight: 'unset', padding: '8px 10px', fontSize: '13px' }} />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: 'var(--ts)', fontWeight: 700 }}>
+              Codigo TOTEAT
+              <input value={codigoToteat} onChange={e => setCodigoToteat(e.target.value)} className="field-input" style={{ minHeight: 'unset', padding: '8px 10px', fontSize: '13px' }} />
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: 'var(--ts)', fontWeight: 700 }}>
               Plato
@@ -518,7 +530,7 @@ export default function PlatoEditorModal({ plato, onClose, onSaved, canDelete = 
         </div>
 
         <div style={{ padding: '14px 22px', borderTop: '1px solid var(--bo)', display: 'flex', alignItems: 'center', gap: '16px', background: 'var(--bg)' }}>
-          {plato && canDelete && (
+          {plato && !forceCreate && canDelete && (
             <button type="button" onClick={deletePlato} disabled={saving || deleting} style={{ border: '1px solid var(--rd)', background: '#FEF2F2', color: 'var(--rd)', borderRadius: '7px', padding: '8px 14px', cursor: deleting ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 700 }}>
               {deleting ? 'Eliminando...' : 'Eliminar plato'}
             </button>

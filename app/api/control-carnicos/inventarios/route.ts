@@ -14,6 +14,11 @@ type DetalleInventarioPayload = {
   cantidad?: number | string;
 };
 
+type LoteInventarioPayload = {
+  bodega?: string;
+  detalle?: DetalleInventarioPayload[];
+};
+
 export async function GET(req: NextRequest) {
   const s = await requireRol(['admin', 'bodega']);
   if (!s.ok) return s.response;
@@ -46,34 +51,41 @@ export async function POST(req: NextRequest) {
   const responsable_id = typeof body.responsable_id === 'string' ? body.responsable_id : null;
   const responsable_nombre = String(body.responsable_nombre || '').trim();
   const turno = body.turno === 'AM' || body.turno === 'PM' ? body.turno : null;
-  const bodega = String(body.bodega || '').trim().toUpperCase();
   const tipo = String(body.tipo || '').trim().toUpperCase();
+  const lotesBody = Array.isArray(body.lotes) ? (body.lotes as LoteInventarioPayload[]) : null;
+  const bodega = String(body.bodega || '').trim().toUpperCase();
   const detalle = Array.isArray(body.detalle) ? (body.detalle as DetalleInventarioPayload[]) : [];
 
   if (!isIsoDate(fecha) || !responsable_nombre) {
     return NextResponse.json({ error: 'Faltan fecha o responsable' }, { status: 400 });
   }
-  if (!BODEGAS_CARNICOS.includes(bodega as never)) {
-    return NextResponse.json({ error: 'Bodega invalida' }, { status: 400 });
-  }
   if (tipo !== 'INICIAL' && tipo !== 'FINAL') {
     return NextResponse.json({ error: 'Tipo invalido (INICIAL o FINAL)' }, { status: 400 });
   }
 
-  const filas = detalle
-    .map(row => ({
+  const lotes = lotesBody?.length
+    ? lotesBody.map(lote => ({ bodega: String(lote.bodega || '').trim().toUpperCase(), detalle: Array.isArray(lote.detalle) ? lote.detalle : [] }))
+    : [{ bodega, detalle }];
+
+  for (const lote of lotes) {
+    if (!BODEGAS_CARNICOS.includes(lote.bodega as never)) {
+      return NextResponse.json({ error: 'Bodega invalida' }, { status: 400 });
+    }
+  }
+
+  const filas = lotes.flatMap(lote => lote.detalle.map(row => ({
       fecha,
       responsable_id,
       responsable_nombre,
       turno,
-      bodega,
+      bodega: lote.bodega,
       tipo,
       producto_id: row.producto_id,
       producto_nombre: String(row.producto_nombre || '').trim(),
       unidad_medida: String(row.unidad_medida || '').trim().toUpperCase(),
       cantidad: Number(row.cantidad),
       created_by: s.email,
-    }))
+    })))
     .filter(row => row.producto_id && row.producto_nombre && Number.isFinite(row.cantidad) && row.cantidad >= 0);
 
   if (!filas.length) {
@@ -83,7 +95,11 @@ export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { error } = await supabase.from('carnicos_inventarios').upsert(filas, { onConflict: 'fecha,bodega,tipo,producto_id' });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, guardados: filas.length });
+  const porBodega = filas.reduce<Record<string, number>>((acc, row) => {
+    acc[row.bodega] = (acc[row.bodega] ?? 0) + 1;
+    return acc;
+  }, {});
+  return NextResponse.json({ ok: true, guardados: filas.length, porBodega });
 }
 
 export async function PATCH(req: NextRequest) {

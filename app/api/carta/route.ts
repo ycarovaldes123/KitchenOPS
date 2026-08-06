@@ -18,7 +18,7 @@ type IngredientePayload = {
 };
 
 const CARTA_SELECT_WITH_TIPO: string = `
-      id, cod_softland, nombre, categoria, tipo_carta, precio_carta, activo, foto_url, updated_at,
+      *,
       carta_ingredientes (
         id, nombre, cantidad, unidad_medida, precio_unitario, costo_total,
         codigo_producto, pp_id
@@ -26,7 +26,7 @@ const CARTA_SELECT_WITH_TIPO: string = `
     `;
 
 const CARTA_SELECT_WITHOUT_TIPO: string = `
-      id, cod_softland, nombre, categoria, precio_carta, activo, foto_url, updated_at,
+      *,
       carta_ingredientes (
         id, nombre, cantidad, unidad_medida, precio_unitario, costo_total,
         codigo_producto, pp_id
@@ -40,6 +40,21 @@ function isMissingTipoCartaColumn(error: { message?: string } | null | undefined
     message.includes('column') ||
     message.includes('could not find')
   );
+}
+
+function isMissingCodigoToteatColumn(error: { message?: string } | null | undefined) {
+  const message = (error?.message ?? '').toLowerCase();
+  return message.includes('codigo_toteat') && (
+    message.includes('does not exist') ||
+    message.includes('column') ||
+    message.includes('could not find')
+  );
+}
+
+function sinCodigoToteat<T extends { codigo_toteat?: unknown }>(row: T) {
+  const next = { ...row };
+  delete next.codigo_toteat;
+  return next;
 }
 
 function normalizarUM(um: string | null | undefined) {
@@ -141,6 +156,7 @@ export async function GET() {
   type CartaRow = {
     id: string;
     cod_softland: string | null;
+    codigo_toteat?: string | null;
     nombre: string;
     categoria: string;
     tipo_carta?: string | null;
@@ -168,7 +184,7 @@ export async function POST(req: NextRequest) {
 
   const supabase = await createClient();
   const body = await req.json();
-  const { cod_softland, nombre, categoria, tipo_carta, precio_carta, foto_url, ingredientes } = body;
+  const { cod_softland, codigo_toteat, nombre, categoria, tipo_carta, precio_carta, foto_url, ingredientes } = body;
   const tipoCartaValor = TIPOS_CARTA.includes(tipo_carta) ? tipo_carta : 'ANTIGUA';
 
   if (!nombre?.trim() || !categoria?.trim())
@@ -179,6 +195,7 @@ export async function POST(req: NextRequest) {
 
   const baseRow = {
     cod_softland: cod_softland?.trim() || null,
+    codigo_toteat: codigo_toteat?.trim() || null,
     nombre: nombre.trim().toUpperCase(),
     categoria: categoria.trim().toUpperCase(),
     precio_carta: precio_carta == null || precio_carta === '' ? null : Number(precio_carta),
@@ -206,6 +223,16 @@ export async function POST(req: NextRequest) {
       .select('id')
       .single());
   }
+  if (platoErr && isMissingCodigoToteatColumn(platoErr)) {
+    const baseSinCodigo = sinCodigoToteat(baseRow);
+    const rowConTipoSinCodigo = { ...baseSinCodigo, tipo_carta: tipoCartaValor };
+    cartaTipoCartaColumnExists = cartaTipoCartaColumnExists === false ? false : cartaTipoCartaColumnExists;
+    ({ data: plato, error: platoErr } = await supabase
+      .from('carta')
+      .insert(cartaTipoCartaColumnExists === false ? baseSinCodigo : rowConTipoSinCodigo)
+      .select('id')
+      .single());
+  }
 
   if (platoErr) return NextResponse.json({ error: platoErr.message }, { status: 500 });
   if (!plato) return NextResponse.json({ error: 'No se pudo crear el plato' }, { status: 500 });
@@ -226,7 +253,7 @@ export async function POST(req: NextRequest) {
     accion: 'crear_plato_carta',
     tabla: 'carta',
     registro_id: plato.id,
-    datos_nuevos: { nombre, categoria, tipo_carta: tipoCartaValor, ingredientes: ingredientes?.length ?? 0 },
+    datos_nuevos: { nombre, categoria, tipo_carta: tipoCartaValor, codigo_toteat: codigo_toteat?.trim() || null, ingredientes: ingredientes?.length ?? 0 },
   });
 
   return NextResponse.json({ id: plato.id }, { status: 201 });
@@ -238,7 +265,7 @@ export async function PATCH(req: NextRequest) {
 
   const supabase = await createClient();
   const body = await req.json();
-  const { id, cod_softland, nombre, categoria, tipo_carta, precio_carta, foto_url, activo, ingredientes } = body;
+  const { id, cod_softland, codigo_toteat, nombre, categoria, tipo_carta, precio_carta, foto_url, activo, ingredientes } = body;
   const tipoCartaValor = TIPOS_CARTA.includes(tipo_carta) ? tipo_carta : 'ANTIGUA';
 
   if (!id || !nombre?.trim() || !categoria?.trim())
@@ -253,6 +280,7 @@ export async function PATCH(req: NextRequest) {
 
   const baseRow = {
       cod_softland: cod_softland?.trim() || null,
+      codigo_toteat: codigo_toteat?.trim() || null,
       nombre: nombre.trim().toUpperCase(),
       categoria: categoria.trim().toUpperCase(),
       precio_carta: precio_carta == null || precio_carta === '' ? null : Number(precio_carta),
@@ -278,6 +306,14 @@ export async function PATCH(req: NextRequest) {
       .update(rowSinTipo)
       .eq('id', id));
   }
+  if (platoErr && isMissingCodigoToteatColumn(platoErr)) {
+    const baseSinCodigo = sinCodigoToteat(baseRow);
+    const rowConTipoSinCodigo = { ...baseSinCodigo, tipo_carta: tipoCartaValor };
+    ({ error: platoErr } = await supabase
+      .from('carta')
+      .update(cartaTipoCartaColumnExists === false ? baseSinCodigo : rowConTipoSinCodigo)
+      .eq('id', id));
+  }
 
   if (platoErr) return NextResponse.json({ error: platoErr.message }, { status: 500 });
 
@@ -299,7 +335,7 @@ export async function PATCH(req: NextRequest) {
     accion: 'editar_plato_carta',
     tabla: 'carta',
     registro_id: id,
-    datos_nuevos: { nombre, categoria, tipo_carta: TIPOS_CARTA.includes(tipo_carta) ? tipo_carta : 'ANTIGUA', activo, ingredientes: ingredientes?.length ?? 0 },
+    datos_nuevos: { nombre, categoria, tipo_carta: TIPOS_CARTA.includes(tipo_carta) ? tipo_carta : 'ANTIGUA', codigo_toteat: codigo_toteat?.trim() || null, activo, ingredientes: ingredientes?.length ?? 0 },
   });
 
   return NextResponse.json({ ok: true });

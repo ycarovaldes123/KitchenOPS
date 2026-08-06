@@ -238,6 +238,7 @@ export interface DetalleMermaPlatoInsumo {
 
 export interface Carta {
   id:           string;
+  codigo_toteat:string | null;    // codigo de plato en TOTEAT para ventas
   cod_softland: string | null;    // TEXT — puede tener cero inicial
   nombre:       string;
   categoria:    CategoriaCarta;

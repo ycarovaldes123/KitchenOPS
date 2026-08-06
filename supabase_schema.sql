@@ -275,6 +275,7 @@ CREATE TABLE detalle_mermas (
 -- margen = (precio_carta - costo_bruto) / precio_carta
 CREATE TABLE carta (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  codigo_toteat TEXT,          -- Codigo de plato en TOTEAT para cruzar ventas
   cod_softland TEXT,           -- TEXT — puede tener cero inicial
   nombre       TEXT NOT NULL,
   categoria    TEXT NOT NULL,  -- PICADAS | CLÁSICOS | SANDWICH & BURGERS | ENSALADAS | POSTRES | CATERING
@@ -317,6 +318,7 @@ CREATE INDEX idx_mermas_fecha             ON mermas(fecha);
 CREATE INDEX idx_detalle_mer_merma        ON detalle_mermas(merma_id);
 CREATE INDEX idx_productos_activo         ON productos(activo);
 CREATE INDEX idx_pp_activo                ON pp(activo);
+CREATE INDEX idx_carta_codigo_toteat      ON carta(codigo_toteat);
 
 
 -- ============================================================

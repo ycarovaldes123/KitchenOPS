@@ -23,6 +23,7 @@ interface ToteatResponse {
 
 interface CartaItem {
   id: string;
+  codigo_toteat?: string | null;
   nombre: string;
   categoria: string;
   precio_carta: number | null;
@@ -71,6 +72,7 @@ export default function VentasPage() {
   const recipeMap = useMemo(() => {
     const map = new Map<string, CartaItem>();
     for (const item of carta) {
+      if (item.codigo_toteat) map.set(normalizeKey(item.codigo_toteat), item);
       map.set(normalizeKey(item.nombre), item);
     }
     return map;
@@ -103,7 +105,7 @@ export default function VentasPage() {
 
       const key = item.product_code || item.product_name;
       const canonicalName = getToteatCanonicalName(item.product_code, item.product_name);
-      const receta = recipeMap.get(normalizeKey(canonicalName)) ?? recipeMap.get(normalizeKey(item.product_name)) ?? null;
+      const receta = recipeMap.get(normalizeKey(item.product_code ?? '')) ?? recipeMap.get(normalizeKey(canonicalName)) ?? recipeMap.get(normalizeKey(item.product_name)) ?? null;
       const prev = map.get(key) ?? {
         key,
         nombre: canonicalName,

@@ -13,12 +13,12 @@ function normalizeText(text: unknown) {
 }
 
 const CARTA_SELECT_WITH_TIPO: string = `
-        id,nombre,categoria,tipo_carta,precio_carta,activo,
+        *,
         carta_ingredientes(id,codigo_producto,pp_id,nombre,cantidad,unidad_medida,precio_unitario,costo_total)
       `;
 
 const CARTA_SELECT_WITHOUT_TIPO: string = `
-        id,nombre,categoria,precio_carta,activo,
+        *,
         carta_ingredientes(id,codigo_producto,pp_id,nombre,cantidad,unidad_medida,precio_unitario,costo_total)
       `;
 
