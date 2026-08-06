@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
       cantidad: Number(row.cantidad),
       unidad_medida: String(row.unidad_medida || '').trim().toUpperCase() || null,
     }))
-    .filter(row => row.ubicacion && row.codigo_producto && Number.isFinite(row.cantidad) && row.cantidad > 0);
+    .filter(row => row.ubicacion && row.codigo_producto && Number.isFinite(row.cantidad) && row.cantidad >= 0);
 
   if (!detalleValidado.length) {
     return NextResponse.json({ error: 'Agrega al menos un producto con cantidad válida' }, { status: 400 });
@@ -152,7 +152,7 @@ export async function PATCH(req: NextRequest) {
         cantidad: Number(row.cantidad),
         unidad_medida: String(row.unidad_medida || '').trim().toUpperCase() || null,
       }))
-      .filter(row => row.ubicacion && row.codigo_producto && Number.isFinite(row.cantidad) && row.cantidad > 0);
+      .filter(row => row.ubicacion && row.codigo_producto && Number.isFinite(row.cantidad) && row.cantidad >= 0);
 
     if (rows.length) {
       const { error } = await supabase.from('detalle_inventario').insert(rows);

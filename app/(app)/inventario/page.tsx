@@ -19,6 +19,15 @@ interface InventarioRow {
   cantidad: string;
 }
 
+interface ImportReviewRow {
+  codigo: string;
+  producto: string;
+  unidad: string;
+  cantidad: number | null;
+  estado: 'OK' | 'ERROR';
+  mensaje: string;
+}
+
 const UM_COLOR: Record<string, string> = {
   KG: '#0D9373',
   GR: '#6366F1',
@@ -281,6 +290,10 @@ export default function InventarioPage() {
   const [observacion, setObservacion] = useState('');
   const [ubicacionActiva, setUbicacionActiva] = useState<UbicacionInventario>(UBICACIONES_INVENTARIO[0]);
   const [rows, setRows] = useState<InventarioRow[]>([]);
+  const [importReview, setImportReview] = useState<ImportReviewRow[] | null>(null);
+  const [importValid, setImportValid] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
   const [cantidadLineas, setCantidadLineas] = useState('10');
   const [saving, setSaving] = useState(false);
   const [ok, setOk] = useState('');
@@ -301,7 +314,9 @@ export default function InventarioPage() {
   }, []);
 
   const rowsActivas = rows.filter(row => row.ubicacion === ubicacionActiva);
-  const totalValidas = rows.filter(row => row.codigo_producto && (Number(row.cantidad) || 0) > 0).length;
+  const totalValidas = importReview && importValid
+    ? rows.filter(row => row.codigo_producto && row.cantidad !== '' && Number.isFinite(Number(row.cantidad)) && Number(row.cantidad) >= 0).length
+    : rows.filter(row => row.codigo_producto && (Number(row.cantidad) || 0) > 0).length;
   const ubicacionesConDatos = new Set(rows.filter(row => row.codigo_producto && (Number(row.cantidad) || 0) > 0).map(row => row.ubicacion)).size;
 
   const conteoPorUbicacion = useMemo(() => {
@@ -316,7 +331,7 @@ export default function InventarioPage() {
   }, [rows]);
 
   const respActual = maestros?.responsables.find(responsable => responsable.id === responsableId);
-  const canSave = Boolean(puedeGuardar && responsableId && totalValidas > 0);
+  const canSave = Boolean(puedeGuardar && responsableId && totalValidas > 0 && (!importReview || importValid));
 
   function addRows(cantidad: number, ubicacion = ubicacionActiva) {
     const safeCantidad = Math.min(Math.max(Math.floor(cantidad) || 1, 1), 100);
@@ -349,6 +364,50 @@ export default function InventarioPage() {
       unidad_medida: '',
       cantidad: '',
     });
+  }
+
+  function limpiarImportacion() {
+    setImportReview(null);
+    setImportValid(false);
+    setRows([]);
+  }
+
+  async function subirInventario(file: File | null) {
+    if (!file) return;
+    setErr('');
+    setOk('');
+    setImporting(true);
+    setImportReview(null);
+    setImportValid(false);
+    setRows([]);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/inventario/importar', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Error importando inventario');
+      const review = Array.isArray(data.rows) ? data.rows as ImportReviewRow[] : [];
+      setImportReview(review);
+      setImportValid(Boolean(data.ok));
+      if (data.ok) {
+        setRows(review.map(row => ({
+          localId: newId(),
+          ubicacion: ubicacionActiva,
+          codigo_producto: row.codigo,
+          nombre_producto: row.producto,
+          unidad_medida: row.unidad,
+          cantidad: row.cantidad == null ? '' : String(row.cantidad),
+        })));
+        setOk(`Archivo validado: ${review.length} producto(s) listos para enviar en ${ubicacionActiva}.`);
+      } else {
+        setErr(`Archivo con errores: ${data.errores ?? review.filter(row => row.estado !== 'OK').length} linea(s) requieren revision.`);
+      }
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : 'Error importando inventario');
+    } finally {
+      setImporting(false);
+      if (importFileRef.current) importFileRef.current.value = '';
+    }
   }
 
   function removeRow(localId: string) {
@@ -388,7 +447,7 @@ export default function InventarioPage() {
         cantidad: Number(row.cantidad),
         unidad_medida: row.unidad_medida || null,
       }))
-      .filter(row => row.codigo_producto && Number.isFinite(row.cantidad) && row.cantidad > 0);
+      .filter(row => row.codigo_producto && Number.isFinite(row.cantidad) && row.cantidad >= 0);
 
     if (!detalle.length) {
       setErr('Agrega al menos un producto con cantidad valida.');
@@ -421,6 +480,8 @@ export default function InventarioPage() {
       setObservacion('');
       setUbicacionActiva(UBICACIONES_INVENTARIO[0]);
       setRows([]);
+      setImportReview(null);
+      setImportValid(false);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
       setErr(error instanceof Error ? error.message : 'Error guardando inventario');
@@ -524,7 +585,13 @@ export default function InventarioPage() {
               <label style={label}>Camara</label>
               <select
                 value={ubicacionActiva}
-                onChange={event => setUbicacionActiva(event.target.value as UbicacionInventario)}
+                onChange={event => {
+                  const nuevaUbicacion = event.target.value as UbicacionInventario;
+                  setUbicacionActiva(nuevaUbicacion);
+                  if (importReview && importValid) {
+                    setRows(current => current.map(row => ({ ...row, ubicacion: nuevaUbicacion })));
+                  }
+                }}
                 style={{ ...field, color: 'var(--tx)', fontWeight: 700 }}
                 onFocus={event => (event.currentTarget.style.borderColor = 'var(--ac)')}
                 onBlur={event => (event.currentTarget.style.borderColor = 'var(--bo)')}
@@ -550,6 +617,27 @@ export default function InventarioPage() {
                 placeholder="Opcional"
               />
             </div>
+
+            <div>
+              <input
+                ref={importFileRef}
+                type="file"
+                accept=".xlsx,.xls"
+                style={{ display: 'none' }}
+                onChange={e => void subirInventario(e.target.files?.[0] ?? null)}
+              />
+              <button
+                type="button"
+                onClick={() => importFileRef.current?.click()}
+                disabled={importing}
+                style={{ width: '100%', border: '1.5px solid var(--ac)', background: 'var(--sf)', color: 'var(--ac)', borderRadius: '8px', padding: '9px 12px', cursor: importing ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 800, fontFamily: 'DM Sans, sans-serif' }}
+              >
+                {importing ? 'Validando archivo...' : 'Subir Inventario'}
+              </button>
+              <p style={{ margin: '6px 0 0', fontSize: '11px', color: 'var(--ts)', lineHeight: 1.35 }}>
+                Usa el Excel generado en Maestro &gt; Productos &gt; Conteo. Se cargara en {ubicacionActiva}.
+              </p>
+            </div>
           </section>
 
           <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '14px', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: '420px' }}>
@@ -566,7 +654,56 @@ export default function InventarioPage() {
             </div>
 
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              {rowsActivas.length === 0 ? (
+              {importReview ? (
+                <>
+                  <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--bo)', background: importValid ? '#ECFDF5' : '#FEF2F2', color: importValid ? '#065F46' : '#991B1B', display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 800 }}>
+                      {importValid ? 'Archivo validado correctamente' : 'Archivo con errores de validacion'}
+                    </span>
+                    <button type="button" onClick={limpiarImportacion} style={{ border: '1px solid var(--bo)', background: 'var(--sf)', color: 'var(--ts)', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>
+                      Descartar archivo
+                    </button>
+                  </div>
+                  <div style={{ overflowX: 'auto', flex: 1 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '760px' }}>
+                      <thead>
+                        <tr style={{ background: 'var(--bg)' }}>
+                          {['Codigo', 'Producto', 'Unidad', 'Cantidad ingresada', 'Estado de validacion'].map(heading => (
+                            <th key={heading} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: '1px solid var(--bo)', whiteSpace: 'nowrap' }}>
+                              {heading}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importReview.map((row, index) => (
+                          <tr key={`${row.codigo}-${index}`} style={{ borderBottom: '1px solid var(--bo)' }}>
+                            <td style={{ padding: '9px 12px' }}>
+                              <code style={{ fontSize: '12px', background: 'var(--bg)', padding: '2px 6px', borderRadius: '4px' }}>{row.codigo}</code>
+                            </td>
+                            <td style={{ padding: '9px 12px', fontWeight: 600 }}>{row.producto || '-'}</td>
+                            <td style={{ padding: '9px 12px', color: 'var(--ts)' }}>{row.unidad || '-'}</td>
+                            <td style={{ padding: '9px 12px', fontVariantNumeric: 'tabular-nums' }}>{row.cantidad ?? '-'}</td>
+                            <td style={{ padding: '9px 12px' }}>
+                              <span style={{
+                                display: 'inline-block',
+                                padding: '2px 8px',
+                                borderRadius: '20px',
+                                fontSize: '10px',
+                                fontWeight: 800,
+                                background: row.estado === 'OK' ? '#D1FAE5' : '#FEE2E2',
+                                color: row.estado === 'OK' ? '#065F46' : '#991B1B',
+                              }}>
+                                {row.mensaje}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : rowsActivas.length === 0 ? (
                 <div style={{ padding: '58px 32px', textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <p style={{ fontWeight: 700, fontSize: '15px', color: 'var(--tx)', margin: '0 0 6px', fontFamily: 'Syne, sans-serif' }}>
                     Sin productos registrados
@@ -736,6 +873,8 @@ export default function InventarioPage() {
             type="button"
             onClick={() => {
               setRows([]);
+              setImportReview(null);
+              setImportValid(false);
               setUbicacionActiva(UBICACIONES_INVENTARIO[0]);
             }}
             style={{ border: '1px solid var(--bo)', background: 'var(--sf)', color: 'var(--ts)', borderRadius: '10px', padding: '12px 18px', cursor: 'pointer', fontSize: '13px', fontWeight: 700 }}

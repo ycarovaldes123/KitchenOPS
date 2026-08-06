@@ -102,6 +102,7 @@ export default function MaestrosPage() {
   const [uploadLoading, setUploadLoading] = useState(false);
   const [uploadResult, setUploadResult] = useState<ActualizarResult | null>(null);
   const [uploadError, setUploadError] = useState('');
+  const [conteoLoading, setConteoLoading] = useState(false);
 
   // Recetas PP
   const recetasFileRef = useRef<HTMLInputElement>(null);
@@ -318,6 +319,31 @@ export default function MaestrosPage() {
     load();
   }
 
+  async function descargarConteoProductos() {
+    setConteoLoading(true);
+    setUploadError('');
+    try {
+      const res = await fetch('/api/maestros/productos/conteo');
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? 'Error generando Excel de conteo');
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = `Conteo_Productos_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : 'Error generando Excel de conteo');
+    } finally {
+      setConteoLoading(false);
+    }
+  }
+
   // ── Helpers ───────────────────────────────────────────────────
 
   const filteredPP = pps.filter(pp =>
@@ -406,6 +432,13 @@ export default function MaestrosPage() {
                 style={{ ...btnSecondary, display: 'flex', alignItems: 'center', gap: '6px' }}
               >
                 {uploadLoading ? 'Actualizando…' : '↑ Actualizar costo unitario'}
+              </button>
+              <button
+                onClick={descargarConteoProductos}
+                disabled={conteoLoading}
+                style={{ ...btnSecondary, borderColor: '#0D9373', color: '#0D9373' }}
+              >
+                {conteoLoading ? 'Generando...' : 'Conteo'}
               </button>
               <button onClick={() => { setProdForm(emptyProd); setProdError(''); setProdModal(true); }} style={btnPrimary}>+ Nuevo producto</button>
             </>
