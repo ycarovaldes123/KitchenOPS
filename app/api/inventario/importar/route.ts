@@ -24,17 +24,20 @@ function cellText(cell: ExcelJS.Cell) {
 function cellNumberStatus(cell: ExcelJS.Cell) {
   const raw = cell.value;
   const text = cellText(cell).trim();
+  // Celda vacia (null/undefined/"" /solo espacios): el producto no fue contado en
+  // esta camara/bodega. No es un error de validacion, la fila debe ignorarse.
   if (raw === null || raw === undefined || text === '') {
-    return { cantidad: null as number | null, error: 'Cantidad vacia' };
+    return { cantidad: null as number | null, vacia: true, error: null as string | null };
   }
   const parsed = typeof raw === 'number' ? raw : Number(text.replace(',', '.'));
   if (!Number.isFinite(parsed)) {
-    return { cantidad: null as number | null, error: 'Cantidad no numerica' };
+    return { cantidad: null as number | null, vacia: false, error: 'Cantidad no numerica' };
   }
   if (parsed < 0) {
-    return { cantidad: null as number | null, error: 'Cantidad negativa' };
+    return { cantidad: null as number | null, vacia: false, error: 'Cantidad negativa' };
   }
-  return { cantidad: parsed, error: null as string | null };
+  // parsed puede ser 0: es un conteo valido (0 !== vacio), no se descarta.
+  return { cantidad: parsed, vacia: false, error: null as string | null };
 }
 
 export async function POST(req: NextRequest) {
@@ -105,8 +108,12 @@ export async function POST(req: NextRequest) {
     const codigo = cellText(row.getCell(colCodigo)).trim();
     if (!codigo) continue;
 
-    const producto = productosPorCodigo.get(codigo);
     const cantidadStatus = cellNumberStatus(row.getCell(colConteo));
+    // Producto no contado en esta camara/bodega: se excluye por completo, no entra
+    // a la lista ni a las validaciones (codigo existente, duplicados, etc.).
+    if (cantidadStatus.vacia) continue;
+
+    const producto = productosPorCodigo.get(codigo);
     let mensaje = '';
 
     if (codigosVistos.has(codigo)) {
@@ -135,7 +142,7 @@ export async function POST(req: NextRequest) {
   ));
 
   if (!rowsFinal.length) {
-    return NextResponse.json({ error: 'El archivo no contiene productos con conteo.' }, { status: 400 });
+    return NextResponse.json({ error: 'No se encontraron productos con cantidades ingresadas para la camara seleccionada.' }, { status: 400 });
   }
 
   return NextResponse.json({
