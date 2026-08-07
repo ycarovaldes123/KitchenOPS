@@ -15,6 +15,13 @@ type DetallePayload = {
   unidad_medida?: string | null;
 };
 
+function cantidadPayload(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
+  const cantidad = Number(value);
+  return Number.isFinite(cantidad) ? cantidad : null;
+}
+
 export async function GET(req: NextRequest) {
   const s = await getSessionRol();
   if (!s.ok) return s.response;
@@ -53,14 +60,17 @@ export async function POST(req: NextRequest) {
   }
 
   const detalleValidado = detalle
-    .map(row => ({
-      ubicacion: String(row.ubicacion || '').trim().toUpperCase(),
-      codigo_producto: String(row.codigo_producto || '').trim() || null,
-      nombre_producto: String(row.nombre_producto || '').trim() || null,
-      cantidad: Number(row.cantidad),
-      unidad_medida: String(row.unidad_medida || '').trim().toUpperCase() || null,
-    }))
-    .filter(row => row.ubicacion && row.codigo_producto && Number.isFinite(row.cantidad) && row.cantidad >= 0);
+    .map(row => {
+      const cantidad = cantidadPayload(row.cantidad);
+      return {
+        ubicacion: String(row.ubicacion || '').trim().toUpperCase(),
+        codigo_producto: String(row.codigo_producto || '').trim() || null,
+        nombre_producto: String(row.nombre_producto || '').trim() || null,
+        cantidad,
+        unidad_medida: String(row.unidad_medida || '').trim().toUpperCase() || null,
+      };
+    })
+    .filter(row => row.ubicacion && row.codigo_producto && row.cantidad !== null && row.cantidad >= 0);
 
   if (!detalleValidado.length) {
     return NextResponse.json({ error: 'Agrega al menos un producto con cantidad válida' }, { status: 400 });
@@ -123,8 +133,8 @@ export async function PATCH(req: NextRequest) {
   }
 
   for (const row of detalle.filter(item => item.id)) {
-    const cantidad = Number(row.cantidad);
-    if (!Number.isFinite(cantidad) || cantidad < 0) {
+    const cantidad = cantidadPayload(row.cantidad);
+    if (cantidad === null || cantidad < 0) {
       return NextResponse.json({ error: 'Cantidad inválida' }, { status: 400 });
     }
     const { error } = await supabase
@@ -144,15 +154,18 @@ export async function PATCH(req: NextRequest) {
   const nuevos = detalle.filter(item => !item.id);
   if (nuevos.length) {
     const rows = nuevos
-      .map(row => ({
-        inventario_id,
-        ubicacion: String(row.ubicacion || '').trim().toUpperCase(),
-        codigo_producto: String(row.codigo_producto || '').trim() || null,
-        nombre_producto: String(row.nombre_producto || '').trim() || null,
-        cantidad: Number(row.cantidad),
-        unidad_medida: String(row.unidad_medida || '').trim().toUpperCase() || null,
-      }))
-      .filter(row => row.ubicacion && row.codigo_producto && Number.isFinite(row.cantidad) && row.cantidad >= 0);
+      .map(row => {
+        const cantidad = cantidadPayload(row.cantidad);
+        return {
+          inventario_id,
+          ubicacion: String(row.ubicacion || '').trim().toUpperCase(),
+          codigo_producto: String(row.codigo_producto || '').trim() || null,
+          nombre_producto: String(row.nombre_producto || '').trim() || null,
+          cantidad,
+          unidad_medida: String(row.unidad_medida || '').trim().toUpperCase() || null,
+        };
+      })
+      .filter(row => row.ubicacion && row.codigo_producto && row.cantidad !== null && row.cantidad >= 0);
 
     if (rows.length) {
       const { error } = await supabase.from('detalle_inventario').insert(rows);

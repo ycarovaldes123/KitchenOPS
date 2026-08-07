@@ -63,6 +63,12 @@ function normalizeText(text: unknown) {
     .replace(/[\u0300-\u036f]/g, '');
 }
 
+function parseCantidadIngresada(value: string): number | null {
+  if (value.trim() === '') return null;
+  const cantidad = Number(value);
+  return Number.isFinite(cantidad) && cantidad >= 0 ? cantidad : null;
+}
+
 function ProductoSelector({ productos, selectedCodigo, selectedNombre, selectedUM, onSelect, onClear }: {
   productos: Producto[];
   selectedCodigo: string;
@@ -314,16 +320,14 @@ export default function InventarioPage() {
   }, []);
 
   const rowsActivas = rows.filter(row => row.ubicacion === ubicacionActiva);
-  const totalValidas = importReview && importValid
-    ? rows.filter(row => row.codigo_producto && row.cantidad !== '' && Number.isFinite(Number(row.cantidad)) && Number(row.cantidad) >= 0).length
-    : rows.filter(row => row.codigo_producto && (Number(row.cantidad) || 0) > 0).length;
-  const ubicacionesConDatos = new Set(rows.filter(row => row.codigo_producto && (Number(row.cantidad) || 0) > 0).map(row => row.ubicacion)).size;
+  const totalValidas = rows.filter(row => row.codigo_producto && parseCantidadIngresada(row.cantidad) !== null).length;
+  const ubicacionesConDatos = new Set(rows.filter(row => row.codigo_producto && parseCantidadIngresada(row.cantidad) !== null).map(row => row.ubicacion)).size;
 
   const conteoPorUbicacion = useMemo(() => {
     const map = new Map<UbicacionInventario, number>();
     for (const ubicacion of UBICACIONES_INVENTARIO) map.set(ubicacion, 0);
     for (const row of rows) {
-      if (row.codigo_producto && (Number(row.cantidad) || 0) > 0) {
+      if (row.codigo_producto && parseCantidadIngresada(row.cantidad) !== null) {
         map.set(row.ubicacion, (map.get(row.ubicacion) ?? 0) + 1);
       }
     }
@@ -421,7 +425,7 @@ export default function InventarioPage() {
   }
 
   function rowStatus(row: InventarioRow) {
-    if (!row.codigo_producto || !row.cantidad || Number(row.cantidad) <= 0) return 'Incompleto';
+    if (!row.codigo_producto || parseCantidadIngresada(row.cantidad) === null) return 'Incompleto';
     return 'OK';
   }
 
@@ -440,14 +444,17 @@ export default function InventarioPage() {
     }
 
     const detalle = rows
-      .map(row => ({
-        ubicacion: row.ubicacion,
-        codigo_producto: row.codigo_producto,
-        nombre_producto: row.nombre_producto,
-        cantidad: Number(row.cantidad),
-        unidad_medida: row.unidad_medida || null,
-      }))
-      .filter(row => row.codigo_producto && Number.isFinite(row.cantidad) && row.cantidad >= 0);
+      .map(row => {
+        const cantidad = parseCantidadIngresada(row.cantidad);
+        return {
+          ubicacion: row.ubicacion,
+          codigo_producto: row.codigo_producto,
+          nombre_producto: row.nombre_producto,
+          cantidad,
+          unidad_medida: row.unidad_medida || null,
+        };
+      })
+      .filter(row => row.codigo_producto && row.cantidad !== null);
 
     if (!detalle.length) {
       setErr('Agrega al menos un producto con cantidad valida.');

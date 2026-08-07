@@ -3,6 +3,11 @@ import ExcelJS from 'exceljs';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol } from '@/lib/auth-server';
 
+const COL_CODIGO = 1;
+const COL_NOMBRE = 2;
+const COL_UNIDAD = 3;
+const COL_CONTEO = 4; // D
+
 function norm(value: unknown) {
   return String(value ?? '')
     .normalize('NFD')
@@ -24,8 +29,6 @@ function cellText(cell: ExcelJS.Cell) {
 function cellNumberStatus(cell: ExcelJS.Cell) {
   const raw = cell.value;
   const text = cellText(cell).trim();
-  // Celda vacia (null/undefined/"" /solo espacios): el producto no fue contado en
-  // esta camara/bodega. No es un error de validacion, la fila debe ignorarse.
   if (raw === null || raw === undefined || text === '') {
     return { cantidad: null as number | null, vacia: true, error: null as string | null };
   }
@@ -80,6 +83,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Formato invalido. Debe incluir las columnas Código, Nombre, Unidad y Conteo.' }, { status: 400 });
   }
 
+  if (headers.get('CONTEO') !== COL_CONTEO) {
+    return NextResponse.json({ error: 'Formato invalido. La columna D debe ser Conteo.' }, { status: 400 });
+  }
+
   const supabase = await createClient();
   const { data: productos, error } = await supabase
     .from('productos')
@@ -100,25 +107,19 @@ export async function POST(req: NextRequest) {
     mensaje: string;
   }[] = [];
 
-  const colCodigo = headers.get('CODIGO')!;
-  const colConteo = headers.get('CONTEO')!;
-
   for (let rowNumber = headerRowNumber + 1; rowNumber <= ws.rowCount; rowNumber++) {
     const row = ws.getRow(rowNumber);
-    const codigo = cellText(row.getCell(colCodigo)).trim();
-    if (!codigo) continue;
-
-    const cantidadStatus = cellNumberStatus(row.getCell(colConteo));
-    // Producto no contado en esta camara/bodega: se excluye por completo, no entra
-    // a la lista ni a las validaciones (codigo existente, duplicados, etc.).
+    const cantidadStatus = cellNumberStatus(row.getCell(COL_CONTEO));
     if (cantidadStatus.vacia) continue;
 
+    const codigo = cellText(row.getCell(COL_CODIGO)).trim();
     const producto = productosPorCodigo.get(codigo);
     let mensaje = '';
 
+    if (!codigo) mensaje = 'Codigo vacio';
     if (codigosVistos.has(codigo)) {
       codigosDuplicados.add(codigo);
-      mensaje = 'Codigo duplicado';
+      mensaje = mensaje || 'Codigo duplicado';
     } else {
       codigosVistos.add(codigo);
     }
@@ -127,8 +128,8 @@ export async function POST(req: NextRequest) {
 
     rows.push({
       codigo,
-      producto: producto?.nombre ?? cellText(row.getCell(headers.get('NOMBRE')!)).trim(),
-      unidad: producto?.unidad_medida ?? cellText(row.getCell(headers.get('UNIDAD')!)).trim(),
+      producto: producto?.nombre ?? cellText(row.getCell(COL_NOMBRE)).trim(),
+      unidad: producto?.unidad_medida ?? cellText(row.getCell(COL_UNIDAD)).trim(),
       cantidad: cantidadStatus.cantidad,
       estado: mensaje ? 'ERROR' : 'OK',
       mensaje: mensaje || 'OK',
