@@ -19,6 +19,27 @@ type LoteInventarioPayload = {
   detalle?: DetalleInventarioPayload[];
 };
 
+type FilaInventarioUpsert = {
+  fecha: string;
+  responsable_id: string | null;
+  responsable_nombre: string;
+  turno: 'AM' | 'PM' | null;
+  bodega: string;
+  tipo: string;
+  producto_id: string;
+  producto_nombre: string;
+  unidad_medida: string;
+  cantidad: number;
+  created_by: string | null;
+};
+
+function cantidadFromPayload(value: unknown): number | null {
+  if (value == null) return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
+  const cantidad = Number(value);
+  return Number.isFinite(cantidad) ? cantidad : null;
+}
+
 export async function GET(req: NextRequest) {
   const s = await requireRol(['admin', 'bodega']);
   if (!s.ok) return s.response;
@@ -71,28 +92,80 @@ export async function POST(req: NextRequest) {
     if (!BODEGAS_CARNICOS.includes(lote.bodega as never)) {
       return NextResponse.json({ error: 'Bodega invalida' }, { status: 400 });
     }
+    if (lote.bodega === 'BODEGAS CONSOLIDADAS') {
+      return NextResponse.json({ error: 'Bodegas consolidadas es solo un modo de importacion. Guarda los conteos en Camara Congelados, Camara Mantencion o Cocina.' }, { status: 400 });
+    }
   }
 
-  const filas = lotes.flatMap(lote => lote.detalle.map(row => ({
-      fecha,
-      responsable_id,
-      responsable_nombre,
-      turno,
-      bodega: lote.bodega,
-      tipo,
-      producto_id: row.producto_id,
-      producto_nombre: String(row.producto_nombre || '').trim(),
-      unidad_medida: String(row.unidad_medida || '').trim().toUpperCase(),
-      cantidad: Number(row.cantidad),
-      created_by: s.email,
-    })))
-    .filter(row => row.producto_id && row.producto_nombre && Number.isFinite(row.cantidad) && row.cantidad >= 0);
+  const filas: FilaInventarioUpsert[] = [];
+  const erroresPayload: string[] = [];
+  for (const lote of lotes) {
+    for (const row of lote.detalle) {
+      const cantidad = cantidadFromPayload(row.cantidad);
+      const producto_id = typeof row.producto_id === 'string' ? row.producto_id.trim() : '';
+      const producto_nombre = String(row.producto_nombre || '').trim();
+      const unidad_medida = String(row.unidad_medida || '').trim().toUpperCase();
+      if (cantidad == null && !producto_id && !producto_nombre) continue;
+      if (!producto_id || !producto_nombre) {
+        erroresPayload.push(`${lote.bodega}: producto invalido o no encontrado (${producto_nombre || producto_id || 'sin nombre'}).`);
+        continue;
+      }
+      if (cantidad == null || cantidad < 0) {
+        erroresPayload.push(`${lote.bodega}: cantidad invalida para ${producto_nombre}.`);
+        continue;
+      }
+      filas.push({
+        fecha,
+        responsable_id,
+        responsable_nombre,
+        turno,
+        bodega: lote.bodega,
+        tipo,
+        producto_id,
+        producto_nombre,
+        unidad_medida,
+        cantidad,
+        created_by: s.email,
+      });
+    }
+  }
+
+  if (erroresPayload.length > 0) {
+    return NextResponse.json({
+      error: `Hay ${erroresPayload.length} registro(s) invalido(s) antes de guardar: ${erroresPayload.slice(0, 8).join('; ')}${erroresPayload.length > 8 ? '...' : ''}`,
+      errores: erroresPayload,
+    }, { status: 400 });
+  }
 
   if (!filas.length) {
     return NextResponse.json({ error: 'Agrega al menos un producto con cantidad valida' }, { status: 400 });
   }
 
+  const clavesVistas = new Set<string>();
+  const duplicados = new Set<string>();
+  for (const fila of filas) {
+    const key = `${fila.fecha}||${fila.bodega}||${fila.tipo}||${fila.producto_id}`;
+    if (clavesVistas.has(key)) {
+      duplicados.add(`${fila.bodega}: ${fila.producto_nombre}`);
+    } else {
+      clavesVistas.add(key);
+    }
+  }
+  if (duplicados.size > 0) {
+    return NextResponse.json({
+      error: `Hay productos duplicados para la misma fecha, bodega y tipo de inventario. Corrige el archivo o elimina duplicados: ${Array.from(duplicados).slice(0, 8).join('; ')}${duplicados.size > 8 ? '...' : ''}`,
+    }, { status: 400 });
+  }
+
   const supabase = await createClient();
+  console.info('[control-carnicos/inventarios] upsert', filas.slice(0, 50).map(row => ({
+    producto_id: row.producto_id,
+    nombre_producto: row.producto_nombre,
+    bodega: row.bodega,
+    fecha: row.fecha,
+    tipo: row.tipo,
+    conteo: row.cantidad,
+  })), filas.length > 50 ? { restantes: filas.length - 50 } : undefined);
   const { error } = await supabase.from('carnicos_inventarios').upsert(filas, { onConflict: 'fecha,bodega,tipo,producto_id' });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   const porBodega = filas.reduce<Record<string, number>>((acc, row) => {

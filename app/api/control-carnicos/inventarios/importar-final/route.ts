@@ -5,6 +5,31 @@ import { requireRol } from '@/lib/auth-server';
 import { BODEGAS_CARNICOS, BODEGA_LABEL } from '@/lib/config-carnicos';
 
 const BODEGAS_CONTEO = ['CAMARA CONGELADOS', 'CAMARA MANTENCION', 'COCINA'] as const;
+const FALLBACK_COL_PRODUCTO = 3; // C
+const FALLBACK_COL_BODEGAS: Record<(typeof BODEGAS_CONTEO)[number], number> = {
+  'CAMARA CONGELADOS': 5, // E
+  'CAMARA MANTENCION': 6, // F
+  COCINA: 7, // G
+};
+const PRODUCTO_HEADERS = ['PRODUCTO', 'NOMBRE PRODUCTO', 'NOMBRE', 'PRODUCTOS', 'DESCRIPCION'];
+const BODEGA_HEADERS: Record<(typeof BODEGAS_CONTEO)[number], string[]> = {
+  'CAMARA CONGELADOS': ['CAMARA CONGELADOS', 'CAMARA CONGELADO', 'CONGELADOS'],
+  'CAMARA MANTENCION': ['CAMARA MANTENCION', 'CAMARA DE MANTENCION', 'MANTENCION'],
+  COCINA: ['COCINA'],
+};
+const PRODUCTO_HEADERS_NORMALIZADOS = PRODUCTO_HEADERS.map(norm);
+
+type ProductoCarnicoDb = {
+  id: string;
+  codigo: string;
+  nombre: string;
+  unidad_medida: string;
+};
+
+type ConteoCell =
+  | { kind: 'empty' }
+  | { kind: 'number'; value: number }
+  | { kind: 'invalid'; raw: string };
 
 function norm(value: unknown) {
   return String(value ?? '')
@@ -24,15 +49,34 @@ function cellText(cell: ExcelJS.Cell) {
   return String(value ?? '');
 }
 
-function numberValue(cell: ExcelJS.Cell): number | null {
+function numberValue(cell: ExcelJS.Cell): ConteoCell {
   const value = cell.value;
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (value == null) return { kind: 'empty' };
+  if (typeof value === 'number') return Number.isFinite(value) ? { kind: 'number', value } : { kind: 'invalid', raw: String(value) };
   if (value && typeof value === 'object' && 'result' in value) {
-    const result = Number(value.result);
-    return Number.isFinite(result) ? result : null;
+    if (value.result == null || String(value.result).trim() === '') return { kind: 'empty' };
+    const result = Number(String(value.result).replace(',', '.').trim());
+    return Number.isFinite(result) ? { kind: 'number', value: result } : { kind: 'invalid', raw: String(value.result) };
   }
-  const parsed = Number(String(value ?? '').replace(',', '.').trim());
-  return Number.isFinite(parsed) ? parsed : null;
+  const raw = String(value).replace(',', '.').trim();
+  if (!raw) return { kind: 'empty' };
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? { kind: 'number', value: parsed } : { kind: 'invalid', raw };
+}
+
+function findHeader(headers: Map<string, number>, aliases: string[]) {
+  for (const alias of aliases) {
+    const col = headers.get(norm(alias));
+    if (col) return col;
+  }
+  return null;
+}
+
+function pushProducto(productosPorNombre: Map<string, ProductoCarnicoDb[]>, producto: ProductoCarnicoDb) {
+  const key = norm(producto.nombre);
+  const existentes = productosPorNombre.get(key) ?? [];
+  existentes.push(producto);
+  productosPorNombre.set(key, existentes);
 }
 
 export async function POST(req: NextRequest) {
@@ -65,15 +109,13 @@ export async function POST(req: NextRequest) {
       const text = norm(cellText(cell));
       if (text) local.set(text, colNumber);
     });
-    if (local.has('CODIGO') && local.has('PRODUCTO') && BODEGAS_CONTEO.every(b => local.has(norm(b)))) {
+    const tieneProducto = findHeader(local, PRODUCTO_HEADERS) != null;
+    const tieneBodegas = BODEGAS_CONTEO.every(b => findHeader(local, BODEGA_HEADERS[b]) != null);
+    if (tieneProducto && tieneBodegas) {
       headerRowNumber = rowNumber;
       local.forEach((value, key) => headers.set(key, value));
     }
   });
-
-  if (!headerRowNumber) {
-    return NextResponse.json({ error: 'Formato invalido. No se encontraron las columnas CODIGO, PRODUCTO y bodegas del formato de Tabla resumen.' }, { status: 400 });
-  }
 
   const supabase = await createClient();
   const { data: productos, error } = await supabase
@@ -82,36 +124,63 @@ export async function POST(req: NextRequest) {
     .eq('activo', true);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const porCodigo = new Map((productos ?? []).map(p => [norm(p.codigo), p]));
-  const porNombre = new Map((productos ?? []).map(p => [norm(p.nombre), p]));
-  const colCodigo = headers.get('CODIGO')!;
-  const colProducto = headers.get('PRODUCTO')!;
-  const colBodega = new Map(BODEGAS_CONTEO.map(b => [b, headers.get(norm(b))!]));
+  const productosPorNombre = new Map<string, ProductoCarnicoDb[]>();
+  for (const producto of (productos ?? []) as ProductoCarnicoDb[]) pushProducto(productosPorNombre, producto);
+
+  const colProducto = headerRowNumber ? findHeader(headers, PRODUCTO_HEADERS) ?? FALLBACK_COL_PRODUCTO : FALLBACK_COL_PRODUCTO;
+  const colBodega = new Map(BODEGAS_CONTEO.map(b => [
+    b,
+    headerRowNumber ? findHeader(headers, BODEGA_HEADERS[b]) ?? FALLBACK_COL_BODEGAS[b] : FALLBACK_COL_BODEGAS[b],
+  ]));
+  const dataStartRow = headerRowNumber ? headerRowNumber + 1 : 1;
   const lotes = new Map<string, { producto_id: string; producto_nombre: string; unidad_medida: string; cantidad: number }[]>();
+  const clavesVistas = new Set<string>();
   const errores: string[] = [];
 
-  for (let rowNumber = headerRowNumber + 1; rowNumber <= ws.rowCount; rowNumber++) {
+  for (let rowNumber = dataStartRow; rowNumber <= ws.rowCount; rowNumber++) {
     const row = ws.getRow(rowNumber);
-    const codigo = norm(cellText(row.getCell(colCodigo)));
-    const nombre = norm(cellText(row.getCell(colProducto)));
-    if (!codigo && !nombre) continue;
-
-    const producto = (codigo ? porCodigo.get(codigo) : null) ?? (nombre ? porNombre.get(nombre) : null);
-    if (!producto) {
-      errores.push(`Fila ${rowNumber}: producto no encontrado (${codigo || nombre}).`);
+    const nombreRaw = cellText(row.getCell(colProducto));
+    const nombre = norm(nombreRaw);
+    const conteos = BODEGAS_CONTEO.map(bodega => [bodega, numberValue(row.getCell(colBodega.get(bodega)!))] as const);
+    const tieneConteo = conteos.some(([, conteo]) => conteo.kind !== 'empty');
+    if (!nombre && !tieneConteo) continue;
+    if (PRODUCTO_HEADERS_NORMALIZADOS.includes(nombre)) continue;
+    if (!tieneConteo) continue;
+    if (!nombre) {
+      errores.push(`Fila ${rowNumber}: conteo sin nombre de producto.`);
       continue;
     }
 
-    for (const bodega of BODEGAS_CONTEO) {
+    const candidatos = productosPorNombre.get(nombre) ?? [];
+    if (candidatos.length === 0) {
+      errores.push(`Fila ${rowNumber}: producto no encontrado (${nombreRaw.trim()}).`);
+      continue;
+    }
+    if (candidatos.length > 1) {
+      errores.push(`Fila ${rowNumber}: el nombre "${nombreRaw.trim()}" coincide con mas de un producto del maestro. Corrige el nombre antes de importar.`);
+      continue;
+    }
+    const producto = candidatos[0];
+
+    for (const [bodega, conteo] of conteos) {
       if (!BODEGAS_CARNICOS.includes(bodega)) continue;
-      const cantidad = numberValue(row.getCell(colBodega.get(bodega)!));
-      if (cantidad == null || cantidad < 0) continue;
+      if (conteo.kind === 'empty') continue;
+      if (conteo.kind === 'invalid' || conteo.value < 0) {
+        errores.push(`Fila ${rowNumber}: conteo invalido en ${BODEGA_LABEL[bodega]} (${conteo.kind === 'invalid' ? conteo.raw : conteo.value}).`);
+        continue;
+      }
+      const key = `${bodega}||${producto.id}`;
+      if (clavesVistas.has(key)) {
+        errores.push(`Fila ${rowNumber}: producto duplicado en ${BODEGA_LABEL[bodega]} (${producto.codigo} - ${producto.nombre}).`);
+        continue;
+      }
+      clavesVistas.add(key);
       const detalle = lotes.get(bodega) ?? [];
       detalle.push({
         producto_id: producto.id,
         producto_nombre: producto.nombre,
         unidad_medida: producto.unidad_medida,
-        cantidad,
+        cantidad: conteo.value,
       });
       lotes.set(bodega, detalle);
     }
@@ -123,6 +192,15 @@ export async function POST(req: NextRequest) {
 
   if (!lotesOut.length) {
     return NextResponse.json({ error: 'No se encontraron conteos validos por bodega en el archivo.', errores }, { status: 400 });
+  }
+
+  if (errores.length > 0) {
+    return NextResponse.json({
+      error: `El archivo tiene ${errores.length} error(es). Corrige los productos duplicados o inexistentes antes de guardar.`,
+      errores,
+      lotes: lotesOut,
+      total: lotesOut.reduce((sum, lote) => sum + lote.detalle.length, 0),
+    }, { status: 400 });
   }
 
   return NextResponse.json({

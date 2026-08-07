@@ -51,6 +51,7 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
   const [tipo, setTipo] = useState<TipoInventarioCarnico>('INICIAL');
   const [filas, setFilas] = useState<FilaInventario[]>([]);
   const [lotesImportados, setLotesImportados] = useState<LoteImportado[] | null>(null);
+  const [importErrores, setImportErrores] = useState<string[]>([]);
   const [importando, setImportando] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [cantidadLineas, setCantidadLineas] = useState('10');
@@ -59,9 +60,12 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
   const [err, setErr] = useState('');
 
   const respActual = maestros.responsables.find(r => r.id === responsableId);
+  const esImportacionConsolidada = bodega === 'BODEGAS CONSOLIDADAS';
   const totalImportadas = lotesImportados?.reduce((sum, lote) => sum + lote.detalle.length, 0) ?? 0;
   const totalValidas = lotesImportados
     ? totalImportadas
+    : esImportacionConsolidada
+      ? 0
     : filas.filter(f => f.producto && Number(f.cantidad) >= 0 && f.cantidad !== '').length;
 
   function addFilas(cantidad: number) {
@@ -81,13 +85,22 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
 
   function cambiarTipo(nuevoTipo: TipoInventarioCarnico) {
     setTipo(nuevoTipo);
-    if (nuevoTipo !== 'FINAL') setLotesImportados(null);
+    setLotesImportados(null);
+    setImportErrores([]);
   }
 
-  async function importarInventarioFinal(file: File | null) {
+  function cambiarBodega(nuevaBodega: BodegaCarnico) {
+    setBodega(nuevaBodega);
+    setLotesImportados(null);
+    setImportErrores([]);
+    if (nuevaBodega === 'BODEGAS CONSOLIDADAS') setFilas([]);
+  }
+
+  async function importarInventarioConsolidado(file: File | null) {
     if (!file) return;
     setErr('');
     setOk('');
+    setImportErrores([]);
     setImportando(true);
     setLotesImportados(null);
     try {
@@ -98,17 +111,21 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
         body: form,
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Error importando inventario final');
+      if (!res.ok) {
+        setImportErrores(Array.isArray(data.errores) ? data.errores : []);
+        throw new Error(data.error ?? 'Error importando inventario');
+      }
       const lotes = Array.isArray(data.lotes) ? data.lotes as LoteImportado[] : [];
       if (!lotes.length) throw new Error('El archivo no tiene conteos validos por bodega.');
       setLotesImportados(lotes);
+      setImportErrores(Array.isArray(data.errores) ? data.errores : []);
       setFilas([]);
       const detalleErrores = Array.isArray(data.errores) && data.errores.length
         ? ` ${data.errores.length} fila(s) quedaron con advertencia.`
         : '';
-      setOk(`Inventario final importado: ${data.total ?? lotes.reduce((sum, lote) => sum + lote.detalle.length, 0)} conteo(s) separados por bodega.${detalleErrores}`);
+      setOk(`Inventario ${tipo === 'INICIAL' ? 'inicial' : 'final'} importado: ${data.total ?? lotes.reduce((sum, lote) => sum + lote.detalle.length, 0)} conteo(s) separados por bodega.${detalleErrores}`);
     } catch (error) {
-      setErr(error instanceof Error ? error.message : 'Error importando inventario final');
+      setErr(error instanceof Error ? error.message : 'Error importando inventario');
     } finally {
       setImportando(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -128,8 +145,9 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
     if (lotesImportados) {
       if (!lotesImportados.length || totalImportadas === 0) { setErr('Primero importa un archivo valido.'); return; }
       const resumen = lotesImportados.map(lote => `${lote.bodegaLabel}: ${lote.detalle.length}`).join(', ');
-      if (!window.confirm(`Guardar inventario Final importado con ${totalImportadas} conteo(s)? ${resumen}`)) return;
+      if (!window.confirm(`Guardar inventario ${tipo === 'INICIAL' ? 'Inicial' : 'Final'} importado con ${totalImportadas} conteo(s)? ${resumen}`)) return;
     } else {
+      if (esImportacionConsolidada) { setErr('Bodegas consolidadas solo se usa para importar el Excel con Camara Congelados, Camara Mantencion y Cocina.'); return; }
       if (!detalle.length) { setErr('Agrega al menos un producto con cantidad valida.'); return; }
       if (!window.confirm(`Guardar inventario ${tipo === 'INICIAL' ? 'Inicial' : 'Final'} de ${BODEGA_LABEL[bodega]} con ${detalle.length} producto(s)?`)) return;
     }
@@ -140,7 +158,7 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(lotesImportados
-          ? { fecha, responsable_id: responsableId, responsable_nombre: respActual?.nombre ?? '', turno, tipo: 'FINAL', lotes: lotesImportados.map(lote => ({ bodega: lote.bodega, detalle: lote.detalle })) }
+          ? { fecha, responsable_id: responsableId, responsable_nombre: respActual?.nombre ?? '', turno, tipo, lotes: lotesImportados.map(lote => ({ bodega: lote.bodega, detalle: lote.detalle })) }
           : { fecha, responsable_id: responsableId, responsable_nombre: respActual?.nombre ?? '', turno, bodega, tipo, detalle }),
       });
       const data = await res.json();
@@ -151,6 +169,7 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
       setOk(`Inventario guardado: ${porBodega}.`);
       setFilas([]);
       setLotesImportados(null);
+      setImportErrores([]);
     } catch (error) {
       setErr(error instanceof Error ? error.message : 'Error guardando inventario');
     } finally {
@@ -161,6 +180,12 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
   return (
     <form onSubmit={handleSubmit}>
       {err && <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', borderRadius: '10px', padding: '12px 14px', marginBottom: '14px', fontSize: '13px' }}>{err}</div>}
+      {importErrores.length > 0 && (
+        <div style={{ background: '#FFF7ED', border: '1px solid #FDBA74', color: '#9A3412', borderRadius: '10px', padding: '12px 14px', marginBottom: '14px', fontSize: '13px' }}>
+          {importErrores.slice(0, 8).map(error => <div key={error}>{error}</div>)}
+          {importErrores.length > 8 && <div>... {importErrores.length - 8} error(es) mas</div>}
+        </div>
+      )}
       {ok && <div style={{ background: '#ECFDF5', border: '1px solid #6EE7B7', color: '#065F46', borderRadius: '10px', padding: '12px 14px', marginBottom: '14px', fontSize: '13px' }}>{ok}</div>}
 
       <div className="carnicos-grid" style={{ display: 'grid', gridTemplateColumns: '310px 1fr', gap: '14px', alignItems: 'start' }}>
@@ -172,7 +197,7 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
         >
           <div>
             <label style={label}>Bodega <span style={{ color: 'var(--rd)' }}>*</span></label>
-            <select value={bodega} onChange={e => setBodega(e.target.value as BodegaCarnico)} style={{ ...field, fontWeight: 700 }}>
+            <select value={bodega} onChange={e => cambiarBodega(e.target.value as BodegaCarnico)} style={{ ...field, fontWeight: 700 }}>
               {BODEGAS_CARNICOS.map(b => <option key={b} value={b}>{BODEGA_LABEL[b]}</option>)}
             </select>
           </div>
@@ -191,13 +216,13 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
               ))}
             </div>
           </div>
-          {tipo === 'FINAL' && (
+          {esImportacionConsolidada && (
             <div>
               <input
                 ref={fileInputRef}
                 type="file"
                 accept=".xlsx,.xls"
-                onChange={e => void importarInventarioFinal(e.target.files?.[0] ?? null)}
+                onChange={e => void importarInventarioConsolidado(e.target.files?.[0] ?? null)}
                 style={{ display: 'none' }}
               />
               <button
@@ -206,7 +231,7 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
                 disabled={importando}
                 style={{ width: '100%', border: '1.5px solid var(--ac)', background: 'var(--sf)', color: 'var(--ac)', borderRadius: '8px', padding: '9px', fontSize: '12px', fontWeight: 800, cursor: importando ? 'wait' : 'pointer' }}
               >
-                {importando ? 'Validando archivo...' : 'Subir Inventario Final'}
+                {importando ? 'Validando archivo...' : 'Subir Excel consolidado'}
               </button>
             </div>
           )}
@@ -226,7 +251,7 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
           {lotesImportados ? (
             <div style={{ padding: '18px 20px', display: 'grid', gap: '10px' }}>
               <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#065F46', borderRadius: '10px', padding: '12px 14px', fontSize: '13px', fontWeight: 700 }}>
-                Archivo validado. Revisa el resumen por bodega y presiona Guardar conteo para registrar el inventario final.
+                Archivo validado. Revisa el resumen por bodega y presiona Guardar conteo para registrar el inventario.
               </div>
               <div style={{ overflowX: 'auto' }}>
                 <table className="carnicos-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '520px' }}>
@@ -257,6 +282,11 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
             </div>
           ) : filas.length === 0 ? (
             <div style={{ padding: '48px 32px', textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+              {esImportacionConsolidada ? (
+                <div style={{ color: 'var(--ts)', fontSize: '13px', fontWeight: 700 }}>
+                  Sube el Excel consolidado para generar conteos por Camara Congelados, Camara Mantencion y Cocina.
+                </div>
+              ) : (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
                 <button type="button" onClick={addFila} style={{ background: 'var(--ac)', color: '#fff', border: 'none', borderRadius: '10px', padding: '10px 22px', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}>
                   + Agregar primer producto
@@ -276,6 +306,7 @@ export default function InventariosTab({ maestros }: { maestros: Maestros }) {
                   </button>
                 </div>
               </div>
+              )}
             </div>
           ) : (
             <>
