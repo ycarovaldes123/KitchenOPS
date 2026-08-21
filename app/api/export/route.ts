@@ -305,8 +305,8 @@ export async function GET(req: NextRequest) {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rowsRes), 'RESUMEN');
 
   const headerProd = verCostos
-    ? ['Fecha', 'Responsable', 'Turno', 'Observacion', 'PP', 'Tipo', 'Cantidad', 'Gramos/PP', 'Total producido (g)', 'Costo unitario', 'Costo total']
-    : ['Fecha', 'Responsable', 'Turno', 'Observacion', 'PP', 'Tipo', 'Cantidad', 'Gramos/PP', 'Total producido (g)'];
+    ? ['Fecha', 'Responsable', 'Turno', 'Observacion', 'Código PP', 'PP', 'Tipo', 'Cantidad', 'Gramos/PP', 'Total producido (g)', 'Costo unitario', 'Costo total']
+    : ['Fecha', 'Responsable', 'Turno', 'Observacion', 'Código PP', 'PP', 'Tipo', 'Cantidad', 'Gramos/PP', 'Total producido (g)'];
   const rowsProd: unknown[][] = [headerProd];
   for (const produccion of producciones) {
     for (const detalle of produccion.detalle_produccion ?? []) {
@@ -315,6 +315,7 @@ export async function GET(req: NextRequest) {
         produccion.responsable_nombre,
         produccion.turno,
         produccion.observacion,
+        detalle.codigo_producto ?? '',
         detalle.nombre_pp,
         detalle.tipo_pp,
         detalle.cantidad,
@@ -331,6 +332,7 @@ export async function GET(req: NextRequest) {
         produccion.responsable_nombre,
         produccion.turno,
         produccion.observacion,
+        '',
         '',
         '',
         '',
