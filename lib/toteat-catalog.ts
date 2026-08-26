@@ -7,6 +7,8 @@ export interface ToteatCatalogItem {
 // Subcategorias reales de Toteat (Reportes 2.0 beta > Ventas Jerarquia > Alimentos).
 export const FOOD_SUBCATEGORIAS = [
   'AGREGADOS Y ACOMPAÑAMIENTOS',
+  'CAFETERIA GASTOS PERSONAL',
+  'CAFETERIA PERSONAL',
   'CATERING',
   'ENSALADAS',
   'ENSALADAS PEDIDOS YA',
