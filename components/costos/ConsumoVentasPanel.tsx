@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRol } from '@/components/RolProvider';
 
 interface DetalleRow {
   codigo_toteat: string;
@@ -68,11 +69,14 @@ async function descargarArchivo(url: string, filename: string): Promise<string |
 }
 
 export default function ConsumoVentasPanel() {
+  const { rol } = useRol();
+  const esAdmin = rol === 'admin';
   const [desde, setDesde] = useState(inicioMes());
   const [hasta, setHasta] = useState(hoyChile());
   const [data, setData] = useState<ConsumoResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingPorPlato, setExportingPorPlato] = useState(false);
   const [error, setError] = useState('');
 
   const totalWarnings = data
@@ -111,6 +115,17 @@ export default function ConsumoVentasPanel() {
     );
     if (err) setError(err);
     setExporting(false);
+  }
+
+  async function exportarPorPlato() {
+    setExportingPorPlato(true);
+    setError('');
+    const err = await descargarArchivo(
+      `/api/carta/consumo-por-plato?desde=${desde}&hasta=${hasta}`,
+      `consumo_ingredientes_por_plato_${hoyChile()}.xlsx`,
+    );
+    if (err) setError(err);
+    setExportingPorPlato(false);
   }
 
   const inputStyle: React.CSSProperties = {
@@ -152,6 +167,17 @@ export default function ConsumoVentasPanel() {
           <button type="button" onClick={exportar} disabled={loading || exporting} style={{ ...buttonStyle, background: '#2563EB', cursor: exporting ? 'wait' : 'pointer' }}>
             {exporting ? 'Exportando...' : 'Exportar Excel'}
           </button>
+          {esAdmin && (
+            <button
+              type="button"
+              onClick={exportarPorPlato}
+              disabled={exportingPorPlato}
+              title="Descarga un Excel con 1 fila por cada ingrediente de la receta de cada plato, con el consumo total calculado segun las ventas del rango seleccionado."
+              style={{ ...buttonStyle, background: '#0D9373', cursor: exportingPorPlato ? 'wait' : 'pointer' }}
+            >
+              {exportingPorPlato ? 'Generando...' : 'Descargar consumo por platos'}
+            </button>
+          )}
           {data && (
             <span style={{ fontSize: '12px', color: 'var(--ts)', fontWeight: 700 }}>
               {data.detalle.length} linea(s) de consumo · {data.consolidado.length} producto(s)
