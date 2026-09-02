@@ -170,6 +170,7 @@ input, select, textarea, button {
   .carnicos-table th,
   .carnicos-table td { padding: 7px 8px; font-size: 12px; }
 }
+.carnicos-table tbody tr:hover { background: rgba(20, 16, 10, 0.025); }
 @media (max-width: 1023px) {
   .carnicos-toolbar button,
   .carnicos-toolbar input[type="date"] { min-height: 44px; }
