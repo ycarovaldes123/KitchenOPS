@@ -11,6 +11,10 @@ function fmt(value: number) {
   return new Intl.NumberFormat('es-CL', { maximumFractionDigits: decimals }).format(value);
 }
 
+function fmtMoney(value: number) {
+  return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(value);
+}
+
 function normalizarTexto(value: string): string {
   return value.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 }
@@ -87,6 +91,7 @@ async function descargarArchivo(url: string, filename: string): Promise<string |
 export default function TablaResumenTab() {
   const { puede } = useRol();
   const puedeExportar = puede('controlCarnicos', 'exportar');
+  const verCostos = puede('controlCarnicos', 'verCostos');
   const hoy = hoyChile();
   const [modo, setModo] = useState<ModoRangoFecha>('dia');
   const [desde, setDesde] = useState(hoy);
@@ -210,7 +215,7 @@ export default function TablaResumenTab() {
             {hayFiltrosActivos && <span>Mostrando <strong style={{ color: 'var(--tx)' }}>{filasFiltradas.length}</strong> de {filas.length} productos</span>}
           </div>
           <div style={{ overflowX: 'auto' }}>
-            <table className="carnicos-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1080px' }}>
+            <table className="carnicos-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: verCostos ? '1180px' : '1080px' }}>
               <thead>
                 <tr style={{ background: 'var(--bg)' }}>
                   <th style={thHead}>
@@ -245,14 +250,15 @@ export default function TablaResumenTab() {
                       {OPCIONES_SIGNO.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                   </th>
+                  {verCostos && <th style={thHead}>Diferencia $</th>}
                   <th style={thHead}>Estado</th>
                 </tr>
               </thead>
               <tbody>
                 {filas.length === 0 ? (
-                  <tr><td colSpan={11} style={{ padding: '30px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>Sin productos configurados. Ejecuta el importador de Excel.</td></tr>
+                  <tr><td colSpan={verCostos ? 12 : 11} style={{ padding: '30px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>Sin productos configurados. Ejecuta el importador de Excel.</td></tr>
                 ) : filasFiltradas.length === 0 ? (
-                  <tr><td colSpan={11} style={{ padding: '30px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>Ningun producto coincide con los filtros.</td></tr>
+                  <tr><td colSpan={verCostos ? 12 : 11} style={{ padding: '30px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>Ningun producto coincide con los filtros.</td></tr>
                 ) : filasFiltradas.map(f => {
                   const badge = ESTADO_BADGE[f.estado];
                   // Calculo: solo los valores negativos se marcan en rojo; cero y positivos en negro.
@@ -280,6 +286,11 @@ export default function TablaResumenTab() {
                       <td style={{ padding: '9px 12px', fontWeight: 800, color: diferenciaColor }}>
                         {f.diferencia === null ? '-' : `${fmt(f.diferencia)} ${f.unidad_medida}`}
                       </td>
+                      {verCostos && (
+                        <td style={{ padding: '9px 12px', fontWeight: 800, color: diferenciaColor }}>
+                          {f.diferencia_valor === null ? '-' : fmtMoney(f.diferencia_valor)}
+                        </td>
+                      )}
                       <td style={{ padding: '9px 12px' }}>
                         <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '20px', fontSize: '10px', fontWeight: 700, background: badge.bg, color: badge.color }}>{badge.label}</span>
                       </td>

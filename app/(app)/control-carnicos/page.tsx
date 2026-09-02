@@ -8,15 +8,17 @@ import IngresosSalidasTab from './tabs/IngresosSalidasTab';
 import VentasTab from './tabs/VentasTab';
 import InventariosTab from './tabs/InventariosTab';
 import TablaResumenTab from './tabs/TablaResumenTab';
+import ValorizacionTab from './tabs/ValorizacionTab';
 import HistorialTab from './tabs/HistorialTab';
 
-type Tab = 'ingresos-salidas' | 'ventas' | 'inventarios' | 'resumen' | 'historial';
+type Tab = 'ingresos-salidas' | 'ventas' | 'inventarios' | 'resumen' | 'valorizacion' | 'historial';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'ingresos-salidas', label: 'Ingresos / Salidas' },
   { key: 'ventas', label: 'Ventas' },
   { key: 'inventarios', label: 'Inventarios' },
   { key: 'resumen', label: 'Tabla Resumen' },
+  { key: 'valorizacion', label: 'Valorizacion' },
   { key: 'historial', label: 'Historial' },
 ];
 
@@ -27,9 +29,14 @@ export interface Maestros {
 
 export default function ControlCarnicosPage() {
   const { puede } = useRol();
-  // Roles sin permiso de registrar (ej. jefatura/fcaro) solo ven la Tabla Resumen, en solo lectura.
+  // Roles sin permiso de registrar (ej. jefatura/fcaro) solo ven la Tabla Resumen (+ Valorizacion si tienen verCostos), en solo lectura.
   const soloResumen = !puede('controlCarnicos', 'registrar');
-  const tabsDisponibles = soloResumen ? TABS.filter(t => t.key === 'resumen') : TABS;
+  const verCostos = puede('controlCarnicos', 'verCostos');
+  const tabsDisponibles = TABS.filter(t => {
+    if (t.key === 'valorizacion') return verCostos;
+    if (soloResumen) return t.key === 'resumen';
+    return true;
+  });
 
   const [tab, setTab] = useState<Tab>(soloResumen ? 'resumen' : 'ingresos-salidas');
   const [maestros, setMaestros] = useState<Maestros | null>(null);
@@ -91,6 +98,7 @@ export default function ControlCarnicosPage() {
           {tab === 'ventas' && <VentasTab />}
           {tab === 'inventarios' && <InventariosTab maestros={maestros} />}
           {tab === 'resumen' && <TablaResumenTab />}
+          {tab === 'valorizacion' && <ValorizacionTab />}
           {tab === 'historial' && <HistorialTab />}
         </>
       )}

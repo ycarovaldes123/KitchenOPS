@@ -12,6 +12,7 @@ export interface CarnicoProducto {
   unidad_medida: UnidadCarnico;
   es_pp: boolean;
   activo: boolean;
+  costo_unitario?: number;
 }
 
 export interface CarnicoPlato {
@@ -110,4 +111,6 @@ export interface ResumenFila {
   diferencia: number | null;
   estado: 'ok' | 'alerta' | 'sin_conteo';
   inv_inicial_fuente: 'conteo_hoy' | 'carry_forward' | 'cero';
+  costo_unitario: number;
+  diferencia_valor: number | null;
 }

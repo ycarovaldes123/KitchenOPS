@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol } from '@/lib/auth-server';
-import { calcularResumenFilas } from '@/lib/carnicos-resumen.server';
+import { calcularResumenFilas, ocultarValorizacion } from '@/lib/carnicos-resumen.server';
 import { formatFechaCompacta } from '@/lib/config-carnicos';
+import { puedeHacer } from '@/lib/permissions';
 
 const ESTADO_LABEL: Record<string, string> = { ok: 'OK', alerta: 'Alerta', sin_conteo: 'Sin conteo final' };
 const ROJO = 'FFB91C1C';
@@ -39,6 +40,8 @@ export async function GET(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Error generando el reporte' }, { status: 500 });
   }
+  const verCostos = puedeHacer(s.rol, 'controlCarnicos', 'verCostos');
+  if (!verCostos) filas = ocultarValorizacion(filas);
 
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('REPORTE', {
@@ -56,6 +59,7 @@ export async function GET(req: NextRequest) {
     { header: 'Calculo', key: 'calculo', width: 10 },
     { header: 'Inv. Final', key: 'inv_final', width: 10 },
     { header: 'Diferencia', key: 'diferencia', width: 11 },
+    ...(verCostos ? [{ header: 'Diferencia $', key: 'diferencia_valor', width: 13 }] : []),
     { header: 'Estado', key: 'estado', width: 16 },
   ];
 
@@ -71,12 +75,14 @@ export async function GET(req: NextRequest) {
       calculo: f.calculo,
       inv_final: f.inv_final,
       diferencia: f.diferencia,
+      ...(verCostos ? { diferencia_valor: f.diferencia_valor } : {}),
       estado: ESTADO_LABEL[f.estado] ?? f.estado,
     });
 
     // Diferencia: roja para cualquier valor distinto de 0 (positivo o negativo); el 0 queda en negro normal.
     if (f.diferencia !== null && Math.abs(f.diferencia) > 0.0001) {
       row.getCell('diferencia').font = { color: { argb: ROJO } };
+      if (verCostos) row.getCell('diferencia_valor').font = { color: { argb: ROJO } };
     }
 
     if (f.estado === 'alerta') {

@@ -15,13 +15,13 @@ export async function calcularResumenFilas(
   hasta: string,
 ): Promise<ResumenFila[]> {
   const [productosRes, movimientosRes, invIniRes, invFinRes] = await Promise.all([
-    supabase.from('carnicos_productos').select('id,nombre,codigo,tipo,unidad_medida').eq('activo', true).order('nombre'),
+    supabase.from('carnicos_productos').select('id,nombre,codigo,tipo,unidad_medida,costo_unitario').eq('activo', true).order('nombre'),
     supabase.from('carnicos_movimientos').select('producto_id,subtipo,cantidad').gte('fecha', desde).lte('fecha', hasta),
     supabase.from('carnicos_inventarios').select('producto_id,cantidad').eq('fecha', desde).eq('tipo', 'INICIAL'),
     supabase.from('carnicos_inventarios').select('producto_id,cantidad').eq('fecha', hasta).eq('tipo', 'FINAL'),
   ]);
 
-  if (productosRes.error) throw new Error(`${productosRes.error.message}. Ejecuta scripts/supabase_control_carnicos.sql y el importador de Excel.`);
+  if (productosRes.error) throw new Error(`${productosRes.error.message}. Ejecuta scripts/supabase_control_carnicos.sql, scripts/supabase_carnicos_costo_unitario.sql y el importador de Excel.`);
   if (movimientosRes.error) throw new Error(movimientosRes.error.message);
   if (invIniRes.error) throw new Error(invIniRes.error.message);
   if (invFinRes.error) throw new Error(invFinRes.error.message);
@@ -60,6 +60,8 @@ export async function calcularResumenFilas(
     const diferencia = hayConteoFinal ? round4(inv_final - calculo) : null;
     // Estado estricto: 0 exacto es OK, cualquier diferencia positiva o negativa es Alerta (sin tolerancia).
     const estado: ResumenFila['estado'] = diferencia === null ? 'sin_conteo' : diferencia === 0 ? 'ok' : 'alerta';
+    const costo_unitario = Number(producto.costo_unitario ?? 0);
+    const diferencia_valor = diferencia === null ? null : round2(diferencia * costo_unitario);
 
     return {
       producto_id: producto.id,
@@ -78,8 +80,15 @@ export async function calcularResumenFilas(
       diferencia,
       estado,
       inv_inicial_fuente,
+      costo_unitario: round2(costo_unitario),
+      diferencia_valor,
     };
   });
+}
+
+/** Quita los valores monetarios de las filas para roles sin permiso verCostos en controlCarnicos. */
+export function ocultarValorizacion(filas: ResumenFila[]): ResumenFila[] {
+  return filas.map(f => ({ ...f, costo_unitario: 0, diferencia_valor: null }));
 }
 
 function sumarPorProducto(rows: { producto_id: string; cantidad: number }[]) {
@@ -125,4 +134,8 @@ async function calcularCarryForward(
 
 function round4(value: number) {
   return Math.round(value * 10000) / 10000;
+}
+
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
 }

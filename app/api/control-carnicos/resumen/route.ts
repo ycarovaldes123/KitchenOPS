@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol } from '@/lib/auth-server';
-import { calcularResumenFilas } from '@/lib/carnicos-resumen.server';
+import { calcularResumenFilas, ocultarValorizacion } from '@/lib/carnicos-resumen.server';
+import { puedeHacer } from '@/lib/permissions';
 
 function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -22,7 +23,8 @@ export async function GET(req: NextRequest) {
   const supabase = await createClient();
 
   try {
-    const filas = await calcularResumenFilas(supabase, desde, hasta);
+    let filas = await calcularResumenFilas(supabase, desde, hasta);
+    if (!puedeHacer(s.rol, 'controlCarnicos', 'verCostos')) filas = ocultarValorizacion(filas);
     return NextResponse.json({ desde, hasta, filas });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Error consultando resumen' }, { status: 500 });
