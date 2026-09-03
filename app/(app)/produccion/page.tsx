@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import AnchoredPanel from '@/components/forms/AnchoredPanel';
 import { calcTotalPP, calcCostoProduccionPP, calcMerma, formatCLP, formatPct } from '@/lib/calculos';
 import { useRol } from '@/components/RolProvider';
 import type { PP, Responsable, Verdura, Producto, TipoPP } from '@/types/database';
@@ -114,20 +115,12 @@ function PPSelector({ pps, selectedId, selectedName, tipoPP, onSelect, onClear }
 }) {
   const [open, setOpen]   = useState(false);
   const [query, setQuery] = useState('');
-  const ref      = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const filtered = query
     ? pps.filter(p => p.nombre.toLowerCase().includes(query.toLowerCase()))
     : pps;
-
-  useEffect(() => {
-    const close = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setQuery(''); }
-    };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, []);
 
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 30);
@@ -155,8 +148,8 @@ function PPSelector({ pps, selectedId, selectedName, tipoPP, onSelect, onClear }
   }
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button type="button" onClick={() => setOpen(v => !v)} style={{
+    <div style={{ position: 'relative' }}>
+      <button ref={triggerRef} type="button" onClick={() => setOpen(v => !v)} style={{
         width: '100%', textAlign: 'left',
         background: open ? 'var(--al)' : 'var(--bg)',
         border: `1.5px solid ${open ? 'var(--ac)' : 'var(--bo)'}`,
@@ -169,13 +162,7 @@ function PPSelector({ pps, selectedId, selectedName, tipoPP, onSelect, onClear }
         <span style={{ fontSize: '9px', transition: 'transform 0.15s', display: 'inline-block', transform: open ? 'rotate(180deg)' : 'none' }}>▾</span>
       </button>
 
-      {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 500,
-          width: 'max(100%, 280px)', background: 'var(--sf)',
-          border: '1.5px solid var(--ac)', borderRadius: '12px',
-          boxShadow: '0 16px 40px rgba(0,0,0,0.18)', overflow: 'hidden',
-        }}>
+      <AnchoredPanel open={open} anchorRef={triggerRef} onClose={() => { setOpen(false); setQuery(''); }} minWidth={280}>
           <div style={{ padding: '8px 8px 0' }}>
             <input
               ref={inputRef}
@@ -224,8 +211,7 @@ function PPSelector({ pps, selectedId, selectedName, tipoPP, onSelect, onClear }
               );
             })}
           </div>
-        </div>
-      )}
+      </AnchoredPanel>
     </div>
   );
 }

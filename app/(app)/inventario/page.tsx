@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react';
+import AnchoredPanel from '@/components/forms/AnchoredPanel';
 import { useRol } from '@/components/RolProvider';
 import { UBICACIONES_INVENTARIO, type UbicacionInventario } from '@/lib/inventario';
 import type { Producto, Responsable } from '@/types/database';
@@ -80,7 +81,7 @@ function ProductoSelector({ productos, selectedCodigo, selectedNombre, selectedU
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
-  const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const filtered = useMemo(() => {
@@ -100,17 +101,6 @@ function ProductoSelector({ productos, selectedCodigo, selectedNombre, selectedU
       .slice(0, 80);
   }, [productos, query]);
   const safeActiveIndex = Math.min(activeIndex, Math.max(filtered.length - 1, 0));
-
-  useEffect(() => {
-    const close = (event: MouseEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) {
-        setOpen(false);
-        setQuery('');
-      }
-    };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, []);
 
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 30);
@@ -158,8 +148,9 @@ function ProductoSelector({ productos, selectedCodigo, selectedNombre, selectedU
   }
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
+    <div style={{ position: 'relative' }}>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(value => !value)}
         style={{
@@ -184,19 +175,12 @@ function ProductoSelector({ productos, selectedCodigo, selectedNombre, selectedU
         <span style={{ fontSize: '9px', display: 'inline-block', transition: 'transform 0.15s', transform: open ? 'rotate(180deg)' : 'none' }}>v</span>
       </button>
 
-      {open && (
-        <div style={{
-          position: 'absolute',
-          top: 'calc(100% + 4px)',
-          left: 0,
-          zIndex: 800,
-          width: 'max(100%, 320px)',
-          background: 'var(--sf)',
-          border: '1.5px solid var(--ac)',
-          borderRadius: '12px',
-          boxShadow: '0 16px 40px rgba(0,0,0,0.18)',
-          overflow: 'hidden',
-        }}>
+      <AnchoredPanel
+        open={open}
+        anchorRef={triggerRef}
+        onClose={() => { setOpen(false); setQuery(''); setActiveIndex(0); }}
+        minWidth={320}
+      >
           <div style={{ padding: '8px 8px 0' }}>
             <input
               ref={inputRef}
@@ -279,8 +263,7 @@ function ProductoSelector({ productos, selectedCodigo, selectedNombre, selectedU
               );
             })}
           </div>
-        </div>
-      )}
+      </AnchoredPanel>
     </div>
   );
 }

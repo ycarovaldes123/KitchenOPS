@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import AnchoredPanel from '@/components/forms/AnchoredPanel';
 import { formatCLP } from '@/lib/calculos';
 import { useRol } from '@/components/RolProvider';
 import type { Responsable, Producto, MotivoMerma } from '@/types/database';
@@ -115,20 +116,12 @@ function ProductoSelector({ productos, selectedCodigo, selectedNombre, selectedU
 }) {
   const [open, setOpen]   = useState(false);
   const [query, setQuery] = useState('');
-  const ref      = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const filtered = query
     ? productos.filter(p => p.nombre.toLowerCase().includes(query.toLowerCase()) || p.codigo.includes(query))
     : productos;
-
-  useEffect(() => {
-    const close = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setQuery(''); }
-    };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, []);
 
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 30);
@@ -152,8 +145,8 @@ function ProductoSelector({ productos, selectedCodigo, selectedNombre, selectedU
   }
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button type="button" onClick={() => setOpen(v => !v)} style={{
+    <div style={{ position: 'relative' }}>
+      <button ref={triggerRef} type="button" onClick={() => setOpen(v => !v)} style={{
         width: '100%', textAlign: 'left', background: open ? 'var(--al)' : 'var(--bg)',
         border: `1.5px solid ${open ? 'var(--ac)' : 'var(--bo)'}`, borderRadius: '8px',
         padding: '6px 10px', fontSize: '12px', color: 'var(--ts)', cursor: 'pointer',
@@ -164,8 +157,7 @@ function ProductoSelector({ productos, selectedCodigo, selectedNombre, selectedU
         <span style={{ fontSize: '9px', display: 'inline-block', transition: 'transform 0.15s', transform: open ? 'rotate(180deg)' : 'none' }}>▾</span>
       </button>
 
-      {open && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 500, width: 'max(100%, 280px)', background: 'var(--sf)', border: '1.5px solid var(--ac)', borderRadius: '12px', boxShadow: '0 16px 40px rgba(0,0,0,0.18)', overflow: 'hidden' }}>
+      <AnchoredPanel open={open} anchorRef={triggerRef} onClose={() => { setOpen(false); setQuery(''); }} minWidth={280}>
           <div style={{ padding: '8px 8px 0' }}>
             <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)}
               placeholder={`Buscar en ${productos.length} productos...`}
@@ -194,8 +186,7 @@ function ProductoSelector({ productos, selectedCodigo, selectedNombre, selectedU
               );
             })}
           </div>
-        </div>
-      )}
+      </AnchoredPanel>
     </div>
   );
 }
@@ -208,20 +199,12 @@ function PlatoSelector({ platos, selectedId, selectedNombre, selectedCategoria, 
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const filtered = query
     ? platos.filter(p => p.nombre.toLowerCase().includes(query.toLowerCase()) || (p.categoria ?? '').toLowerCase().includes(query.toLowerCase()))
     : platos;
-
-  useEffect(() => {
-    const close = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setQuery(''); }
-    };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, []);
 
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 30);
@@ -244,8 +227,8 @@ function PlatoSelector({ platos, selectedId, selectedNombre, selectedCategoria, 
   }
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button type="button" onClick={() => setOpen(v => !v)} style={{
+    <div style={{ position: 'relative' }}>
+      <button ref={triggerRef} type="button" onClick={() => setOpen(v => !v)} style={{
         width: '100%', textAlign: 'left', background: open ? 'var(--al)' : 'var(--bg)',
         border: `1.5px solid ${open ? 'var(--ac)' : 'var(--bo)'}`, borderRadius: '8px',
         padding: '6px 10px', fontSize: '12px', color: 'var(--ts)', cursor: 'pointer',
@@ -256,8 +239,7 @@ function PlatoSelector({ platos, selectedId, selectedNombre, selectedCategoria, 
         <span style={{ fontSize: '9px', display: 'inline-block', transition: 'transform 0.15s', transform: open ? 'rotate(180deg)' : 'none' }}>v</span>
       </button>
 
-      {open && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 500, width: 'max(100%, 320px)', background: 'var(--sf)', border: '1.5px solid var(--ac)', borderRadius: '12px', boxShadow: '0 16px 40px rgba(0,0,0,0.18)', overflow: 'hidden' }}>
+      <AnchoredPanel open={open} anchorRef={triggerRef} onClose={() => { setOpen(false); setQuery(''); }} minWidth={320}>
           <div style={{ padding: '8px 8px 0' }}>
             <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)}
               placeholder={`Buscar en ${platos.length} platos...`}
@@ -284,8 +266,7 @@ function PlatoSelector({ platos, selectedId, selectedNombre, selectedCategoria, 
               </button>
             ))}
           </div>
-        </div>
-      )}
+      </AnchoredPanel>
     </div>
   );
 }

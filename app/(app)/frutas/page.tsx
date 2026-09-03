@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import AnchoredPanel from '@/components/forms/AnchoredPanel';
 import { formatCLP } from '@/lib/calculos';
 import { useRol } from '@/components/RolProvider';
 
@@ -75,7 +76,7 @@ function ProductoSelector({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const filtered = useMemo(() => {
@@ -85,17 +86,6 @@ function ProductoSelector({
       .filter(p => normalizar(`${p.codigo} ${p.nombre} ${p.unidad_medida}`).includes(q))
       .slice(0, 80);
   }, [productos, query]);
-
-  useEffect(() => {
-    const close = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setQuery('');
-      }
-    };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, []);
 
   useEffect(() => {
     if (open) window.setTimeout(() => inputRef.current?.focus(), 30);
@@ -124,8 +114,9 @@ function ProductoSelector({
   }
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
+    <div style={{ position: 'relative' }}>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(v => !v)}
         style={{
@@ -149,19 +140,7 @@ function ProductoSelector({
         <span style={{ fontSize: '10px' }}>v</span>
       </button>
 
-      {open && (
-        <div style={{
-          position: 'absolute',
-          top: 'calc(100% + 4px)',
-          left: 0,
-          zIndex: 500,
-          width: 'max(100%, 300px)',
-          background: 'var(--sf)',
-          border: '1.5px solid var(--ac)',
-          borderRadius: '12px',
-          boxShadow: '0 16px 40px rgba(0,0,0,0.18)',
-          overflow: 'hidden',
-        }}>
+      <AnchoredPanel open={open} anchorRef={triggerRef} onClose={() => { setOpen(false); setQuery(''); }} minWidth={300}>
           <div style={{ padding: '8px 8px 0' }}>
             <input
               ref={inputRef}
@@ -226,8 +205,7 @@ function ProductoSelector({
               );
             })}
           </div>
-        </div>
-      )}
+      </AnchoredPanel>
     </div>
   );
 }
