@@ -143,7 +143,7 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
           {ok}
         </div>
       )}
-      <div className="carnicos-grid" style={{ display: 'grid', gridTemplateColumns: '310px 1fr', gap: '14px', alignItems: 'start' }}>
+      <form onSubmit={e => { e.preventDefault(); guardarTodo(); }} className="carnicos-grid" style={{ display: 'grid', gridTemplateColumns: '310px 1fr', gap: '14px', alignItems: 'start' }}>
       <DatosTurnoCard
         title="MOVIMIENTOS DE BODEGA"
         fecha={fecha} onFecha={setFecha}
@@ -252,8 +252,7 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
                 </div>
               )}
               <button
-                type="button"
-                onClick={guardarTodo}
+                type="submit"
                 disabled={!puedeGuardar || guardandoTodo || pendientesCount === 0}
                 style={{
                   border: 'none', borderRadius: '10px', padding: '11px 26px',
@@ -269,7 +268,7 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
           </>
         )}
       </section>
-      </div>
+      </form>
 
       <style>{`
         @media (max-width: 1023px) {
