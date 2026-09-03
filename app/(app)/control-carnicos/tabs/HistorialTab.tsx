@@ -103,14 +103,17 @@ function agruparPorFecha<T extends { fecha: string }>(grupos: T[]): GrupoFecha<T
     .sort((a, b) => b.fecha.localeCompare(a.fecha));
 }
 
-type SubTab = 'ingresos' | 'salidas' | 'inventarios' | 'ventas';
+type SubTab = 'ingresos' | 'salidas' | 'inv_inicial' | 'inv_final' | 'ventas';
 
 const SUB_TABS: { id: SubTab; label: string }[] = [
   { id: 'ingresos', label: 'Ingresos' },
   { id: 'salidas', label: 'Salidas' },
-  { id: 'inventarios', label: 'Inventarios' },
+  { id: 'inv_inicial', label: 'Inv. Inicial' },
+  { id: 'inv_final', label: 'Inv. Final' },
   { id: 'ventas', label: 'Ventas' },
 ];
+
+const ES_SUBTAB_INVENTARIO = (t: SubTab) => t === 'inv_inicial' || t === 'inv_final';
 
 const chevron = (abierto: boolean) => (
   <span
@@ -130,6 +133,7 @@ const badgeUltimo = (
 const thStyle: React.CSSProperties = { padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', borderBottom: '1px solid var(--bo)', whiteSpace: 'nowrap' };
 const tdStyle: React.CSSProperties = { padding: '9px 12px', fontSize: '12.5px' };
 const accionBtn: React.CSSProperties = { background: 'none', border: '1px solid var(--bo)', borderRadius: '6px', cursor: 'pointer', color: 'var(--ts)', fontSize: '11.5px', fontWeight: 700, padding: '4px 9px' };
+const accionBtnEliminar: React.CSSProperties = { ...accionBtn, color: '#DC2626', borderColor: '#FCA5A5', display: 'inline-flex', alignItems: 'center', lineHeight: 1 };
 
 export default function HistorialTab({ maestros }: { maestros: Maestros }) {
   const { puede } = useRol();
@@ -151,6 +155,12 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
   const [fechasAbiertas, setFechasAbiertas] = useState<Set<string>>(new Set());
   const [batchesAbiertos, setBatchesAbiertos] = useState<Set<string>>(new Set());
   const [drawer, setDrawer] = useState<GrupoEditable | null>(null);
+  const [confirmarEliminar, setConfirmarEliminar] = useState<
+    | { variante: 'movimiento'; grupo: GrupoMovimiento }
+    | { variante: 'inventario'; grupo: GrupoInventario }
+    | null
+  >(null);
+  const [eliminando, setEliminando] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const busquedaNormalizada = normalizarTexto(busqueda);
 
@@ -263,10 +273,14 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
   const gruposSalidas = useMemo(() => gruposMovimientosFiltrados.filter(g => !g.esVenta && g.movimiento === 'SALIDA'), [gruposMovimientosFiltrados]);
   const gruposVentas = useMemo(() => gruposMovimientosFiltrados.filter(g => g.esVenta), [gruposMovimientosFiltrados]);
 
+  const gruposInvInicial = useMemo(() => gruposInventariosFiltrados.filter(g => g.tipo === 'INICIAL'), [gruposInventariosFiltrados]);
+  const gruposInvFinal = useMemo(() => gruposInventariosFiltrados.filter(g => g.tipo === 'FINAL'), [gruposInventariosFiltrados]);
+
   const fechasIngresos = useMemo(() => agruparPorFecha(gruposIngresos), [gruposIngresos]);
   const fechasSalidas = useMemo(() => agruparPorFecha(gruposSalidas), [gruposSalidas]);
   const fechasVentas = useMemo(() => agruparPorFecha(gruposVentas), [gruposVentas]);
-  const fechasInventarios = useMemo(() => agruparPorFecha(gruposInventariosFiltrados), [gruposInventariosFiltrados]);
+  const fechasInvInicial = useMemo(() => agruparPorFecha(gruposInvInicial), [gruposInvInicial]);
+  const fechasInvFinal = useMemo(() => agruparPorFecha(gruposInvFinal), [gruposInvFinal]);
 
   function abrirEditorMovimiento(g: GrupoMovimiento) {
     const items: ItemEditable[] = g.items.map(it => ({
@@ -294,10 +308,45 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
     refrescar();
   }
 
+  // Elimina el movimiento (o conteo de inventario) completo directamente desde la lista,
+  // borrando todas sus filas por id. Requiere confirmacion explicita (mismo criterio que el drawer).
+  async function eliminarGrupoConfirmado() {
+    if (!confirmarEliminar) return;
+    setEliminando(true);
+    setError('');
+    try {
+      const url = confirmarEliminar.variante === 'movimiento'
+        ? '/api/control-carnicos/movimientos'
+        : '/api/control-carnicos/inventarios';
+      for (const it of confirmarEliminar.grupo.items) {
+        const res = await fetch(url, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: it.id }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json.error ?? 'Error eliminando');
+      }
+      // Si el drawer estaba abierto sobre este mismo grupo, se cierra.
+      if (drawer && drawer.key === confirmarEliminar.grupo.key) setDrawer(null);
+      setConfirmarEliminar(null);
+      refrescar();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error eliminando');
+    } finally {
+      setEliminando(false);
+    }
+  }
+
   const cargandoAlgo = loading;
   const sinConsulta = !movimientos && !inventarios && !error && !loading;
 
-  const listaFechasActiva = subTab === 'ingresos' ? fechasIngresos : subTab === 'salidas' ? fechasSalidas : subTab === 'ventas' ? fechasVentas : fechasInventarios;
+  const esInventario = ES_SUBTAB_INVENTARIO(subTab);
+  const listaFechasActiva = subTab === 'ingresos' ? fechasIngresos
+    : subTab === 'salidas' ? fechasSalidas
+    : subTab === 'ventas' ? fechasVentas
+    : subTab === 'inv_inicial' ? fechasInvInicial
+    : fechasInvFinal;
   const fechaUltimo = listaFechasActiva[0]?.fecha;
 
   return (
@@ -327,7 +376,11 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', overflowX: 'auto' }}>
                 {SUB_TABS.map(({ id, label }) => {
-                  const cantidad = id === 'ingresos' ? fechasIngresos.length : id === 'salidas' ? fechasSalidas.length : id === 'inventarios' ? fechasInventarios.length : fechasVentas.length;
+                  const cantidad = id === 'ingresos' ? fechasIngresos.length
+                    : id === 'salidas' ? fechasSalidas.length
+                    : id === 'inv_inicial' ? fechasInvInicial.length
+                    : id === 'inv_final' ? fechasInvFinal.length
+                    : fechasVentas.length;
                   const activa = subTab === id;
                   return (
                     <button
@@ -381,11 +434,11 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
 
             {!cargandoAlgo && listaFechasActiva.length === 0 && !busquedaNormalizada && (
               <div style={{ padding: '30px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>
-                Sin {subTab === 'inventarios' ? 'conteos de inventario' : 'movimientos'} en el rango seleccionado.
+                Sin {esInventario ? 'conteos de inventario' : 'movimientos'} en el rango seleccionado.
               </div>
             )}
 
-            {listaFechasActiva.length > 0 && subTab !== 'inventarios' && (
+            {listaFechasActiva.length > 0 && !esInventario && (
               <TablaFechasMovimientos
                 fechas={listaFechasActiva as GrupoFecha<GrupoMovimiento>[]}
                 fechaUltimo={fechaUltimo}
@@ -394,11 +447,12 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
                 batchesAbiertos={batchesAbiertos} onToggleBatch={toggleBatch}
                 puedeEditar={puedeEditar}
                 onEditar={abrirEditorMovimiento}
+                onEliminar={g => setConfirmarEliminar({ variante: 'movimiento', grupo: g })}
                 busqueda={busquedaNormalizada}
               />
             )}
 
-            {listaFechasActiva.length > 0 && subTab === 'inventarios' && (
+            {listaFechasActiva.length > 0 && esInventario && (
               <TablaFechasInventarios
                 fechas={listaFechasActiva as GrupoFecha<GrupoInventario>[]}
                 fechaUltimo={fechaUltimo}
@@ -406,6 +460,7 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
                 batchesAbiertos={batchesAbiertos} onToggleBatch={toggleBatch}
                 puedeEditar={puedeEditar}
                 onEditar={abrirEditorInventario}
+                onEliminar={g => setConfirmarEliminar({ variante: 'inventario', grupo: g })}
                 busqueda={busquedaNormalizada}
               />
             )}
@@ -424,6 +479,25 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
         </div>
       )}
 
+      {confirmarEliminar && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,20,20,0.4)', zIndex: 960, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: 'var(--sf)', borderRadius: '14px', padding: '22px', width: '100%', maxWidth: '400px', boxShadow: '0 16px 48px rgba(0,0,0,0.2)' }}>
+            <h3 style={{ margin: '0 0 8px', fontFamily: 'Syne, sans-serif', fontSize: '15px', fontWeight: 800 }}>
+              {confirmarEliminar.variante === 'movimiento' ? 'Eliminar movimiento completo' : 'Eliminar conteo de inventario'}
+            </h3>
+            <p style={{ margin: '0 0 18px', fontSize: '13px', color: 'var(--ts)', lineHeight: 1.5 }}>
+              Se eliminará el {confirmarEliminar.variante === 'movimiento' ? 'movimiento' : 'conteo'} completo del {isoAFecha(confirmarEliminar.grupo.fecha)} junto con sus {confirmarEliminar.grupo.items.length} producto{confirmarEliminar.grupo.items.length !== 1 ? 's' : ''}. Esta acción afectará el historial y los cálculos relacionados.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button type="button" onClick={() => setConfirmarEliminar(null)} disabled={eliminando} style={{ background: 'none', border: '1px solid var(--bo)', color: 'var(--ts)', borderRadius: '8px', padding: '8px 14px', fontSize: '12.5px', fontWeight: 700, cursor: 'pointer' }}>Cancelar</button>
+              <button type="button" onClick={eliminarGrupoConfirmado} disabled={eliminando} style={{ background: 'none', border: '1px solid #FCA5A5', color: '#DC2626', borderRadius: '8px', padding: '8px 14px', fontSize: '12.5px', fontWeight: 700, cursor: 'pointer' }}>
+                {eliminando ? 'Eliminando...' : 'Sí, eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         @media (max-width: 900px) {
           .hist-drawer-slot { flex: 0 0 auto !important; width: 0 !important; min-width: 0 !important; }
@@ -436,7 +510,7 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
 // ─── Ingresos / Salidas / Ventas: Fecha → Movimiento(s) → Productos ──────────
 
 function TablaFechasMovimientos({
-  fechas, fechaUltimo, soloVentas, fechasAbiertas, onToggleFecha, batchesAbiertos, onToggleBatch, puedeEditar, onEditar, busqueda,
+  fechas, fechaUltimo, soloVentas, fechasAbiertas, onToggleFecha, batchesAbiertos, onToggleBatch, puedeEditar, onEditar, onEliminar, busqueda,
 }: {
   fechas: GrupoFecha<GrupoMovimiento>[];
   fechaUltimo?: string;
@@ -447,6 +521,7 @@ function TablaFechasMovimientos({
   onToggleBatch: (key: string) => void;
   puedeEditar: boolean;
   onEditar: (g: GrupoMovimiento) => void;
+  onEliminar: (g: GrupoMovimiento) => void;
   /** Termino de busqueda ya normalizado (minusculas, sin acentos); resalta filas de producto que coinciden. */
   busqueda: string;
 }) {
@@ -485,7 +560,10 @@ function TablaFechasMovimientos({
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button type="button" onClick={() => onToggleFecha(fg.fecha)} style={accionBtn}>Ver</button>
                       {!soloVentas && puedeEditar && unBatch && (
-                        <button type="button" onClick={() => onEditar(unBatch)} style={{ ...accionBtn, color: 'var(--ac)', borderColor: 'var(--ac)' }}>Editar</button>
+                        <>
+                          <button type="button" onClick={() => onEditar(unBatch)} style={{ ...accionBtn, color: 'var(--ac)', borderColor: 'var(--ac)' }}>Editar</button>
+                          <button type="button" onClick={() => onEliminar(unBatch)} title="Eliminar movimiento completo" aria-label="Eliminar movimiento completo" style={accionBtnEliminar}>🗑</button>
+                        </>
                       )}
                     </div>
                   </td>
@@ -519,7 +597,10 @@ function TablaFechasMovimientos({
                                   <span style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }} onClick={e => e.stopPropagation()}>
                                     <button type="button" onClick={() => onToggleBatch(g.key)} style={accionBtn}>Ver</button>
                                     {!soloVentas && puedeEditar && (
-                                      <button type="button" onClick={() => onEditar(g)} style={{ ...accionBtn, color: 'var(--ac)', borderColor: 'var(--ac)' }}>Editar</button>
+                                      <>
+                                        <button type="button" onClick={() => onEditar(g)} style={{ ...accionBtn, color: 'var(--ac)', borderColor: 'var(--ac)' }}>Editar</button>
+                                        <button type="button" onClick={() => onEliminar(g)} title="Eliminar movimiento completo" aria-label="Eliminar movimiento completo" style={accionBtnEliminar}>🗑</button>
+                                      </>
                                     )}
                                   </span>
                                 </div>
@@ -579,7 +660,7 @@ function DetalleProductosMovimiento({ items, esVenta, busqueda }: { items: Movim
 // ─── Inventarios: Fecha → Cámara/Bodega → Productos ──────────────────────────
 
 function TablaFechasInventarios({
-  fechas, fechaUltimo, fechasAbiertas, onToggleFecha, batchesAbiertos, onToggleBatch, puedeEditar, onEditar, busqueda,
+  fechas, fechaUltimo, fechasAbiertas, onToggleFecha, batchesAbiertos, onToggleBatch, puedeEditar, onEditar, onEliminar, busqueda,
 }: {
   fechas: GrupoFecha<GrupoInventario>[];
   fechaUltimo?: string;
@@ -589,6 +670,7 @@ function TablaFechasInventarios({
   onToggleBatch: (key: string) => void;
   puedeEditar: boolean;
   onEditar: (g: GrupoInventario) => void;
+  onEliminar: (g: GrupoInventario) => void;
   busqueda: string;
 }) {
   return (
@@ -624,7 +706,10 @@ function TablaFechasInventarios({
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button type="button" onClick={() => onToggleFecha(fg.fecha)} style={accionBtn}>Ver</button>
                       {puedeEditar && unBatch && (
-                        <button type="button" onClick={() => onEditar(unBatch)} style={{ ...accionBtn, color: 'var(--ac)', borderColor: 'var(--ac)' }}>Editar</button>
+                        <>
+                          <button type="button" onClick={() => onEditar(unBatch)} style={{ ...accionBtn, color: 'var(--ac)', borderColor: 'var(--ac)' }}>Editar</button>
+                          <button type="button" onClick={() => onEliminar(unBatch)} title="Eliminar conteo completo" aria-label="Eliminar conteo completo" style={accionBtnEliminar}>🗑</button>
+                        </>
                       )}
                     </div>
                   </td>
@@ -655,7 +740,10 @@ function TablaFechasInventarios({
                                   <span style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }} onClick={e => e.stopPropagation()}>
                                     <button type="button" onClick={() => onToggleBatch(g.key)} style={accionBtn}>Ver</button>
                                     {puedeEditar && (
-                                      <button type="button" onClick={() => onEditar(g)} style={{ ...accionBtn, color: 'var(--ac)', borderColor: 'var(--ac)' }}>Editar</button>
+                                      <>
+                                        <button type="button" onClick={() => onEditar(g)} style={{ ...accionBtn, color: 'var(--ac)', borderColor: 'var(--ac)' }}>Editar</button>
+                                        <button type="button" onClick={() => onEliminar(g)} title="Eliminar conteo completo" aria-label="Eliminar conteo completo" style={accionBtnEliminar}>🗑</button>
+                                      </>
                                     )}
                                   </span>
                                 </div>
