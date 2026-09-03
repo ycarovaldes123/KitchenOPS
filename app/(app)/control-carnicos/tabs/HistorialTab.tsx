@@ -350,7 +350,7 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
   const fechaUltimo = listaFechasActiva[0]?.fecha;
 
   return (
-    <div style={{ display: 'grid', gap: '14px' }}>
+    <div style={{ display: 'grid', gap: '16px' }}>
       <FiltroRangoFechas
         modo={modo} desde={desde} hasta={hasta} loading={loading}
         onModo={aplicarModo}

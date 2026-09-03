@@ -73,8 +73,8 @@ export default function ControlCarnicosPage() {
   }, []);
 
   return (
-    <div className="page" style={{ paddingBottom: '48px', maxWidth: 'none' }}>
-      <div style={{ marginBottom: '28px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap' }}>
+    <div className="page" style={{ paddingTop: '4px', paddingBottom: '48px', maxWidth: 'none' }}>
+      <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <div style={{
             width: '46px', height: '46px', borderRadius: '13px', background: 'var(--al)', color: 'var(--ac)',
@@ -103,7 +103,7 @@ export default function ControlCarnicosPage() {
       </div>
 
       {tabsDisponibles.length > 1 && (
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '22px' }}>
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
         {tabsDisponibles.map(item => (
           <button
             key={item.key}
