@@ -1,7 +1,14 @@
 import type { createClient } from '@/utils/supabase/server';
 import type { ResumenFila } from '@/types/carnicos';
+import { fetchAllRows } from '@/lib/supabase-paginate';
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+interface MovimientoResumen {
+  producto_id: string;
+  subtipo: string;
+  cantidad: number;
+}
 
 /**
  * Calcula el cuadre de Control Carnicos para el rango [desde, hasta].
@@ -16,7 +23,18 @@ export async function calcularResumenFilas(
 ): Promise<ResumenFila[]> {
   const [productosRes, movimientosRes, invIniRes, invFinRes] = await Promise.all([
     supabase.from('carnicos_productos').select('id,nombre,codigo,tipo,unidad_medida,costo_unitario').eq('activo', true).order('nombre'),
-    supabase.from('carnicos_movimientos').select('producto_id,subtipo,cantidad').gte('fecha', desde).lte('fecha', hasta),
+    // PostgREST corta cada select en ~1000 filas aunque no haya .limit(); un rango de varios dias con
+    // ventas Toteat supera eso facilmente y el cuadre quedaria calculado sobre un subconjunto arbitrario
+    // (haciendo que ediciones/altas del Historial "no se reflejen"). Se pagina con .range() e id estable.
+    fetchAllRows<MovimientoResumen>((from, to) =>
+      supabase
+        .from('carnicos_movimientos')
+        .select('producto_id,subtipo,cantidad')
+        .gte('fecha', desde)
+        .lte('fecha', hasta)
+        .order('id', { ascending: true })
+        .range(from, to)
+    ),
     supabase.from('carnicos_inventarios').select('producto_id,cantidad').eq('fecha', desde).eq('tipo', 'INICIAL'),
     supabase.from('carnicos_inventarios').select('producto_id,cantidad').eq('fecha', hasta).eq('tipo', 'FINAL'),
   ]);
