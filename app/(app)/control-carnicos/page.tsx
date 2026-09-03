@@ -138,7 +138,7 @@ export default function ControlCarnicosPage() {
           {tab === 'ventas' && <VentasTab />}
           {tab === 'inventarios' && <InventariosTab maestros={maestros} />}
           {tab === 'resumen' && <TablaResumenTab onRangoTexto={setRangoHeader} />}
-          {tab === 'historial' && <HistorialTab />}
+          {tab === 'historial' && <HistorialTab maestros={maestros} />}
         </>
       )}
     </div>

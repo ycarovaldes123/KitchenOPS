@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol } from '@/lib/auth-server';
+import { auditLog } from '@/lib/audit';
+import { fetchAllRows } from '@/lib/supabase-paginate';
 import { BODEGAS_CARNICOS } from '@/lib/config-carnicos';
+
+interface InventarioRow {
+  id: string;
+  fecha: string;
+  [key: string]: unknown;
+}
 
 function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -51,13 +59,19 @@ export async function GET(req: NextRequest) {
   const hasta = searchParams.get('hasta') ?? fechaUnica;
   if (!isIsoDate(desde) || !isIsoDate(hasta)) return NextResponse.json({ error: 'Debes enviar fecha (o desde/hasta) en formato YYYY-MM-DD' }, { status: 400 });
 
-  const { data, error } = await supabase
-    .from('carnicos_inventarios')
-    .select('id,fecha,responsable_nombre,turno,bodega,tipo,producto_id,producto_nombre,unidad_medida,cantidad')
-    .gte('fecha', desde)
-    .lte('fecha', hasta)
-    .order('fecha', { ascending: false })
-    .order('bodega');
+  // Un rango de fechas puede superar el limite por defecto de filas de Supabase/PostgREST
+  // (tipicamente 1000), asi que se pagina con .range() para traer el total sin cortar conteos.
+  const { data, error } = await fetchAllRows<InventarioRow>((from, to) =>
+    supabase
+      .from('carnicos_inventarios')
+      .select('id,fecha,responsable_id,responsable_nombre,turno,bodega,tipo,producto_id,producto_nombre,unidad_medida,cantidad')
+      .gte('fecha', desde)
+      .lte('fecha', hasta)
+      .order('fecha', { ascending: false })
+      .order('bodega')
+      .order('id')
+      .range(from, to)
+  );
 
   if (error) return NextResponse.json({ error: `${error.message}. Ejecuta scripts/supabase_control_carnicos.sql en Supabase.` }, { status: 500 });
   return NextResponse.json(data ?? []);
@@ -172,6 +186,15 @@ export async function POST(req: NextRequest) {
     acc[row.bodega] = (acc[row.bodega] ?? 0) + 1;
     return acc;
   }, {});
+
+  await auditLog(supabase, {
+    usuario_email: s.email,
+    rol_usuario: s.rol,
+    accion: 'guardar_inventario_carnico',
+    tabla: 'carnicos_inventarios',
+    datos_nuevos: { fecha, tipo, filas: filas.length, porBodega, productos: filas.map(f => ({ producto_id: f.producto_id, producto_nombre: f.producto_nombre, bodega: f.bodega, cantidad: f.cantidad })) },
+  });
+
   return NextResponse.json({ ok: true, guardados: filas.length, porBodega });
 }
 
@@ -183,6 +206,10 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const id = typeof body.id === 'string' ? body.id : '';
   if (!id) return NextResponse.json({ error: 'Datos invalidos' }, { status: 400 });
+
+  const supabase = await createClient();
+  const { data: existente, error: fetchError } = await supabase.from('carnicos_inventarios').select('*').eq('id', id).single();
+  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
 
   const updates: Record<string, unknown> = {};
   if (body.cantidad !== undefined) {
@@ -196,16 +223,34 @@ export async function PATCH(req: NextRequest) {
     if (!isIsoDate(body.fecha)) return NextResponse.json({ error: 'Fecha invalida' }, { status: 400 });
     updates.fecha = body.fecha;
   }
+  if (body.responsable_id !== undefined) {
+    const responsable_id = typeof body.responsable_id === 'string' ? body.responsable_id : null;
+    if (!responsable_id) return NextResponse.json({ error: 'Responsable invalido' }, { status: 400 });
+    const { data: resp, error: respError } = await supabase.from('responsables').select('id,nombre').eq('id', responsable_id).single();
+    if (respError || !resp) return NextResponse.json({ error: 'Responsable no encontrado en el maestro' }, { status: 400 });
+    updates.responsable_id = resp.id;
+    updates.responsable_nombre = resp.nombre;
+  }
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'Nada para actualizar' }, { status: 400 });
   }
 
-  const supabase = await createClient();
   const { data, error } = await supabase.from('carnicos_inventarios').update(updates).eq('id', id).select('id');
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data || data.length === 0) {
     return NextResponse.json({ error: 'No se pudo actualizar: la fila no existe o falta permiso de UPDATE (revisa la politica RLS de carnicos_inventarios en Supabase).' }, { status: 403 });
   }
+
+  await auditLog(supabase, {
+    usuario_email: s.email,
+    rol_usuario: s.rol,
+    accion: 'editar_inventario_carnico',
+    tabla: 'carnicos_inventarios',
+    registro_id: id,
+    datos_anteriores: existente,
+    datos_nuevos: updates,
+  });
+
   return NextResponse.json({ ok: true });
 }
 
@@ -219,10 +264,21 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'Datos invalidos' }, { status: 400 });
 
   const supabase = await createClient();
+  const { data: existente } = await supabase.from('carnicos_inventarios').select('*').eq('id', id).single();
+
   const { data, error } = await supabase.from('carnicos_inventarios').delete().eq('id', id).select('id');
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data || data.length === 0) {
     return NextResponse.json({ error: 'No se pudo eliminar: la fila no existe o falta permiso de DELETE (revisa la politica RLS de carnicos_inventarios en Supabase).' }, { status: 403 });
   }
+
+  await auditLog(supabase, {
+    usuario_email: s.email,
+    rol_usuario: s.rol,
+    accion: 'eliminar_inventario_carnico',
+    tabla: 'carnicos_inventarios',
+    registro_id: id,
+    datos_anteriores: existente ?? undefined,
+  });
   return NextResponse.json({ ok: true });
 }

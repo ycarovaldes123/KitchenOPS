@@ -1,7 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol } from '@/lib/auth-server';
+import { auditLog } from '@/lib/audit';
+import { fetchAllRows } from '@/lib/supabase-paginate';
 import { BODEGAS_CARNICOS, SUBTIPOS_POR_MOVIMIENTO } from '@/lib/config-carnicos';
+
+const SELECT_MOVIMIENTO = 'id,fecha,responsable_id,responsable_nombre,turno,observacion,bodega,movimiento,subtipo,producto_id,producto_nombre,unidad_medida,cantidad,origen,created_at';
+
+interface MovimientoRow {
+  id: string;
+  fecha: string;
+  created_at: string;
+  [key: string]: unknown;
+}
 
 function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -17,20 +28,32 @@ export async function GET(req: NextRequest) {
   const desde = searchParams.get('desde') ?? fechaUnica;
   const hasta = searchParams.get('hasta') ?? fechaUnica;
 
-  let query = supabase
-    .from('carnicos_movimientos')
-    .select('id,fecha,responsable_nombre,turno,observacion,bodega,movimiento,subtipo,producto_nombre,unidad_medida,cantidad,origen,created_at')
-    .order('fecha', { ascending: false })
-    .order('created_at', { ascending: false });
-
   if (desde && hasta) {
     if (!isIsoDate(desde) || !isIsoDate(hasta)) return NextResponse.json({ error: 'Fechas invalidas' }, { status: 400 });
-    query = query.gte('fecha', desde).lte('fecha', hasta);
-  } else {
-    query = query.limit(50);
+    // Un rango de fechas puede superar el limite por defecto de filas de Supabase/PostgREST
+    // (tipicamente 1000, ej. un mes con ventas Toteat), asi que se pagina con .range() para
+    // traer el total sin cortar movimientos silenciosamente.
+    const { data, error } = await fetchAllRows<MovimientoRow>((from, to) =>
+      supabase
+        .from('carnicos_movimientos')
+        .select(SELECT_MOVIMIENTO)
+        .gte('fecha', desde)
+        .lte('fecha', hasta)
+        .order('fecha', { ascending: false })
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, to)
+    );
+    if (error) return NextResponse.json({ error: `${error.message}. Ejecuta scripts/supabase_control_carnicos.sql en Supabase.` }, { status: 500 });
+    return NextResponse.json(data ?? []);
   }
 
-  const { data, error } = await query;
+  const { data, error } = await supabase
+    .from('carnicos_movimientos')
+    .select(SELECT_MOVIMIENTO)
+    .order('fecha', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(50);
   if (error) return NextResponse.json({ error: `${error.message}. Ejecuta scripts/supabase_control_carnicos.sql en Supabase.` }, { status: 500 });
   return NextResponse.json(data ?? []);
 }
@@ -77,28 +100,39 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = await createClient();
+  const nuevaFila = {
+    fecha,
+    responsable_id,
+    responsable_nombre,
+    turno,
+    observacion,
+    bodega,
+    movimiento,
+    subtipo,
+    producto_id,
+    producto_nombre,
+    unidad_medida,
+    cantidad,
+    origen: 'manual' as const,
+    created_by: s.email,
+  };
   const { data, error } = await supabase
     .from('carnicos_movimientos')
-    .insert({
-      fecha,
-      responsable_id,
-      responsable_nombre,
-      turno,
-      observacion,
-      bodega,
-      movimiento,
-      subtipo,
-      producto_id,
-      producto_nombre,
-      unidad_medida,
-      cantidad,
-      origen: 'manual',
-      created_by: s.email,
-    })
+    .insert(nuevaFila)
     .select('id')
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await auditLog(supabase, {
+    usuario_email: s.email,
+    rol_usuario: s.rol,
+    accion: 'crear_movimiento_carnico',
+    tabla: 'carnicos_movimientos',
+    registro_id: data.id,
+    datos_nuevos: nuevaFila,
+  });
+
   return NextResponse.json({ id: data.id }, { status: 201 });
 }
 
@@ -109,24 +143,74 @@ export async function PATCH(req: NextRequest) {
 
   const body = await req.json().catch(() => ({}));
   const id = typeof body.id === 'string' ? body.id : '';
-  const cantidad = Number(body.cantidad);
   if (!id) return NextResponse.json({ error: 'Datos invalidos' }, { status: 400 });
-  if (!Number.isFinite(cantidad) || cantidad <= 0) {
-    return NextResponse.json({ error: 'La cantidad debe ser mayor a 0' }, { status: 400 });
-  }
 
   const supabase = await createClient();
-  const { data: existente, error: fetchError } = await supabase.from('carnicos_movimientos').select('origen').eq('id', id).single();
+  const { data: existente, error: fetchError } = await supabase.from('carnicos_movimientos').select('*').eq('id', id).single();
   if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
   if (existente?.origen === 'venta_toteat') {
     return NextResponse.json({ error: 'Las salidas por venta se revierten desde la pestaña Ventas, no se editan directamente.' }, { status: 400 });
   }
 
-  const { data: actualizado, error } = await supabase.from('carnicos_movimientos').update({ cantidad }).eq('id', id).select('id');
+  const updates: Record<string, unknown> = {};
+
+  if (body.cantidad !== undefined) {
+    const cantidad = Number(body.cantidad);
+    if (!Number.isFinite(cantidad) || cantidad <= 0) {
+      return NextResponse.json({ error: 'La cantidad debe ser mayor a 0' }, { status: 400 });
+    }
+    updates.cantidad = cantidad;
+  }
+
+  if (body.fecha !== undefined) {
+    if (!isIsoDate(body.fecha)) return NextResponse.json({ error: 'Fecha invalida' }, { status: 400 });
+    updates.fecha = body.fecha;
+  }
+
+  if (body.subtipo !== undefined) {
+    const subtipo = String(body.subtipo || '').trim().toUpperCase();
+    const movimientoActual = existente.movimiento as 'INGRESO' | 'SALIDA';
+    const subtiposValidos = SUBTIPOS_POR_MOVIMIENTO[movimientoActual].map(s2 => s2.value);
+    if (!subtiposValidos.includes(subtipo as never)) {
+      return NextResponse.json({ error: 'Subtipo no corresponde al movimiento del registro' }, { status: 400 });
+    }
+    updates.subtipo = subtipo;
+  }
+
+  if (body.observacion !== undefined) {
+    updates.observacion = String(body.observacion ?? '').trim();
+  }
+
+  if (body.responsable_id !== undefined) {
+    const responsable_id = typeof body.responsable_id === 'string' ? body.responsable_id : null;
+    if (!responsable_id) return NextResponse.json({ error: 'Responsable invalido' }, { status: 400 });
+    // Se resuelve el nombre canonico desde el maestro de responsables (evita duplicados por texto libre).
+    const { data: resp, error: respError } = await supabase.from('responsables').select('id,nombre').eq('id', responsable_id).single();
+    if (respError || !resp) return NextResponse.json({ error: 'Responsable no encontrado en el maestro' }, { status: 400 });
+    updates.responsable_id = resp.id;
+    updates.responsable_nombre = resp.nombre;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: 'Nada para actualizar' }, { status: 400 });
+  }
+
+  const { data: actualizado, error } = await supabase.from('carnicos_movimientos').update(updates).eq('id', id).select('id');
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!actualizado || actualizado.length === 0) {
     return NextResponse.json({ error: 'No se pudo actualizar: la fila no existe o falta permiso de UPDATE (revisa la politica RLS de carnicos_movimientos en Supabase).' }, { status: 403 });
   }
+
+  await auditLog(supabase, {
+    usuario_email: s.email,
+    rol_usuario: s.rol,
+    accion: 'editar_movimiento_carnico',
+    tabla: 'carnicos_movimientos',
+    registro_id: id,
+    datos_anteriores: existente,
+    datos_nuevos: updates,
+  });
+
   return NextResponse.json({ ok: true });
 }
 
@@ -140,7 +224,7 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'Datos invalidos' }, { status: 400 });
 
   const supabase = await createClient();
-  const { data: movimiento, error: fetchError } = await supabase.from('carnicos_movimientos').select('origen').eq('id', id).single();
+  const { data: movimiento, error: fetchError } = await supabase.from('carnicos_movimientos').select('*').eq('id', id).single();
   if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
   if (movimiento?.origen === 'venta_toteat') {
     return NextResponse.json({ error: 'Las salidas por venta se revierten desde la pestaña Ventas, no se borran directamente.' }, { status: 400 });
@@ -151,5 +235,15 @@ export async function DELETE(req: NextRequest) {
   if (!borrado || borrado.length === 0) {
     return NextResponse.json({ error: 'No se pudo eliminar: la fila no existe o falta permiso de DELETE (revisa la politica RLS de carnicos_movimientos en Supabase).' }, { status: 403 });
   }
+
+  await auditLog(supabase, {
+    usuario_email: s.email,
+    rol_usuario: s.rol,
+    accion: 'eliminar_movimiento_carnico',
+    tabla: 'carnicos_movimientos',
+    registro_id: id,
+    datos_anteriores: movimiento,
+  });
+
   return NextResponse.json({ ok: true });
 }
