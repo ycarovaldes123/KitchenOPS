@@ -1,7 +1,7 @@
 import type { createClient } from '@/utils/supabase/server';
 import type { ResumenFila } from '@/types/carnicos';
 import { fetchAllRows } from '@/lib/supabase-paginate';
-import { sumarDiasISO } from '@/lib/config-carnicos';
+import { inicioMesISO } from '@/lib/config-carnicos';
 import { resolverArrastreInicial, type InvSnapshotRow } from '@/lib/carnicos-inventario-inicial';
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -119,16 +119,12 @@ function sumarPorProducto(rows: { producto_id: string; cantidad: number }[]) {
   return map;
 }
 
-// Ventana hacia atras para buscar el ultimo FINAL/INICIAL de cada producto. Un producto
-// que no se cuenta hace mas de dos meses no arrastra nada (se toma como 0).
-const CARRY_FORWARD_LOOKBACK_DIAS = 62;
-
 /**
  * Para los productos sin inventario INICIAL manual en `fecha`, resuelve que inventario
- * FINAL del dia anterior corresponde arrastrar como inventario inicial, respetando el
- * corte de ciclo: si el producto tiene un INICIAL manual mas reciente que su ultimo
- * FINAL (ej. inventario inicial mensual cargado el 01), NO se arrastra el cierre del
- * mes anterior. Ver lib/carnicos-inventario-inicial.ts.
+ * FINAL corresponde arrastrar como inventario inicial. El candidato SOLO puede ser un
+ * FINAL del MISMO mes y año que `fecha` y anterior a ella: un FINAL de un mes anterior
+ * nunca se arrastra (al cambiar de mes el inicial arranca en 0 salvo carga manual).
+ * Ver lib/carnicos-inventario-inicial.ts.
  */
 async function calcularCarryForward(
   supabase: SupabaseServerClient,
@@ -138,14 +134,17 @@ async function calcularCarryForward(
   const result = new Map<string, number>();
   if (productoIds.length === 0) return result;
 
-  const desdeVentana = sumarDiasISO(fecha, -CARRY_FORWARD_LOOKBACK_DIAS);
+  // Solo el mes en curso: se consulta desde el dia 1 del mes de `fecha` hasta el dia
+  // anterior. Nunca se traen FINAL de meses previos.
+  const primerDiaDelMes = inicioMesISO(fecha);
 
-  const { data, error } = await fetchAllRows<{ producto_id: string; fecha: string; tipo: string; cantidad: number }>((from, to) =>
+  const { data, error } = await fetchAllRows<{ producto_id: string; fecha: string; cantidad: number }>((from, to) =>
     supabase
       .from('carnicos_inventarios')
-      .select('producto_id,fecha,tipo,cantidad')
+      .select('producto_id,fecha,cantidad')
+      .eq('tipo', 'FINAL')
       .in('producto_id', productoIds)
-      .gte('fecha', desdeVentana)
+      .gte('fecha', primerDiaDelMes)
       .lt('fecha', fecha)
       .order('id', { ascending: true })
       .range(from, to)
@@ -154,9 +153,8 @@ async function calcularCarryForward(
 
   const rowsPorProducto = new Map<string, InvSnapshotRow[]>();
   for (const row of data ?? []) {
-    if (row.tipo !== 'INICIAL' && row.tipo !== 'FINAL') continue;
     const lista = rowsPorProducto.get(row.producto_id) ?? [];
-    lista.push({ fecha: row.fecha, tipo: row.tipo, cantidad: Number(row.cantidad) });
+    lista.push({ fecha: row.fecha, tipo: 'FINAL', cantidad: Number(row.cantidad) });
     rowsPorProducto.set(row.producto_id, lista);
   }
 
