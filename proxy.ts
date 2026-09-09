@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { updateSession } from '@/utils/supabase/middleware';
-import { RMAP, RUTAS_ROL, RUTA_INICIO } from '@/lib/roles';
+import { RMAP, RUTAS_ROL, RUTA_INICIO, RUTA_INICIO_COMUN } from '@/lib/roles';
 
 const PUBLIC_PATHS = ['/login', '/auth', '/logout'];
 
@@ -13,11 +13,11 @@ export async function proxy(req: NextRequest) {
   // Keep Supabase session fresh
   const { supabaseResponse, user } = await updateSession(req);
 
-  // Public paths — redirect already-authed users to their home
+  // Public paths — redirect already-authed users a la pantalla Inicio
   if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) {
     if (user) {
       const rol = RMAP[user.email ?? ''];
-      if (rol) return NextResponse.redirect(new URL(RUTA_INICIO[rol], req.url));
+      if (rol) return NextResponse.redirect(new URL(RUTA_INICIO_COMUN, req.url));
     }
     return supabaseResponse;
   }
@@ -33,15 +33,15 @@ export async function proxy(req: NextRequest) {
     return NextResponse.redirect(new URL('/login?error=unauthorized', req.url));
   }
 
-  // Root redirect
+  // Root redirect -> pantalla Inicio
   if (pathname === '/') {
-    return NextResponse.redirect(new URL(RUTA_INICIO[rol], req.url));
+    return NextResponse.redirect(new URL(RUTA_INICIO_COMUN, req.url));
   }
 
-  // Check module access
+  // Check module access. La pantalla Inicio esta disponible para cualquier rol autenticado.
   const segmento = '/' + pathname.split('/')[1];
   const permitidas = RUTAS_ROL[rol];
-  if (segmento !== '/' && !permitidas.some(r => pathname.startsWith(r))) {
+  if (segmento !== '/' && segmento !== RUTA_INICIO_COMUN && !permitidas.some(r => pathname.startsWith(r))) {
     return NextResponse.redirect(new URL(RUTA_INICIO[rol], req.url));
   }
 

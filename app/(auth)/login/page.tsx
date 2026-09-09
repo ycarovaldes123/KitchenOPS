@@ -3,7 +3,7 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
-import { RMAP, RUTA_INICIO } from '@/lib/roles';
+import { RMAP, RUTA_INICIO_COMUN } from '@/lib/roles';
 
 const ERROR_MSG: Record<string, string> = {
   unauthorized: 'Este correo no tiene acceso a KitchenOps.',
@@ -78,7 +78,7 @@ function LoginForm() {
       return;
     }
 
-    router.push(RUTA_INICIO[rol]);
+    router.push(RUTA_INICIO_COMUN);
   }
 
   return (

@@ -24,11 +24,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <RolProvider rol={rol}>
     <>
+      {/* Ancho de la barra lateral: 220px expandida, 72px contraida. El valor real lo fija
+          Sidebar (y el script de abajo antes del primer render, para evitar parpadeo). */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `try{if(localStorage.getItem('kops-sidebar-collapsed')==='1'){document.documentElement.style.setProperty('--sidebar-w','72px');}}catch(e){}`,
+        }}
+      />
       <style>{`
+        :root { --sidebar-w: 220px; }
         .app-sidebar   { display: flex !important; }
         .app-topbar    { display: none  !important; }
         .app-bottomnav { display: none  !important; }
-        .app-main      { margin-left: 220px; }
+        .app-main      { margin-left: var(--sidebar-w); transition: margin-left .18s ease; }
 
         @media (max-width: 1023px) {
           .app-sidebar   { display: none  !important; }

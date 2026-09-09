@@ -1,26 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import ExcelJS from 'exceljs';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol } from '@/lib/auth-server';
 import { calcularResumenFilas, ocultarValorizacion } from '@/lib/carnicos-resumen.server';
+import { construirReporteWorkbook } from '@/lib/carnicos-reporte-excel';
 import { formatFechaCompacta } from '@/lib/config-carnicos';
 import { puedeHacer } from '@/lib/permissions';
-
-const ESTADO_LABEL: Record<string, string> = { ok: 'OK', alerta: 'Alerta', sin_conteo: 'Sin conteo final' };
-const ROJO = 'FFB91C1C';
-const ROJO_FONDO = 'FFFEE2E2';
-
-const THIN_BORDER: Partial<ExcelJS.Borders> = {
-  top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' },
-};
 
 function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
 // GET /api/control-carnicos/resumen/reporte?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
-// Todas las columnas de la Tabla Resumen, solo para el rango de fecha filtrado. Estado "Alerta"
-// se destaca en rojo y la columna Diferencia sale con letra roja.
+// Todas las columnas de la Tabla Resumen para el rango filtrado. La columna CALCULO lleva la
+// formula real de Excel (inv. inicial + ingresos - salidas) y DIFERENCIA depende de ella por
+// formula, de modo que si se edita a mano una cantidad, Excel recalcula CALCULO y DIFERENCIA.
+// Ver lib/carnicos-reporte-excel.ts para el detalle de formatos y formulas.
 export async function GET(req: NextRequest) {
   const s = await requireRol(['admin', 'bodega']);
   if (!s.ok) return s.response;
@@ -43,66 +37,7 @@ export async function GET(req: NextRequest) {
   const verCostos = puedeHacer(s.rol, 'controlCarnicos', 'verCostos');
   if (!verCostos) filas = ocultarValorizacion(filas);
 
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('REPORTE', {
-    pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 },
-  });
-
-  ws.columns = [
-    { header: 'Producto', key: 'producto', width: 32 },
-    { header: 'Inv. Inicial', key: 'inv_inicial', width: 12 },
-    { header: 'Ingresos', key: 'ingresos', width: 10 },
-    { header: 'Ventas', key: 'ventas', width: 10 },
-    { header: 'Produccion', key: 'produccion', width: 11 },
-    { header: 'Mermas', key: 'mermas', width: 10 },
-    { header: 'Colacion', key: 'colacion', width: 10 },
-    { header: 'Calculo', key: 'calculo', width: 10 },
-    { header: 'Inv. Final', key: 'inv_final', width: 10 },
-    { header: 'Diferencia', key: 'diferencia', width: 11 },
-    ...(verCostos ? [{ header: 'Diferencia $', key: 'diferencia_valor', width: 13 }] : []),
-    { header: 'Estado', key: 'estado', width: 16 },
-  ];
-
-  for (const f of filas) {
-    const row = ws.addRow({
-      producto: f.producto_nombre,
-      inv_inicial: f.inv_inicial,
-      ingresos: f.ingresos,
-      ventas: f.ventas,
-      produccion: f.produccion,
-      mermas: f.mermas,
-      colacion: f.colacion,
-      calculo: f.calculo,
-      inv_final: f.inv_final,
-      diferencia: f.diferencia,
-      ...(verCostos ? { diferencia_valor: f.diferencia_valor } : {}),
-      estado: ESTADO_LABEL[f.estado] ?? f.estado,
-    });
-
-    // Diferencia: roja para cualquier valor distinto de 0 (positivo o negativo); el 0 queda en negro normal.
-    if (f.diferencia !== null && Math.abs(f.diferencia) > 0.0001) {
-      row.getCell('diferencia').font = { color: { argb: ROJO } };
-      if (verCostos) row.getCell('diferencia_valor').font = { color: { argb: ROJO } };
-    }
-
-    if (f.estado === 'alerta') {
-      const estadoCell = row.getCell('estado');
-      estadoCell.font = { bold: true, color: { argb: ROJO } };
-      estadoCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ROJO_FONDO } };
-    }
-  }
-
-  const headerRow = ws.getRow(1);
-  headerRow.font = { bold: true };
-  headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
-  headerRow.eachCell({ includeEmpty: true }, cell => {
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE5E7EB' } };
-  });
-
-  ws.eachRow(row => {
-    row.eachCell({ includeEmpty: true }, cell => { cell.border = THIN_BORDER; });
-  });
-
+  const wb = construirReporteWorkbook(filas, verCostos);
   const buffer = await wb.xlsx.writeBuffer();
   const filename = desde === hasta
     ? `Reporte_${formatFechaCompacta(desde)}.xlsx`
