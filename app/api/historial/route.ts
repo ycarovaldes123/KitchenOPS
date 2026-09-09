@@ -5,6 +5,14 @@ import { getSessionRol } from '@/lib/auth-server';
 const SEARCH_FETCH_LIMIT = 5000;
 const SUMMARY_FETCH_LIMIT = 10000;
 
+// PostgREST responde 416 (code PGRST103) cuando el offset del .range() cae despues de la ultima
+// fila: pasa al paginar mas alla del final (ej. la lista se acorto entre "cargar mas"). No es un
+// error real, es una pagina vacia.
+function esRangoFuera(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return error.code === 'PGRST103' || /range not satisfiable/i.test(error.message ?? '');
+}
+
 function normalizarBusqueda(value: string) {
   return value
     .normalize('NFD')
@@ -178,7 +186,7 @@ export async function GET(req: NextRequest) {
       return responderConBusqueda(data ?? [], busqueda, offset, limit, tipo, verCostos, count);
     }
     const { data, error, count } = await q.range(offset, offset + limit - 1);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error && !esRangoFuera(error)) return NextResponse.json({ error: error.message }, { status: 500 });
     let sq = supabase
       .from('produccion')
       .select(`id,fecha,detalle_produccion(${detalleSelect})`)
@@ -211,7 +219,7 @@ export async function GET(req: NextRequest) {
       return responderConBusqueda(data ?? [], busqueda, offset, limit, tipo, verCostos, count);
     }
     const { data, error, count } = await q.range(offset, offset + limit - 1);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error && !esRangoFuera(error)) return NextResponse.json({ error: error.message }, { status: 500 });
     let sq = supabase
       .from('colacion')
       .select(parentSelect)
@@ -249,7 +257,7 @@ export async function GET(req: NextRequest) {
         ? await buildQuery(baseSelect).limit(SEARCH_FETCH_LIMIT)
         : await buildQuery(baseSelect).range(offset, offset + limit - 1);
     }
-    if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
+    if (result.error && !esRangoFuera(result.error)) return NextResponse.json({ error: result.error.message }, { status: 500 });
     if (busqueda) return responderConBusqueda(result.data ?? [], busqueda, offset, limit, tipo, verCostos, result.count);
     let summaryResult = await buildQuery(platosSelect).limit(SUMMARY_FETCH_LIMIT);
     if (summaryResult.error && summaryResult.error.message.includes('detalle_mermas_platos')) {
@@ -279,7 +287,7 @@ export async function GET(req: NextRequest) {
       return responderConBusqueda(data ?? [], busqueda, offset, limit, tipo, verCostos, count);
     }
     const { data, error, count } = await q.range(offset, offset + limit - 1);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error && !esRangoFuera(error)) return NextResponse.json({ error: error.message }, { status: 500 });
     let sq = supabase
       .from('frutas')
       .select(parentSelect)
@@ -307,7 +315,7 @@ export async function GET(req: NextRequest) {
       return responderConBusqueda(data ?? [], busqueda, offset, limit, tipo, verCostos, count);
     }
     const { data, error, count } = await q.range(offset, offset + limit - 1);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error && !esRangoFuera(error)) return NextResponse.json({ error: error.message }, { status: 500 });
     let sq = supabase
       .from('inventarios')
       .select(parentSelect)
