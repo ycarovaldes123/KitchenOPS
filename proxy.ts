@@ -7,8 +7,13 @@ const PUBLIC_PATHS = ['/login', '/auth', '/logout'];
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // API routes do their own auth validation
-  if (pathname.startsWith('/api/')) return NextResponse.next();
+  // API routes hacen su propia validacion de rol, pero igual deben pasar por updateSession:
+  // asi el token de Supabase se refresca antes de que corra el route handler y un guardado
+  // no falla con "No autenticado" cuando el access token expiro (sin recargar la pagina).
+  if (pathname.startsWith('/api/')) {
+    const { supabaseResponse } = await updateSession(req);
+    return supabaseResponse;
+  }
 
   // Keep Supabase session fresh
   const { supabaseResponse, user } = await updateSession(req);
