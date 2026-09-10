@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { calcCostoProduccionPP, calcTotalPP, formatCLP, formatPct, calcMerma } from '@/lib/calculos';
 import { useRol } from '@/components/RolProvider';
 import { MOTIVO_MERMA_COLOR, normalizeMotivoMerma } from '@/lib/mermas';
@@ -2029,9 +2029,15 @@ export default function HistorialPage() {
   const [maestros, setMaestros] = useState<{ productos: Record<string, unknown>[]; pps: Record<string, unknown>[] }>({ productos: [], pps: [] });
   const busqueda = busquedas[tab] ?? '';
 
+  // Cada llamada a cargar() reclama un id; si mientras espera la respuesta se dispara otra
+  // consulta (ej. el usuario cambia "desde" y luego "hasta", lanzando dos fetch solapados),
+  // la respuesta que llega tarde se descarta en vez de sobrescribir la tabla con un rango viejo.
+  const reqIdRef = useRef(0);
+
   const cargar = useCallback(async (t: Tab, d: string, h: string, q: string, opts?: { append?: boolean; offset?: number }) => {
     const append = opts?.append ?? false;
     const offset = opts?.offset ?? 0;
+    const reqId = ++reqIdRef.current;
     if (append) setLoadingMore(true);
     else { setLoading(true); setErr(''); setDatos([]); setSummary(null); }
     try {
@@ -2045,6 +2051,7 @@ export default function HistorialPage() {
       if (q.trim()) params.set('q', q.trim());
       const res = await fetch(`/api/historial?${params.toString()}`);
       const data = await res.json();
+      if (reqId !== reqIdRef.current) return; // llegó una consulta más nueva: esta respuesta ya no aplica
       if (!res.ok) throw new Error(data.error);
       const items = data.items ?? [];
       setDatos(prev => append ? [...prev, ...items] : items);
@@ -2053,10 +2060,13 @@ export default function HistorialPage() {
       setHasMore(Boolean(data.hasMore));
       setNextOffset(data.nextOffset ?? (offset + items.length));
     } catch (e: unknown) {
+      if (reqId !== reqIdRef.current) return;
       setErr(e instanceof Error ? e.message : 'Error cargando datos');
     } finally {
-      if (append) setLoadingMore(false);
-      else setLoading(false);
+      if (reqId === reqIdRef.current) {
+        if (append) setLoadingMore(false);
+        else setLoading(false);
+      }
     }
   }, []);
 
@@ -2076,9 +2086,11 @@ export default function HistorialPage() {
   }, []);
 
   useEffect(() => {
+    // Debounce fijo: al ajustar el rango se tocan dos campos (desde y hasta) casi seguidos;
+    // con 250 ms se agrupan en una sola consulta en vez de lanzar dos fetch solapados.
     const timer = window.setTimeout(() => {
       void cargar(tab, desde, hasta, busqueda);
-    }, busqueda ? 250 : 0);
+    }, 250);
     return () => window.clearTimeout(timer);
   }, [tab, desde, hasta, busqueda, cargar]);
   const refresh = useCallback(() => cargar(tab, desde, hasta, busqueda), [tab, desde, hasta, busqueda, cargar]);
