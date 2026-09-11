@@ -372,7 +372,7 @@ export default function TablaResumenTab({ onRangoTexto }: { onRangoTexto?: (text
 
       {filas && rangoConsultado && kpis && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '12px' }}>
+          <div className="carn-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '12px' }}>
             <KpiCard label="Productos totales" value={String(kpis.total)} unit="productos" iconBg="var(--al)" iconColor="var(--ac)" icon={<NavIcon name="grid" size={18} />} />
             <KpiCard label="Con diferencia" value={String(kpis.conDiferencia)} sub={`${fmt(kpis.pctConDiferencia)}% del total`} iconBg="#FEF3C7" iconColor="#CA8A04" icon={<NavIcon name="trending" size={18} />} />
             <KpiCard label="Diferencia total (KG)" value={`${kpis.diferenciaKg > 0 ? '+' : ''}${fmt(kpis.diferenciaKg)} KG`} color={kpis.diferenciaKg < 0 ? COLOR_NEGATIVO : kpis.diferenciaKg > 0 ? COLOR_POSITIVO : 'var(--tx)'} iconBg="#FEE2E2" iconColor="#B91C1C" icon={<NavIcon name="barchart" size={18} />} />
@@ -406,9 +406,9 @@ export default function TablaResumenTab({ onRangoTexto }: { onRangoTexto?: (text
           </div>
 
           <section style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '14px', overflow: 'hidden' }}>
-          <div style={{ padding: '14px 20px', borderBottom: `1px solid ${BORDE_FILA}`, display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+          <div className="carn-filtros" style={{ padding: '14px 20px', borderBottom: `1px solid ${BORDE_FILA}`, display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ position: 'relative' }}>
+            <div className="carn-buscar" style={{ position: 'relative' }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)', color: 'var(--ts)', pointerEvents: 'none' }}>
                 <circle cx="11" cy="11" r="7" />
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -464,31 +464,36 @@ export default function TablaResumenTab({ onRangoTexto }: { onRangoTexto?: (text
             </div>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
+          <div className="carn-tabla-wrap" style={{ overflowX: 'auto' }}>
             <table className="carnicos-table" style={{
               width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed',
               minWidth: `${COL_PRODUCTO + COL_INICIAL + COL_INGRESOS + COL_VENTAS + COL_PRODUCCION + COL_MERMAS + COL_COLACION + COL_CALCULO + COL_FINAL + COL_DIFERENCIA + (verCostos ? COL_IMPACTO : 0) + COL_ESTADO}px`,
             }}>
               <colgroup>
-                <col style={{ width: `${COL_PRODUCTO}px` }} />
-                <col style={{ width: `${COL_INICIAL}px` }} />
-                <col style={{ width: `${COL_INGRESOS}px` }} />
-                <col style={{ width: `${COL_VENTAS}px` }} />
-                <col style={{ width: `${COL_PRODUCCION}px` }} />
-                <col style={{ width: `${COL_MERMAS}px` }} />
-                <col style={{ width: `${COL_COLACION}px` }} />
-                <col style={{ width: `${COL_CALCULO}px` }} />
-                <col style={{ width: `${COL_FINAL}px` }} />
-                <col style={{ width: `${COL_DIFERENCIA}px` }} />
-                {verCostos && <col style={{ width: `${COL_IMPACTO}px` }} />}
-                <col style={{ width: `${COL_ESTADO}px` }} />
+                <col className="cc-col-producto" style={{ width: `${COL_PRODUCTO}px` }} />
+                <col className="cc-col-inicial" style={{ width: `${COL_INICIAL}px` }} />
+                <col className="cc-col-mov" style={{ width: `${COL_INGRESOS}px` }} />
+                <col className="cc-col-mov" style={{ width: `${COL_VENTAS}px` }} />
+                <col className="cc-col-mov" style={{ width: `${COL_PRODUCCION}px` }} />
+                <col className="cc-col-mov" style={{ width: `${COL_MERMAS}px` }} />
+                <col className="cc-col-mov" style={{ width: `${COL_COLACION}px` }} />
+                <col className="cc-col-calculo" style={{ width: `${COL_CALCULO}px` }} />
+                <col className="cc-col-final" style={{ width: `${COL_FINAL}px` }} />
+                <col className="cc-col-difkg" style={{ width: `${COL_DIFERENCIA}px` }} />
+                {verCostos && <col className="cc-col-dif" style={{ width: `${COL_IMPACTO}px` }} />}
+                <col className="cc-col-estado" style={{ width: `${COL_ESTADO}px` }} />
               </colgroup>
               <thead>
                 <tr style={{ background: 'var(--bg)' }}>
                   <th style={{ ...thHeadLeft, position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1 }}>Producto</th>
                   <th style={{ ...thHead, position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1 }}>Inventario</th>
                   <th colSpan={5} style={{ ...thGroup, borderLeft: `1px solid ${BORDE_GRUPO}`, position: 'sticky', top: 0, zIndex: 1 }}>Movimientos del período</th>
-                  <th colSpan={verCostos ? 4 : 3} style={{ ...thGroup, borderLeft: `1px solid ${BORDE_GRUPO}`, background: FONDO_CUADRE, position: 'sticky', top: 0, zIndex: 1 }}>Cuadre</th>
+                  <th colSpan={3} style={{ ...thGroup, borderLeft: `1px solid ${BORDE_GRUPO}`, background: FONDO_CUADRE, position: 'sticky', top: 0, zIndex: 1 }}>Cuadre</th>
+                  {verCostos && (
+                    <th rowSpan={2} className="cc-money" style={{ ...thHead, verticalAlign: 'middle', borderLeft: `1px solid ${BORDE_GRUPO}`, background: FONDO_CUADRE, position: 'sticky', top: 0, zIndex: 1 }}>
+                      <span className="cc-lg">Diferencia ($)</span><span className="cc-sm">Dif. $</span>
+                    </th>
+                  )}
                   <th rowSpan={2} style={{ ...thHead, verticalAlign: 'middle', position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1 }}>Estado</th>
                 </tr>
                 <tr style={{ background: 'var(--bg)' }}>
@@ -501,8 +506,9 @@ export default function TablaResumenTab({ onRangoTexto }: { onRangoTexto?: (text
                   <th style={{ ...thHead, position: 'sticky', top: '37px', background: 'var(--bg)', zIndex: 1 }}>Colación</th>
                   <th style={{ ...thHead, borderLeft: `1px solid ${BORDE_GRUPO}`, background: FONDO_CUADRE, position: 'sticky', top: '37px', zIndex: 1 }}>Cálculo</th>
                   <th style={{ ...thHead, background: FONDO_CUADRE, position: 'sticky', top: '37px', zIndex: 1 }}>Final</th>
-                  <th style={{ ...thHead, background: FONDO_CUADRE, position: 'sticky', top: '37px', zIndex: 1 }}>Diferencia</th>
-                  {verCostos && <th style={{ ...thHead, background: FONDO_CUADRE, position: 'sticky', top: '37px', zIndex: 1 }}>Impacto $</th>}
+                  <th style={{ ...thHead, background: FONDO_CUADRE, position: 'sticky', top: '37px', zIndex: 1 }}>
+                    <span className="cc-lg">Diferencia</span><span className="cc-sm">Dif.</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -518,21 +524,26 @@ export default function TablaResumenTab({ onRangoTexto }: { onRangoTexto?: (text
                   const diferenciaColor = f.diferencia === null || Math.abs(f.diferencia) < 0.0001
                     ? 'var(--tx)'
                     : f.diferencia < 0 ? COLOR_NEGATIVO : COLOR_POSITIVO;
+                  // Diferencia ($): color solo en el numero — naranja si es positiva (revisar), rojo si es
+                  // negativa, neutro en cero / sin conteo. Se calcula sobre el valor monetario real.
+                  const impactoColor = f.diferencia_valor === null || Math.abs(f.diferencia_valor) < 0.5
+                    ? 'var(--tx)'
+                    : f.diferencia_valor < 0 ? COLOR_NEGATIVO : COLOR_POSITIVO;
                   // Movimientos en 0 se muestran como "—" (sin informacion) en vez de "0 KG", para no saturar
                   // la lectura -- el valor real sigue siendo 0 para todos los calculos.
                   const movCell = (valor: number) => (
                     Math.abs(valor) < 0.0001
                       ? <span style={{ color: 'var(--ts)' }}>—</span>
-                      : <>{fmt(valor)}<span style={unidadSpan}>{f.unidad_medida}</span></>
+                      : <>{fmt(valor)}<span className="carn-um-mov" style={unidadSpan}>{f.unidad_medida}</span></>
                   );
                   return (
                     <tr key={f.producto_id} style={{ borderBottom: `1px solid ${BORDE_FILA}` }}>
                       <td style={tdProducto}>
                         <div>{f.producto_nombre}</div>
-                        <div style={{ fontWeight: 400, fontSize: '11px', color: 'var(--ts)' }}>{f.unidad_medida}</div>
+                        <div className="cc-um" style={{ fontWeight: 400, fontSize: '11px', color: 'var(--ts)' }}>{f.unidad_medida}</div>
                       </td>
                       <td style={tdNum}>
-                        {fmt(f.inv_inicial)}<span style={unidadSpan}>{f.unidad_medida}</span>
+                        {fmt(f.inv_inicial)}<span className="carn-um-keep" style={unidadSpan}>{f.unidad_medida}</span>
                         {f.inv_inicial_fuente === 'carry_forward' && <span title="Arrastrado del inventario final del dia anterior" style={{ marginLeft: '4px', color: 'var(--ac)' }}>&#8626;</span>}
                       </td>
                       <td style={{ ...tdNum, borderLeft: `1px solid ${BORDE_GRUPO}` }}>{movCell(f.ingresos)}</td>
@@ -541,21 +552,21 @@ export default function TablaResumenTab({ onRangoTexto }: { onRangoTexto?: (text
                       <td style={tdNum}>{movCell(f.mermas)}</td>
                       <td style={tdNum}>{movCell(f.colacion)}</td>
                       <td style={{ ...tdNum, borderLeft: `1px solid ${BORDE_GRUPO}`, background: FONDO_CUADRE, fontWeight: 700, color: calculoNegativo ? COLOR_NEGATIVO : 'var(--tx)' }}>
-                        {fmt(f.calculo)}<span style={unidadSpan}>{f.unidad_medida}</span>
+                        {fmt(f.calculo)}<span className="carn-um-mov" style={unidadSpan}>{f.unidad_medida}</span>
                       </td>
-                      <td style={{ ...tdNum, background: FONDO_CUADRE, fontWeight: 700 }}>{fmt(f.inv_final)}<span style={unidadSpan}>{f.unidad_medida}</span></td>
+                      <td style={{ ...tdNum, background: FONDO_CUADRE, fontWeight: 700 }}>{fmt(f.inv_final)}<span className="carn-um-mov" style={unidadSpan}>{f.unidad_medida}</span></td>
                       <td style={{ ...tdNum, background: FONDO_CUADRE, fontWeight: 700, color: diferenciaColor }}>
-                        {f.diferencia === null ? '—' : <>{f.diferencia > 0 ? '+' : ''}{fmt(f.diferencia)}<span style={unidadSpan}>{f.unidad_medida}</span></>}
+                        {f.diferencia === null ? '—' : <>{f.diferencia > 0 ? '+' : ''}{fmt(f.diferencia)}<span className="carn-um-keep" style={unidadSpan}>{f.unidad_medida}</span></>}
                       </td>
                       {verCostos && (
-                        <td style={{ ...tdNum, background: FONDO_CUADRE, fontWeight: 700, color: diferenciaColor }}>
+                        <td className="cc-money" style={{ ...tdNum, background: FONDO_CUADRE, fontWeight: 700, color: impactoColor }}>
                           {f.diferencia_valor === null ? '—' : fmtMoney(f.diferencia_valor)}
                         </td>
                       )}
                       <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '4px 11px', borderRadius: '20px', fontSize: '10.5px', fontWeight: 700, background: badge.bg, color: badge.color, whiteSpace: 'nowrap' }}>
-                          <span aria-hidden style={{ width: '6px', height: '6px', borderRadius: '50%', background: badge.color, flexShrink: 0 }} />
-                          {badge.label}
+                        <span className="carn-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '4px 11px', borderRadius: '20px', fontSize: '10.5px', fontWeight: 700, background: badge.bg, color: badge.color, whiteSpace: 'nowrap' }}>
+                          <span aria-hidden className="carn-badge-dot" style={{ width: '6px', height: '6px', borderRadius: '50%', background: badge.color, flexShrink: 0 }} />
+                          <span>{badge.label}</span>
                         </span>
                       </td>
                     </tr>
@@ -567,6 +578,89 @@ export default function TablaResumenTab({ onRangoTexto }: { onRangoTexto?: (text
           </section>
         </>
       )}
+
+      <style>{`
+        /* ── Control Cárnicos · Tabla Resumen — optimización para tablet vertical (≈768–1023px) ──
+           Todo selector de tabla va prefijado con .carn-tabla-wrap (exclusivo de esta pestaña) para
+           NO afectar las otras tablas .carnicos-table del módulo. Desktop y móvil (<600px) intactos. */
+        .carn-tabla-wrap .cc-sm { display: none; }
+
+        @media (min-width: 600px) and (max-width: 1023px) {
+          /* Etiquetas de encabezado compactas solo en tablet */
+          .carn-tabla-wrap .cc-lg { display: none !important; }
+          .carn-tabla-wrap .cc-sm { display: inline !important; }
+
+          /* La tabla encaja las 12 columnas en el ancho disponible: sin scroll horizontal */
+          .carn-tabla-wrap                 { overflow-x: hidden !important; }
+          .carn-tabla-wrap > table         { min-width: 0 !important; width: 100% !important; }
+
+          .carn-tabla-wrap col.cc-col-producto { width: 16.5% !important; }
+          .carn-tabla-wrap col.cc-col-inicial  { width: 8%    !important; }
+          .carn-tabla-wrap col.cc-col-mov      { width: 6.7%  !important; }
+          .carn-tabla-wrap col.cc-col-calculo  { width: 7.3%  !important; }
+          .carn-tabla-wrap col.cc-col-final    { width: 6.4%  !important; }
+          .carn-tabla-wrap col.cc-col-difkg    { width: 7%    !important; }
+          .carn-tabla-wrap col.cc-col-dif      { width: 8.8%  !important; }
+          .carn-tabla-wrap col.cc-col-estado   { width: 11.7% !important; }
+
+          /* Padding compacto: horizontal general reducido, filas de ~60px */
+          .carn-tabla-wrap th,
+          .carn-tabla-wrap td                   { padding-left: 6px !important; padding-right: 6px !important; }
+          .carn-tabla-wrap tbody td             { padding-top: 9px !important; padding-bottom: 9px !important; }
+          .carn-tabla-wrap td:first-child,
+          .carn-tabla-wrap thead th:first-child { padding-left: 10px !important; overflow-wrap: anywhere; }
+          .carn-tabla-wrap thead th             { padding-top: 7px !important; padding-bottom: 7px !important;
+                                                  position: static !important; font-size: 9px !important;
+                                                  letter-spacing: 0.01em !important; }
+
+          /* Tipografía compacta (nada por debajo de 9px) */
+          .carn-tabla-wrap tbody td              { font-size: 11px !important; }
+          .carn-tabla-wrap td:first-child        { font-size: 12px !important; line-height: 1.15 !important; }
+          .carn-tabla-wrap td:first-child .cc-um { font-size: 9px !important; }
+
+          /* U/M: se oculta dentro de los 5 movimientos y del cuadre (ya está bajo el nombre del
+             producto); se CONSERVA siempre en Inventario Inicial y en Dif. KG, incluso en 0 */
+          .carn-tabla-wrap .carn-um-mov  { display: none !important; }
+          .carn-tabla-wrap .carn-um-keep { font-size: 8.8px !important; margin-left: 2px !important; }
+
+          /* Diferencia ($): alineada a la derecha, números tabulares */
+          .carn-tabla-wrap td.cc-money,
+          .carn-tabla-wrap th.cc-money  { text-align: right !important; }
+
+          /* Separadores principales sutiles: tras Producto y antes de Estado
+             (los de Inventario→Movimientos y Colación→Cuadre ya existen) */
+          .carn-tabla-wrap td:first-child,
+          .carn-tabla-wrap thead th:first-child             { border-right: 1px solid #e3ddd4; }
+          .carn-tabla-wrap tbody td:last-child,
+          .carn-tabla-wrap thead tr:first-child th:last-child { border-left: 1px solid #e3ddd4; }
+
+          /* Badge de Estado: puede envolver a 2 líneas sin ensanchar la columna */
+          .carn-tabla-wrap .carn-badge {
+            white-space: normal !important;
+            max-width: 82px;
+            padding: 4px 7px !important;
+            border-radius: 11px !important;
+            line-height: 1.05 !important;
+            align-items: flex-start !important;
+            font-size: 9.3px !important;
+            text-align: left;
+          }
+          .carn-tabla-wrap .carn-badge .carn-badge-dot { margin-top: 2px; }
+
+          /* KPIs compactos: 3 por fila (3+3 ó 3+2), sin cards altas */
+          .carn-kpis       { grid-template-columns: repeat(3, 1fr) !important; gap: 9px !important; }
+          .carn-kpis > div { padding: 12px 13px !important; min-height: 76px !important; }
+
+          /* Filtros en dos niveles: el buscador ocupa toda la primera fila,
+             el resto (Cálculo · Diferencia · Ordenar · conteo · por página) fluye debajo */
+          .carn-filtros       { align-items: center !important; justify-content: flex-start !important;
+                                padding: 12px 14px !important; row-gap: 10px !important; }
+          .carn-filtros > div { display: contents !important; }
+          .carn-buscar        { flex: 1 1 100% !important; }
+          .carn-buscar input  { width: 100% !important; padding-left: 32px !important; }
+          .carn-filtros select { width: auto !important; min-width: 96px !important; max-width: 168px; }
+        }
+      `}</style>
     </div>
   );
 }
