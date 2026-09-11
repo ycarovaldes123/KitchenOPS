@@ -43,8 +43,25 @@ export async function proxy(req: NextRequest) {
     return NextResponse.redirect(new URL(RUTA_INICIO_COMUN, req.url));
   }
 
-  // Check module access. La pantalla Inicio esta disponible para cualquier rol autenticado.
   const segmento = '/' + pathname.split('/')[1];
+
+  // Primera entrada del dia (o recien iniciada la sesion): mandar a la pantalla Inicio
+  // con los botones. Se marca la fecha (zona horaria de Chile) en una cookie; mientras
+  // sea el mismo dia, el usuario navega libre por los modulos.
+  const COOKIE_VISITA = 'kops-ultima-visita';
+  const hoyChile = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago' }).format(new Date());
+  const primeraVisitaDelDia = req.cookies.get(COOKIE_VISITA)?.value !== hoyChile;
+  if (primeraVisitaDelDia) {
+    const opciones = { path: '/', maxAge: 60 * 60 * 24 * 2, sameSite: 'lax' as const };
+    if (segmento !== RUTA_INICIO_COMUN) {
+      const res = NextResponse.redirect(new URL(RUTA_INICIO_COMUN, req.url));
+      res.cookies.set(COOKIE_VISITA, hoyChile, opciones);
+      return res;
+    }
+    supabaseResponse.cookies.set(COOKIE_VISITA, hoyChile, opciones);
+  }
+
+  // Check module access. La pantalla Inicio esta disponible para cualquier rol autenticado.
   const permitidas = RUTAS_ROL[rol];
   if (segmento !== '/' && segmento !== RUTA_INICIO_COMUN && !permitidas.some(r => pathname.startsWith(r))) {
     return NextResponse.redirect(new URL(RUTA_INICIO[rol], req.url));
