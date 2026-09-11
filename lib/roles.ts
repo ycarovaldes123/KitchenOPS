@@ -16,7 +16,7 @@ export const RUTAS_ROL: Record<RolType, string[]> = {
   jefatura: ['/historial', '/ventas', '/kpis', '/costos', '/control-carnicos'],
   bodega:   ['/mermas', '/ventas', '/historial', '/control-carnicos'],
   economo:  ['/colacion', '/frutas', '/inventario', '/mermas', '/historial', '/ventas'],
-  cocina:   ['/produccion', '/mermas', '/ventas', '/kpis', '/historial'],
+  cocina:   ['/produccion', '/mermas', '/ventas', '/kpis', '/historial', '/costos'],
 };
 
 // Pantalla Inicio comun: grilla de modulos a los que el rol tiene acceso. "/" y el logo
@@ -73,7 +73,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/ventas',     label: 'Ventas',     icon: 'barchart', roles: ['admin', 'cocina', 'finanzas', 'jefatura', 'economo', 'bodega'], descripcion: 'Ventas Toteat por período' },
   { href: '/dashboard',  label: 'Dashboard',  icon: 'grid',     roles: ['admin', 'finanzas'], descripcion: 'KPIs y filtros por período' },
   { href: '/kpis',       label: 'KPIs',       icon: 'barchart', roles: ['admin', 'finanzas', 'jefatura', 'cocina'], descripcion: 'Indicadores operacionales' },
-  { href: '/costos',     label: 'Costos',     icon: 'dollar',   roles: ['admin', 'finanzas', 'jefatura'], descripcion: 'Reportería de costos y fichas técnicas' },
+  { href: '/costos',     label: 'Costos',     icon: 'dollar',   roles: ['admin', 'finanzas', 'jefatura', 'cocina'], descripcion: 'Reportería de costos y fichas técnicas' },
   { href: '/export',     label: 'Exportar',   icon: 'download', roles: ['admin', 'finanzas'], descripcion: 'Exportar datos a Excel' },
   { href: '/maestros',   label: 'Maestros',   icon: 'settings', roles: ['admin', 'finanzas'], descripcion: 'PP, productos y personal' },
 ];

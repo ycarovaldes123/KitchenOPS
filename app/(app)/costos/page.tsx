@@ -187,6 +187,8 @@ export default function CostosPage() {
   const { rol } = useRol();
   const isAdmin = rol === 'admin';
   const canManage = rol === 'admin' || rol === 'finanzas';
+  // Cocina entra a Costos solo en modo consulta y solo a la pestaña Carta.
+  const puedeVerConsumo = rol !== 'cocina';
   const [platos, setPlatos] = useState<Plato[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -198,9 +200,8 @@ export default function CostosPage() {
   const [editor, setEditor] = useState<Plato | 'new' | null>(null);
   const [copyFrom, setCopyFrom] = useState<Plato | null>(null);
   const [seccion, setSeccion] = useState<SeccionCostos>('carta');
-  const [vista, setVista] = useState<Vista>(() => (
-    typeof window !== 'undefined' && window.innerWidth < 760 ? 'mosaico' : 'lista'
-  ));
+  // Al entrar a Costos siempre parte en vista Mosaico.
+  const [vista, setVista] = useState<Vista>('mosaico');
 
   const cargarCarta = useCallback(() => {
     setLoading(true);
@@ -328,7 +329,7 @@ export default function CostosPage() {
       <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid var(--bo)', marginBottom: '16px' }}>
         {([
           { id: 'carta' as SeccionCostos, label: 'Carta' },
-          { id: 'consumo' as SeccionCostos, label: 'Consumo ventas' },
+          ...(puedeVerConsumo ? [{ id: 'consumo' as SeccionCostos, label: 'Consumo ventas' }] : []),
         ]).map(tab => (
           <button
             key={tab.id}
@@ -352,7 +353,7 @@ export default function CostosPage() {
         ))}
       </div>
 
-      {seccion === 'consumo' ? (
+      {seccion === 'consumo' && puedeVerConsumo ? (
         <ConsumoVentasPanel />
       ) : (
       <>

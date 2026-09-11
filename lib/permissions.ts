@@ -129,7 +129,9 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     historial:  LECTURA_COSTOS,
     ventas:     OPERATIVO,
     kpis:       { ...NADA, ver: true, verCostos: true },
-    costos:     NADA,
+    // Cocina ve Costos solo para consultar (sin registrar/editar) y solo la pestaña Carta;
+    // la pestaña "Consumo ventas" se oculta para este rol en la propia pagina.
+    costos:     LECTURA_COSTOS,
     export:     NADA,
     maestros:   NADA,
   },

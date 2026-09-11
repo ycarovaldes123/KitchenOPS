@@ -126,7 +126,8 @@ async function prepararIngredientes(
 
 // GET /api/carta — todos los platos activos con costos calculados
 export async function GET() {
-  const s = await requireRol(['admin', 'finanzas', 'jefatura']);
+  // cocina: acceso de solo lectura a la pestaña Carta de Costos
+  const s = await requireRol(['admin', 'finanzas', 'jefatura', 'cocina']);
   if (!s.ok) return s.response;
 
   const supabase = await createClient();
