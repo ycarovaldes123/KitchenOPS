@@ -29,6 +29,35 @@ function fmtHora(iso: string) {
   return d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Santiago' });
 }
 
+// Solo para presentación en la tabla: deriva el primer nombre sin tocar el registro guardado.
+function primerNombre(nombre: string | null | undefined) {
+  const limpio = String(nombre ?? '').trim();
+  if (!limpio) return '—';
+  return limpio.split(/\s+/)[0];
+}
+
+// Color visual del nombre del responsable en las tablas del Historial. No altera datos ni registros:
+// rosado para el grupo indicado, azul por defecto para el resto (Joel, Camilo, etc.).
+// La comparación es insensible a mayúsculas/minúsculas y acentos.
+const RESPONSABLES_ROSADO = new Set(['pamela', 'paulina', 'luisa', 'javiera']);
+function colorResponsable(nombre: string | null | undefined) {
+  const tokens = normalizarTexto(String(nombre ?? '')).split(/\s+/).filter(Boolean);
+  return tokens.some(t => RESPONSABLES_ROSADO.has(t)) ? '#EC4899' : '#2563EB';
+}
+
+// Ventana de páginas para la paginación numerada: 1 … (p-1) p (p+1) … N
+function paginaRango(actual: number, total: number): (number | '…')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const out: (number | '…')[] = [1];
+  const ini = Math.max(2, actual - 1);
+  const fin = Math.min(total - 1, actual + 1);
+  if (ini > 2) out.push('…');
+  for (let i = ini; i <= fin; i++) out.push(i);
+  if (fin < total - 1) out.push('…');
+  out.push(total);
+  return out;
+}
+
 function normalizarTexto(texto: string) {
   return texto
     .normalize('NFD')
@@ -140,53 +169,96 @@ function MetaRow({ icon, label, value }: { icon: string; label: string; value: s
   );
 }
 
-function SummaryPanel({ tab, summary, verCostos }: { tab: Tab; summary: HistorialSummary | null; verCostos: boolean }) {
-  if (!summary || (summary.registros ?? 0) === 0) return null;
-
+// KPI compactos que van arriba, junto al filtro de fechas. Reutiliza el `summary` que ya
+// calcula /api/historial (mismos números que mostraba el panel inferior anterior).
+function KpiRow({ tab, summary, verCostos }: { tab: Tab; summary: HistorialSummary | null; verCostos: boolean }) {
+  const s = summary;
   const numberFmt = (value: number | null | undefined) => value == null ? '—' : new Intl.NumberFormat('es-CL', { maximumFractionDigits: 2 }).format(value);
-  const items: Array<{ label: string; value: string; highlight?: boolean }> = [];
+  const clp = (value: number | null | undefined) => value != null ? formatCLP(value) : '—';
+  const items: Array<{ label: string; value: string }> = [];
 
-  if (verCostos && summary.costo_total != null) {
-    items.push({ label: 'Costo total', value: formatCLP(summary.costo_total), highlight: true });
-  }
+  if (verCostos) items.push({ label: 'Costo total', value: clp(s?.costo_total) });
 
-  if (tab === 'colacion') {
-    if (verCostos) items.push({ label: 'Promedio / plato', value: summary.promedio_plato != null ? formatCLP(summary.promedio_plato) : '—' });
-    if (verCostos) items.push({ label: 'Promedio / colación', value: summary.promedio_registro != null ? formatCLP(summary.promedio_registro) : '—' });
-    items.push({ label: 'Inscritos', value: `${numberFmt(summary.inscritos)} personas` });
-    items.push({ label: 'Ingredientes', value: numberFmt(summary.lineas) });
-  } else if (tab === 'produccion') {
-    if (verCostos) items.push({ label: 'Promedio / informe', value: summary.promedio_registro != null ? formatCLP(summary.promedio_registro) : '—' });
-    items.push({ label: 'PP registrados', value: numberFmt(summary.lineas) });
-    items.push({ label: 'Informes', value: numberFmt(summary.registros) });
+  if (tab === 'produccion') {
+    if (verCostos) items.push({ label: 'Promedio / informe', value: clp(s?.promedio_registro) });
+    items.push({ label: 'PP registrados', value: numberFmt(s?.lineas) });
+    items.push({ label: 'Informes', value: numberFmt(s?.registros) });
+  } else if (tab === 'colacion') {
+    if (verCostos) items.push({ label: 'Promedio / plato', value: clp(s?.promedio_plato) });
+    items.push({ label: 'Inscritos', value: numberFmt(s?.inscritos) });
+    items.push({ label: 'Colaciones', value: numberFmt(s?.registros) });
   } else if (tab === 'frutas') {
-    if (verCostos) items.push({ label: 'Promedio / registro', value: summary.promedio_registro != null ? formatCLP(summary.promedio_registro) : '—' });
-    items.push({ label: 'Productos', value: numberFmt(summary.lineas) });
-    items.push({ label: 'Registros', value: numberFmt(summary.registros) });
+    if (verCostos) items.push({ label: 'Promedio / registro', value: clp(s?.promedio_registro) });
+    items.push({ label: 'Productos', value: numberFmt(s?.lineas) });
+    items.push({ label: 'Registros', value: numberFmt(s?.registros) });
   } else if (tab === 'mermas') {
-    if (verCostos) items.push({ label: 'Promedio / merma', value: summary.promedio_registro != null ? formatCLP(summary.promedio_registro) : '—' });
-    items.push({ label: 'Productos', value: numberFmt(summary.productos) });
-    items.push({ label: 'Platos', value: numberFmt(summary.platos) });
-    items.push({ label: 'Registros', value: numberFmt(summary.registros) });
+    if (verCostos) items.push({ label: 'Promedio / merma', value: clp(s?.promedio_registro) });
+    items.push({ label: 'Productos', value: numberFmt(s?.productos) });
+    items.push({ label: 'Registros', value: numberFmt(s?.registros) });
   } else if (tab === 'inventario') {
-    items.push({ label: 'Productos contados', value: numberFmt(summary.productos) });
-    items.push({ label: 'Cantidad total', value: numberFmt(summary.cantidad_total) });
-    items.push({ label: 'Promedio / toma', value: numberFmt(summary.promedio_productos) });
-    items.push({ label: 'Tomas', value: numberFmt(summary.registros) });
+    items.push({ label: 'Productos contados', value: numberFmt(s?.productos) });
+    items.push({ label: 'Cantidad total', value: numberFmt(s?.cantidad_total) });
+    items.push({ label: 'Promedio / toma', value: numberFmt(s?.promedio_productos) });
+    items.push({ label: 'Tomas', value: numberFmt(s?.registros) });
   }
 
   return (
-    <div style={{ borderTop: '1px solid var(--bo)', background: 'var(--bg)', padding: '14px 20px' }}>
-      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'stretch' }}>
-        {items.map(item => (
-          <div key={item.label} style={{ minWidth: '150px', flex: '1 1 150px', border: '1px solid var(--bo)', borderRadius: '8px', background: item.highlight ? 'var(--al)' : 'var(--sf)', padding: '10px 12px' }}>
-            <p style={{ margin: '0 0 3px', fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{item.label}</p>
-            <p style={{ margin: 0, fontFamily: "'Space Grotesk', sans-serif", fontSize: item.highlight ? '18px' : '16px', fontWeight: 800, color: item.highlight ? 'var(--ac)' : 'var(--tx)' }}>{item.value}</p>
-          </div>
-        ))}
-      </div>
-      {summary.truncated && (
-        <p style={{ margin: '8px 0 0', fontSize: '11px', color: 'var(--ts)' }}>Resumen calculado sobre los primeros 10.000 registros del rango.</p>
+    <div className="hist-kpi-row">
+      {items.slice(0, 4).map(item => (
+        <div key={item.label} style={{
+          border: '1px solid var(--ac)', borderRadius: '10px',
+          background: 'var(--ac)',
+          padding: '9px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: '60px',
+        }}>
+          <p style={{ margin: '0 0 2px', fontSize: '13px', fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</p>
+          <p style={{ margin: 0, fontFamily: "'Space Grotesk', sans-serif", fontSize: '22px', fontWeight: 800, color: '#fff', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.value}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PageBtn({ children, activo, disabled, onClick, label }: { children: React.ReactNode; activo?: boolean; disabled?: boolean; onClick: () => void; label?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      aria-current={activo ? 'page' : undefined}
+      style={{
+        minWidth: '28px', height: '28px', padding: '0 6px', borderRadius: '7px',
+        border: `1px solid ${activo ? 'var(--ac)' : 'rgba(232, 86, 10, 0.4)'}`,
+        background: activo ? 'var(--ac)' : 'var(--bg)',
+        color: activo ? '#fff' : 'var(--ac)',
+        fontFamily: "'Space Grotesk', sans-serif", fontSize: '12px', fontWeight: activo ? 700 : 600,
+        cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.35 : 1,
+        transition: 'border-color 0.15s',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// Paginación numerada real: usa `total` (count del backend tras aplicar filtros/búsqueda).
+function Paginacion({ page, pageSize, total, onPage }: { page: number; pageSize: number; total: number; onPage: (p: number) => void }) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const desde = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const hastaN = Math.min(page * pageSize, total);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '14px 20px', borderTop: '1px solid var(--bo)', background: 'var(--sf)' }}>
+      <span style={{ fontSize: '12px', color: 'var(--ts)' }}>
+        Mostrando {desde} a {hastaN} de {total} registro{total !== 1 ? 's' : ''}
+      </span>
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+          <PageBtn label="Página anterior" disabled={page <= 1} onClick={() => onPage(page - 1)}>‹</PageBtn>
+          {paginaRango(page, totalPages).map((n, i) => n === '…'
+            ? <span key={`e${i}`} style={{ padding: '0 4px', color: 'var(--ts)', fontSize: '12px' }}>…</span>
+            : <PageBtn key={n} activo={n === page} label={`Página ${n}`} onClick={() => onPage(n)}>{n}</PageBtn>)}
+          <PageBtn label="Página siguiente" disabled={page >= totalPages} onClick={() => onPage(page + 1)}>›</PageBtn>
+        </div>
       )}
     </div>
   );
@@ -410,8 +482,8 @@ function TablaProduccion({ datos, canEdit, isAdmin, onRefresh, verCostos, produc
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '560px' }}>
         <thead>
           <tr>
-            {['Fecha', 'Turno', 'Qué se produjo', 'PP', ...(verCostos ? ['Costo est.'] : []), ''].map(h => (
-              <th key={h} style={thSt}>{h}</th>
+            {['Fecha', 'Responsable', 'Turno', 'Qué se produjo', 'PP', ...(verCostos ? ['Costo est.'] : []), 'Acciones'].map(h => (
+              <th key={h} style={{ ...thSt, textAlign: h === 'Acciones' ? 'right' : 'left' }}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -436,7 +508,10 @@ function TablaProduccion({ datos, canEdit, isAdmin, onRefresh, verCostos, produc
                   {fmtFecha(p.fecha as string)}
                 </td>
                 <td style={tdSt}>
-                  <Chip label={p.turno as string} color={p.turno === 'AM' ? '#0D9373' : '#6366F1'} />
+                  <Chip label={primerNombre(p.responsable_nombre as string)} color={colorResponsable(p.responsable_nombre as string)} />
+                </td>
+                <td style={tdSt}>
+                  <Chip label={p.turno as string} color={p.turno === 'AM' ? '#0D9373' : '#2563EB'} />
                 </td>
                 <td style={{ ...tdSt, maxWidth: '280px' }}>
                   {det.length === 0 ? (
@@ -465,7 +540,7 @@ function TablaProduccion({ datos, canEdit, isAdmin, onRefresh, verCostos, produc
 
               open && (
                 <tr key={`${id}-det`}>
-                  <td colSpan={verCostos ? 6 : 5} style={{ background: 'var(--al)', padding: '0 0 2px' }}>
+                  <td colSpan={verCostos ? 7 : 6} style={{ background: 'var(--al)', padding: '0 0 2px' }}>
                     <div style={{ padding: '16px 20px', display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
 
                       {/* Meta secundaria */}
@@ -792,8 +867,8 @@ function TablaColacion({ datos, canEdit, isAdmin, onRefresh, verCostos, producto
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '500px' }}>
         <thead>
           <tr>
-            {['Fecha', 'Menú', 'Inscritos', ...(verCostos ? ['Costo total', 'Costo / plato'] : []), ''].map(h => (
-              <th key={h} style={thSt}>{h}</th>
+            {['Fecha', 'Responsable', 'Menú', 'Inscritos', ...(verCostos ? ['Costo total', 'Costo / plato'] : []), 'Acciones'].map(h => (
+              <th key={h} style={{ ...thSt, textAlign: h === 'Acciones' ? 'right' : 'left' }}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -814,6 +889,9 @@ function TablaColacion({ datos, canEdit, isAdmin, onRefresh, verCostos, producto
               >
                 <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, whiteSpace: 'nowrap' }}>
                   {fmtFecha(c.fecha as string)}
+                </td>
+                <td style={tdSt}>
+                  <Chip label={primerNombre(c.responsable_nombre as string)} color="#2563EB" />
                 </td>
                 <td style={{ ...tdSt, maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
                   {c.menu as string}
@@ -853,7 +931,7 @@ function TablaColacion({ datos, canEdit, isAdmin, onRefresh, verCostos, producto
 
               open && (
                 <tr key={`${id}-det`}>
-                  <td colSpan={verCostos ? 6 : 4} style={{ background: 'var(--al)', padding: '0 0 2px' }}>
+                  <td colSpan={verCostos ? 7 : 5} style={{ background: 'var(--al)', padding: '0 0 2px' }}>
                     <div style={{ padding: '16px 20px', display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
 
                       {/* Meta */}
@@ -1093,8 +1171,8 @@ function TablaFrutas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '500px' }}>
         <thead>
           <tr>
-            {['Fecha', 'Frutas', 'Lineas', ...(verCostos ? ['Costo total'] : []), ''].map(h => (
-              <th key={h} style={thSt}>{h}</th>
+            {['Fecha', 'Responsable', 'Frutas', 'Lineas', ...(verCostos ? ['Costo total'] : []), 'Acciones'].map(h => (
+              <th key={h} style={{ ...thSt, textAlign: h === 'Acciones' ? 'right' : 'left' }}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -1114,6 +1192,7 @@ function TablaFrutas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
                 onMouseLeave={e => { if (!open) (e.currentTarget as HTMLTableRowElement).style.background = 'transparent'; }}
               >
                 <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtFecha(f.fecha as string)}</td>
+                <td style={tdSt}><Chip label={primerNombre(f.responsable_nombre as string)} color="#2563EB" /></td>
                 <td style={{ ...tdSt, maxWidth: '300px' }}>
                   {det.length === 0 ? (
                     <span style={{ color: 'var(--ts)' }}>Sin detalle</span>
@@ -1137,7 +1216,7 @@ function TablaFrutas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
 
               open && (
                 <tr key={`${id}-det`}>
-                  <td colSpan={verCostos ? 5 : 4} style={{ background: 'var(--al)', padding: '0 0 2px' }}>
+                  <td colSpan={verCostos ? 6 : 5} style={{ background: 'var(--al)', padding: '0 0 2px' }}>
                     <div style={{ padding: '16px 20px', display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
                       <div style={{ minWidth: '180px' }}>
                         <DetailLabel>QuiÃ©n / cuÃ¡ndo</DetailLabel>
@@ -1402,7 +1481,7 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos }: { datos: Reco
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '520px' }}>
         <thead>
           <tr>
-            {['Fecha', 'Ubicaciones', 'Lineas', ''].map(h => <th key={h} style={thSt}>{h}</th>)}
+            {['Fecha', 'Responsable', 'Ubicaciones', 'Lineas', 'Acciones'].map(h => <th key={h} style={{ ...thSt, textAlign: h === 'Acciones' ? 'right' : 'left' }}>{h}</th>)}
           </tr>
         </thead>
         <tbody>
@@ -1424,6 +1503,7 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos }: { datos: Reco
                 onMouseLeave={e => { if (!open) (e.currentTarget as HTMLTableRowElement).style.background = 'transparent'; }}
               >
                 <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtFecha(inventario.fecha as string)}</td>
+                <td style={tdSt}><Chip label={primerNombre(inventario.responsable_nombre as string)} color="#2563EB" /></td>
                 <td style={{ ...tdSt, maxWidth: '320px' }}>
                   <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
                     {preview.map(ubicacion => <Chip key={ubicacion} label={ubicacion} color="#2563EB" />)}
@@ -1435,7 +1515,7 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos }: { datos: Reco
               </tr>,
               open && (
                 <tr key={`${id}-det`}>
-                  <td colSpan={4} style={{ background: 'var(--al)', padding: '0 0 2px' }}>
+                  <td colSpan={5} style={{ background: 'var(--al)', padding: '0 0 2px' }}>
                     <div style={{ padding: '16px 20px', display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
                       <div style={{ minWidth: '190px' }}>
                         <DetailLabel>Quien / cuando</DetailLabel>
@@ -1687,8 +1767,8 @@ function TablaMermas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '480px' }}>
         <thead>
           <tr>
-            {['Fecha', 'Qué se perdió', 'Motivos', 'Productos', ...(verCostos ? ['Pérdida'] : []), ''].map(h => (
-              <th key={h} style={thSt}>{h}</th>
+            {['Fecha', 'Responsable', 'Qué se perdió', 'Motivos', 'Productos', ...(verCostos ? ['Pérdida'] : []), 'Acciones'].map(h => (
+              <th key={h} style={{ ...thSt, textAlign: h === 'Acciones' ? 'right' : 'left' }}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -1713,6 +1793,9 @@ function TablaMermas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
               >
                 <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, whiteSpace: 'nowrap' }}>
                   {fmtFecha(m.fecha as string)}
+                </td>
+                <td style={tdSt}>
+                  <Chip label={primerNombre(m.responsable_nombre as string)} color={colorResponsable(m.responsable_nombre as string)} />
                 </td>
                 <td style={{ ...tdSt, maxWidth: '260px' }}>
                   {det.length === 0 ? (
@@ -1753,7 +1836,7 @@ function TablaMermas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
 
               open && (
                 <tr key={`${id}-det`}>
-                  <td colSpan={verCostos ? 6 : 5} style={{ background: '#FEF2F2', padding: '0 0 2px' }}>
+                  <td colSpan={verCostos ? 7 : 6} style={{ background: '#FEF2F2', padding: '0 0 2px' }}>
                     <div style={{ padding: '16px 20px', display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
 
                       {/* Meta */}
@@ -1981,7 +2064,7 @@ function Empty({ msg }: { msg: string }) {
 
 // ─── Shortcuts ───────────────────────────────────────────────────────────────
 
-function PeriodShortcuts({ onSelect }: { onSelect: (d: string, h: string) => void }) {
+function PeriodShortcuts({ desde, hasta, onSelect }: { desde: string; hasta: string; onSelect: (d: string, h: string) => void }) {
   const hoy = hoyChile();
   const shorts = [
     { label: 'Hoy',     d: hoy,            h: hoy },
@@ -1991,11 +2074,26 @@ function PeriodShortcuts({ onSelect }: { onSelect: (d: string, h: string) => voi
   ];
   return (
     <div className="tab-row">
-      {shorts.map(s => (
-        <button key={s.label} type="button" onClick={() => onSelect(s.d, s.h)} className="pill-btn">
-          {s.label}
-        </button>
-      ))}
+      {shorts.map(s => {
+        const activo = desde === s.d && hasta === s.h;
+        return (
+          <button
+            key={s.label}
+            type="button"
+            onClick={() => onSelect(s.d, s.h)}
+            aria-pressed={activo}
+            style={{
+              padding: '3px 7px', borderRadius: '14px', fontSize: '10.5px', fontWeight: 600,
+              cursor: 'pointer', minHeight: '24px', whiteSpace: 'nowrap', transition: 'border-color 0.15s, background 0.15s',
+              border: `1px solid var(--ac)`,
+              background: activo ? 'var(--ac)' : 'var(--bg)',
+              color: activo ? '#fff' : 'var(--ac)',
+            }}
+          >
+            {s.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -2020,12 +2118,10 @@ export default function HistorialPage() {
   });
   const [datos,   setDatos]   = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [err,     setErr]     = useState('');
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [summary, setSummary] = useState<HistorialSummary | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [nextOffset, setNextOffset] = useState(0);
   const [maestros, setMaestros] = useState<{ productos: Record<string, unknown>[]; pps: Record<string, unknown>[] }>({ productos: [], pps: [] });
   const busqueda = busquedas[tab] ?? '';
 
@@ -2034,12 +2130,9 @@ export default function HistorialPage() {
   // la respuesta que llega tarde se descarta en vez de sobrescribir la tabla con un rango viejo.
   const reqIdRef = useRef(0);
 
-  const cargar = useCallback(async (t: Tab, d: string, h: string, q: string, opts?: { append?: boolean; offset?: number }) => {
-    const append = opts?.append ?? false;
-    const offset = opts?.offset ?? 0;
+  const cargar = useCallback(async (t: Tab, d: string, h: string, q: string, offset: number) => {
     const reqId = ++reqIdRef.current;
-    if (append) setLoadingMore(true);
-    else { setLoading(true); setErr(''); setDatos([]); setSummary(null); }
+    setLoading(true); setErr(''); setDatos([]); setSummary(null);
     try {
       const params = new URLSearchParams({
         tipo: t,
@@ -2053,20 +2146,16 @@ export default function HistorialPage() {
       const data = await res.json();
       if (reqId !== reqIdRef.current) return; // llegó una consulta más nueva: esta respuesta ya no aplica
       if (!res.ok) throw new Error(data.error);
-      const items = data.items ?? [];
-      setDatos(prev => append ? [...prev, ...items] : items);
-      setTotal(data.count ?? items.length);
+      setDatos(data.items ?? []);
+      setTotal(data.count ?? (data.items?.length ?? 0));
       setSummary(data.summary ?? null);
-      setHasMore(Boolean(data.hasMore));
-      setNextOffset(data.nextOffset ?? (offset + items.length));
     } catch (e: unknown) {
       if (reqId !== reqIdRef.current) return;
       setErr(e instanceof Error ? e.message : 'Error cargando datos');
+      setDatos([]);
+      setSummary(null);
     } finally {
-      if (reqId === reqIdRef.current) {
-        if (append) setLoadingMore(false);
-        else setLoading(false);
-      }
+      if (reqId === reqIdRef.current) setLoading(false);
     }
   }, []);
 
@@ -2089,96 +2178,134 @@ export default function HistorialPage() {
     // Debounce fijo: al ajustar el rango se tocan dos campos (desde y hasta) casi seguidos;
     // con 250 ms se agrupan en una sola consulta en vez de lanzar dos fetch solapados.
     const timer = window.setTimeout(() => {
-      void cargar(tab, desde, hasta, busqueda);
+      void cargar(tab, desde, hasta, busqueda, (page - 1) * PAGE_SIZE);
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [tab, desde, hasta, busqueda, cargar]);
-  const refresh = useCallback(() => cargar(tab, desde, hasta, busqueda), [tab, desde, hasta, busqueda, cargar]);
-  const cargarMas = useCallback(() => {
-    if (!hasMore || loadingMore) return;
-    void cargar(tab, desde, hasta, busqueda, { append: true, offset: nextOffset });
-  }, [cargar, hasMore, loadingMore, nextOffset, tab, desde, hasta, busqueda]);
+  }, [tab, desde, hasta, busqueda, page, cargar]);
 
-  const TAB_CFG: { id: Tab; label: string; color: string }[] = [
-    { id: 'produccion', label: 'Producción',  color: 'var(--ac)' },
-    { id: 'colacion',   label: 'Colación',    color: 'var(--tl)' },
-    { id: 'frutas',     label: 'Frutas',      color: '#0D9373' },
-    { id: 'inventario', label: 'Inventario',  color: '#2563EB' },
-    { id: 'mermas',     label: 'Mermas',      color: 'var(--rd)' },
+  const refresh = useCallback(
+    () => cargar(tab, desde, hasta, busqueda, (page - 1) * PAGE_SIZE),
+    [cargar, tab, desde, hasta, busqueda, page],
+  );
+
+  // Todo cambio de pestaña / rango / búsqueda vuelve a la página 1, en el mismo evento que
+  // origina el cambio (así el efecto de carga corre una sola vez, no dos).
+  const cambiarTab = (t: Tab) => { setPage(1); setTab(t); };
+  const cambiarDesde = (v: string) => { setPage(1); setDesde(v); };
+  const cambiarHasta = (v: string) => { setPage(1); setHasta(v); };
+  const aplicarAtajo = (d: string, h: string) => { setPage(1); setDesde(d); setHasta(h); };
+  const cambiarBusqueda = (v: string) => { setPage(1); setBusquedas(prev => ({ ...prev, [tab]: v })); };
+  const limpiarBusqueda = () => { setPage(1); setBusquedas(prev => ({ ...prev, [tab]: '' })); };
+
+  const TAB_CFG: { id: Tab; label: string }[] = [
+    { id: 'produccion', label: 'Producción' },
+    { id: 'colacion',   label: 'Colación' },
+    { id: 'frutas',     label: 'Frutas' },
+    { id: 'inventario', label: 'Inventario' },
+    { id: 'mermas',     label: 'Mermas' },
   ];
 
-  const currentTabCfg = TAB_CFG.find(({ id }) => id === tab) ?? TAB_CFG[0];
-
   return (
-    <div className="page">
-      <div style={{ marginBottom: '20px' }}>
-        <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '22px', fontWeight: 800, margin: '0 0 3px' }}>Historial</h1>
+    <div className="page" style={{ maxWidth: 1560 }}>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .hist-toolbar {
+          display: grid;
+          grid-template-columns: minmax(330px, 400px) 1fr;
+          gap: 14px;
+          align-items: stretch;
+          margin-bottom: 14px;
+        }
+        .hist-filter-card {
+          background: var(--sf);
+          border: 1px solid var(--bo);
+          border-radius: 12px;
+          padding: 11px 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 9px;
+          justify-content: center;
+        }
+        .hist-kpi-row {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          grid-auto-rows: 1fr;
+          gap: 10px;
+        }
+        .hist-tabs { display: flex; overflow-x: auto; }
+        @media (max-width: 1100px) {
+          .hist-toolbar { grid-template-columns: 1fr; }
+          .hist-kpi-row { grid-template-columns: repeat(2, 1fr); }
+        }
+      `}</style>
+
+      <div style={{ marginBottom: '14px' }}>
+        <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '20px', fontWeight: 800, margin: '0 0 2px' }}>Historial</h1>
         <p style={{ color: 'var(--ts)', fontSize: '13px', margin: 0 }}>Registros por período — haz clic en una fila para ver el detalle</p>
       </div>
 
-      {/* Filtros */}
-      <div style={{ background: 'var(--sf)', borderRadius: '12px', border: '1px solid var(--bo)', padding: '14px 18px', marginBottom: '14px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <div className="date-row">
-          <input type="date" value={desde} onChange={e => setDesde(e.target.value)} className="field-input" style={{ padding: '6px 10px', fontSize: '13px', minHeight: 'unset' }} />
-          <span style={{ color: 'var(--ts)', fontSize: '13px' }}>→</span>
-          <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="field-input" style={{ padding: '6px 10px', fontSize: '13px', minHeight: 'unset' }} />
+      {/* Filtro de fechas + KPI */}
+      <div className="hist-toolbar">
+        <div className="hist-filter-card">
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: '1 1 165px', minWidth: 0 }}>
+              <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Desde</span>
+              <input type="date" value={desde} onChange={e => cambiarDesde(e.target.value)} aria-label="Fecha desde" className="field-input" style={{ width: '100%', padding: '5px 10px', fontSize: '12.5px', minHeight: '30px' }} />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: '1 1 165px', minWidth: 0 }}>
+              <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Hasta</span>
+              <input type="date" value={hasta} onChange={e => cambiarHasta(e.target.value)} aria-label="Fecha hasta" className="field-input" style={{ width: '100%', padding: '5px 10px', fontSize: '12.5px', minHeight: '30px' }} />
+            </label>
+          </div>
+          <PeriodShortcuts desde={desde} hasta={hasta} onSelect={aplicarAtajo} />
         </div>
-        <PeriodShortcuts onSelect={(d, h) => { setDesde(d); setHasta(h); }} />
-        {!loading && datos.length > 0 && (
-          <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--ts)', background: 'var(--bg)', border: '1px solid var(--bo)', padding: '3px 10px', borderRadius: '20px' }}>
-            {datos.length} de {total} registro{total !== 1 ? 's' : ''}
-          </span>
-        )}
+        <KpiRow tab={tab} summary={summary} verCostos={verCostos} />
       </div>
 
       {/* Card con tabs */}
       <div style={{ background: 'var(--sf)', borderRadius: '14px', border: '1px solid var(--bo)', overflow: 'hidden' }}>
         {/* Tabs */}
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--bo)', background: 'var(--bg)' }}>
-          {TAB_CFG.map(({ id, label, color }) => (
-            <button key={id} type="button" onClick={() => setTab(id)} style={{
-              padding: '13px 20px', background: 'none', border: 'none', cursor: 'pointer',
-              fontSize: '13px', fontWeight: tab === id ? 700 : 400,
-              color: tab === id ? 'var(--tx)' : 'var(--ts)',
-              borderBottom: `2px solid ${tab === id ? color : 'transparent'}`,
-              marginBottom: '-1px', fontFamily: 'DM Sans, sans-serif', transition: 'color 0.15s',
-            }}>{label}</button>
-          ))}
+        <div className="hist-tabs" style={{ borderBottom: '1px solid var(--bo)', background: 'var(--bg)' }}>
+          {TAB_CFG.map(({ id, label }) => {
+            const activa = tab === id;
+            return (
+              <button key={id} type="button" onClick={() => cambiarTab(id)} aria-current={activa ? 'page' : undefined} style={{
+                padding: '13px 20px', background: activa ? 'var(--sf)' : 'none', border: 'none', cursor: 'pointer',
+                fontSize: '13px', fontWeight: activa ? 700 : 500,
+                color: activa ? 'var(--ac)' : 'var(--ts)',
+                borderBottom: `2px solid ${activa ? 'var(--ac)' : 'transparent'}`,
+                marginBottom: '-1px', fontFamily: 'DM Sans, sans-serif', transition: 'color 0.15s', whiteSpace: 'nowrap',
+              }}>{label}</button>
+            );
+          })}
         </div>
 
-        <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div style={{ flex: '1 1 320px', minWidth: '240px' }}>
-            <p style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 6px' }}>
-              Buscar en {currentTabCfg.label}
-            </p>
-            <input
-              type="search"
-              value={busqueda}
-              onChange={e => setBusquedas(prev => ({ ...prev, [tab]: e.target.value }))}
-              placeholder={`Filtra ${currentTabCfg.label.toLowerCase()} por responsable, producto, verdura u observaciÃ³n...`}
-              className="field-input"
-              style={{ padding: '6px 10px', fontSize: '13px', minHeight: 'unset', width: '100%' }}
-            />
-          </div>
-          {busqueda.trim() && (
-            <button
-              type="button"
-              onClick={() => setBusquedas(prev => ({ ...prev, [tab]: '' }))}
-              style={{
-                height: '36px',
-                padding: '0 12px',
-                borderRadius: '8px',
-                border: '1px solid var(--bo)',
-                background: 'var(--bg)',
-                color: 'var(--ts)',
-                fontSize: '12px',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              Limpiar
-            </button>
-          )}
+        {/* Buscador + limpiar filtros */}
+        <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            type="search"
+            value={busqueda}
+            onChange={e => cambiarBusqueda(e.target.value)}
+            placeholder="Buscar producciones, productos o responsable"
+            aria-label="Buscar producciones, productos o responsable"
+            className="field-input"
+            style={{ padding: '6px 12px', fontSize: '13px', minHeight: '34px', flex: '1 1 260px' }}
+          />
+          <button
+            type="button"
+            onClick={limpiarBusqueda}
+            disabled={!busqueda.trim()}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              height: '34px', padding: '0 13px', borderRadius: '8px',
+              border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--ac)',
+              fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
+              cursor: busqueda.trim() ? 'pointer' : 'default', opacity: busqueda.trim() ? 1 : 0.45,
+            }}
+          >
+            <span aria-hidden style={{ fontSize: '13px', lineHeight: 1 }}>⟲</span>
+            Limpiar filtros
+          </button>
         </div>
 
         {/* Content */}
@@ -2189,7 +2316,6 @@ export default function HistorialPage() {
         )}
         {loading ? (
           <div style={{ padding: '60px', textAlign: 'center', color: 'var(--ts)', fontSize: '14px' }}>
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
             <div style={{ display: 'inline-block', width: '28px', height: '28px', border: '3px solid var(--bo)', borderTopColor: 'var(--ac)', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
             <p style={{ marginTop: '12px', marginBottom: 0 }}>Cargando registros...</p>
           </div>
@@ -2200,19 +2326,7 @@ export default function HistorialPage() {
             {tab === 'frutas'     && <TablaFrutas     datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} />}
             {tab === 'inventario' && <TablaInventario datos={datos} isAdmin={isAdmin} onRefresh={refresh} productos={maestros.productos} />}
             {tab === 'mermas'     && <TablaMermas     datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} />}
-            <SummaryPanel tab={tab} summary={summary} verCostos={verCostos} />
-            {hasMore && (
-              <div style={{ padding: '0 20px 20px', display: 'flex', justifyContent: 'center' }}>
-                <button
-                  type="button"
-                  onClick={cargarMas}
-                  disabled={loadingMore}
-                  className="btn btn-outline"
-                >
-                  {loadingMore ? 'Cargando...' : 'Cargar mas'}
-                </button>
-              </div>
-            )}
+            {total > 0 && <Paginacion page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />}
           </>
         )}
       </div>
