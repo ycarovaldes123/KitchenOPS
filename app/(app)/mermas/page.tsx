@@ -458,7 +458,56 @@ export default function MermasPage() {
     <>
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
-        @media (max-width: 1023px) { .mer-grid { grid-template-columns: 1fr !important; } }
+
+        /* ── Tablet 11" vertical y pantallas angostas ─────────────────────── */
+        @media (max-width: 1023px) {
+          .mer-grid { grid-template-columns: 1fr !important; }
+
+          /* Las tablas de ingreso pasan a tarjetas verticales: todo cabe en pantalla, sin scroll lateral */
+          .entry-scroll { overflow-x: visible !important; }
+          table.entry-table { display: block; width: 100% !important; min-width: 0 !important; }
+          table.entry-table thead { display: none !important; }
+          table.entry-table tbody { display: block; }
+          table.entry-table tr {
+            display: block; position: relative;
+            border: 1.5px solid var(--bo) !important; border-radius: 12px;
+            background: var(--bg); padding: 12px 14px 10px; margin: 12px 14px;
+          }
+          table.entry-table td {
+            display: block !important; width: auto !important; min-width: 0 !important;
+            padding: 7px 0 !important; white-space: normal !important; text-align: left !important;
+          }
+          table.entry-table td[data-label]::before {
+            content: attr(data-label); display: block;
+            font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+            text-transform: uppercase; color: var(--ts); margin-bottom: 5px;
+          }
+          table.entry-table td.row-delete { padding: 8px 0 2px !important; }
+          table.entry-table td.row-delete button {
+            width: 100% !important; border: 1.5px solid var(--bo) !important; border-radius: 9px;
+            padding: 10px 0 !important; font-size: 14px !important; color: var(--rd) !important;
+          }
+          table.entry-table td.row-delete button::before { content: "Quitar  "; font-weight: 700; }
+          table.entry-table input, table.entry-table select { font-size: 16px !important; }
+          table.entry-table input[type="number"] { width: 100% !important; max-width: 150px; }
+
+          .add-row-btn { flex: 1 1 45% !important; justify-content: center !important; padding: 12px 0 !important; font-size: 14px !important; }
+
+          /* Barra de guardar fija abajo, botón más grande y con más contraste sobre fondo blanco */
+          .save-bar {
+            position: sticky; bottom: 0; z-index: 30;
+            border-radius: 14px 14px 0 0 !important;
+            box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.14) !important;
+            padding: 12px 16px !important; gap: 10px !important;
+          }
+          .save-bar .save-metric { display: none !important; }
+          .save-bar button[type="submit"] {
+            width: 100% !important; min-width: 0 !important;
+            font-size: 16px !important; padding: 16px 20px !important;
+            box-shadow: 0 6px 18px rgba(220, 38, 38, 0.5) !important;
+          }
+          .page { padding-bottom: 150px !important; }
+        }
       `}</style>
 
       <div className="page" style={{ paddingBottom: '48px' }}>
@@ -566,8 +615,8 @@ export default function MermasPage() {
                   <EmptyState onAdd={addRow} onAddPlato={addPlatoRow} />
                 ) : (
                   <>
-                    <div style={{ overflowX: 'auto', flex: 1 }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
+                    <div className="entry-scroll" style={{ overflowX: 'auto', flex: 1 }}>
+                      <table className="entry-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
                         <thead>
                           <tr style={{ background: 'var(--bg)' }}>
                             {['Producto', 'Cantidad', 'Motivo', ...(verCostos ? ['Costo pérdida'] : []), 'Estado', ''].map((h, i) => (
@@ -582,7 +631,7 @@ export default function MermasPage() {
                             const motivoColor = row.motivo ? (MOTIVO_COLOR[row.motivo] || '#6B7280') : null;
                             return (
                               <tr key={row.key} style={{ borderBottom: '1px solid var(--bo)' }}>
-                                <td style={{ padding: '9px 12px', minWidth: '210px' }}>
+                                <td data-label="Producto" style={{ padding: '9px 12px', minWidth: '210px' }}>
                                   <ProductoSelector
                                     productos={maestros?.productos ?? []}
                                     selectedCodigo={row.codigo_producto}
@@ -592,7 +641,7 @@ export default function MermasPage() {
                                     onClear={() => clearProducto(row.key)}
                                   />
                                 </td>
-                                <td style={{ padding: '9px 8px', width: '130px' }}>
+                                <td data-label="Cantidad" style={{ padding: '9px 8px', width: '130px' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                                     <input type="number" min="0" step="any" value={row.cantidad}
                                       onChange={e => updateRow(row.key, 'cantidad', e.target.value)}
@@ -606,7 +655,7 @@ export default function MermasPage() {
                                     )}
                                   </div>
                                 </td>
-                                <td style={{ padding: '9px 8px', minWidth: '160px' }}>
+                                <td data-label="Motivo" style={{ padding: '9px 8px', minWidth: '160px' }}>
                                   {row.motivo && motivoColor ? (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                       <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', background: `${motivoColor}18`, color: motivoColor, border: `1px solid ${motivoColor}40`, whiteSpace: 'nowrap' }}>
@@ -628,14 +677,14 @@ export default function MermasPage() {
                                   )}
                                 </td>
                                 {verCostos && (
-                                  <td style={{ padding: '9px 12px', fontSize: '13px', whiteSpace: 'nowrap', fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: costo > 0 ? '#DC2626' : 'var(--ts)', fontWeight: costo > 0 ? 600 : 400 }}>
+                                  <td data-label="Costo pérdida" style={{ padding: '9px 12px', fontSize: '13px', whiteSpace: 'nowrap', fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: costo > 0 ? '#DC2626' : 'var(--ts)', fontWeight: costo > 0 ? 600 : 400 }}>
                                     {costo > 0 ? formatCLP(costo) : '—'}
                                   </td>
                                 )}
-                                <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
+                                <td data-label="Estado" style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
                                   <StatusBadge status={status} />
                                 </td>
-                                <td style={{ padding: '9px 8px', textAlign: 'center', width: '44px' }}>
+                                <td className="row-delete" style={{ padding: '9px 8px', textAlign: 'center', width: '44px' }}>
                                   <button type="button" onClick={() => removeRow(row.key)}
                                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ts)', fontSize: '18px', lineHeight: 1, padding: '4px 6px', borderRadius: '6px' }}
                                     onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#FEE2E2'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--rd)'; }}
@@ -649,12 +698,12 @@ export default function MermasPage() {
                       </table>
                     </div>
                     {platoRows.length > 0 && (
-                      <div style={{ borderTop: '1px solid var(--bo)', overflowX: 'auto' }}>
+                      <div className="entry-scroll" style={{ borderTop: '1px solid var(--bo)', overflowX: 'auto' }}>
                         <div style={{ padding: '10px 12px', background: '#EFF6FF', borderBottom: '1px solid #BFDBFE', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
                           <span style={{ fontSize: '11px', fontWeight: 800, color: '#1D4ED8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Platos preparados</span>
                           <span style={{ fontSize: '11px', color: '#1D4ED8', fontWeight: 700 }}>{platoRows.length}</span>
                         </div>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '720px' }}>
+                        <table className="entry-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '720px' }}>
                           <thead>
                             <tr style={{ background: 'var(--bg)' }}>
                               {['Plato', 'Cantidad', 'Motivo', 'Obs.', ...(verCostos ? ['Costo perdida'] : []), 'Estado', ''].map((h, i) => (
@@ -669,7 +718,7 @@ export default function MermasPage() {
                               const motivoColor = row.motivo ? (MOTIVO_PLATO_COLOR[row.motivo] || '#6B7280') : null;
                               return (
                                 <tr key={row.key} style={{ borderBottom: '1px solid var(--bo)' }}>
-                                  <td style={{ padding: '9px 12px', minWidth: '240px' }}>
+                                  <td data-label="Plato" style={{ padding: '9px 12px', minWidth: '240px' }}>
                                     <PlatoSelector
                                       platos={maestros?.carta ?? []}
                                       selectedId={row.carta_id}
@@ -679,7 +728,7 @@ export default function MermasPage() {
                                       onClear={() => clearPlato(row.key)}
                                     />
                                   </td>
-                                  <td style={{ padding: '9px 8px', width: '120px' }}>
+                                  <td data-label="Cantidad" style={{ padding: '9px 8px', width: '120px' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                                       <input type="number" min="0" step="1" value={row.cantidad}
                                         onChange={e => updatePlatoRow(row.key, 'cantidad', e.target.value)}
@@ -691,7 +740,7 @@ export default function MermasPage() {
                                       <span style={{ fontSize: '10px', color: 'var(--ts)', whiteSpace: 'nowrap' }}>un</span>
                                     </div>
                                   </td>
-                                  <td style={{ padding: '9px 8px', minWidth: '170px' }}>
+                                  <td data-label="Motivo" style={{ padding: '9px 8px', minWidth: '170px' }}>
                                     {row.motivo && motivoColor ? (
                                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                         <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', background: `${motivoColor}18`, color: motivoColor, border: `1px solid ${motivoColor}40`, whiteSpace: 'nowrap' }}>
@@ -712,7 +761,7 @@ export default function MermasPage() {
                                       </select>
                                     )}
                                   </td>
-                                  <td style={{ padding: '9px 8px', minWidth: '160px' }}>
+                                  <td data-label="Observación" style={{ padding: '9px 8px', minWidth: '160px' }}>
                                     <input value={row.observacion}
                                       onChange={e => updatePlatoRow(row.key, 'observacion', e.target.value)}
                                       placeholder="Opcional"
@@ -722,14 +771,14 @@ export default function MermasPage() {
                                     />
                                   </td>
                                   {verCostos && (
-                                    <td style={{ padding: '9px 12px', fontSize: '13px', whiteSpace: 'nowrap', fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: costo > 0 ? '#DC2626' : 'var(--ts)', fontWeight: costo > 0 ? 600 : 400 }}>
+                                    <td data-label="Costo pérdida" style={{ padding: '9px 12px', fontSize: '13px', whiteSpace: 'nowrap', fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: costo > 0 ? '#DC2626' : 'var(--ts)', fontWeight: costo > 0 ? 600 : 400 }}>
                                       {costo > 0 ? formatCLP(costo) : '—'}
                                     </td>
                                   )}
-                                  <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
+                                  <td data-label="Estado" style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
                                     <StatusBadge status={status} />
                                   </td>
-                                  <td style={{ padding: '9px 8px', textAlign: 'center', width: '44px' }}>
+                                  <td className="row-delete" style={{ padding: '9px 8px', textAlign: 'center', width: '44px' }}>
                                     <button type="button" onClick={() => removePlatoRow(row.key)}
                                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ts)', fontSize: '18px', lineHeight: 1, padding: '4px 6px', borderRadius: '6px' }}
                                       onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#FEE2E2'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--rd)'; }}
@@ -745,15 +794,11 @@ export default function MermasPage() {
                     )}
 
                     <div style={{ padding: '10px 14px', borderTop: '1px solid var(--bo)', flexShrink: 0, display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      <button type="button" onClick={addRow} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'none', border: '1.5px dashed var(--bo)', borderRadius: '8px', padding: '7px 16px', cursor: 'pointer', fontSize: '13px', color: 'var(--ts)', fontFamily: 'DM Sans, sans-serif', transition: 'all 0.15s' }}
-                        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--rd)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--rd)'; }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--bo)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--ts)'; }}
+                      <button type="button" onClick={addRow} className="add-row-btn" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: '#FEF2F2', border: '1.5px solid #DC2626', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', fontSize: '13px', fontWeight: 700, color: '#DC2626', fontFamily: 'DM Sans, sans-serif', transition: 'all 0.15s' }}
                       >
                         + Agregar producto
                       </button>
-                      <button type="button" onClick={addPlatoRow} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'none', border: '1.5px dashed #BFDBFE', borderRadius: '8px', padding: '7px 16px', cursor: 'pointer', fontSize: '13px', color: '#1D4ED8', fontFamily: 'DM Sans, sans-serif', transition: 'all 0.15s' }}
-                        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#1D4ED8'; (e.currentTarget as HTMLButtonElement).style.background = '#EFF6FF'; }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#BFDBFE'; (e.currentTarget as HTMLButtonElement).style.background = 'none'; }}
+                      <button type="button" onClick={addPlatoRow} className="add-row-btn" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: '#EFF6FF', border: '1.5px solid #1D4ED8', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', fontSize: '13px', fontWeight: 700, color: '#1D4ED8', fontFamily: 'DM Sans, sans-serif', transition: 'all 0.15s' }}
                       >
                         + Agregar plato
                       </button>
@@ -765,9 +810,9 @@ export default function MermasPage() {
           </div>
 
           {/* ── Summary + Save ──────────────────────────────────────────────── */}
-          <div style={{ marginTop: '14px', background: 'var(--sf)', borderRadius: '14px', border: '1px solid var(--bo)', padding: '16px 22px', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+          <div className="save-bar" style={{ marginTop: '14px', background: 'var(--sf)', borderRadius: '14px', border: '1px solid var(--bo)', padding: '16px 22px', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', gap: '24px', flex: 1, flexWrap: 'wrap', alignItems: 'center', minWidth: 0 }}>
-              <div>
+              <div className="save-metric">
                 <p style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 2px' }}>Productos</p>
                 <p style={{ fontSize: '22px', fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: rowsValidos.length > 0 ? 'var(--tx)' : 'var(--ts)', margin: 0, lineHeight: 1.1 }}>
                   {totalLineasValidas}<span style={{ fontSize: '13px', color: 'var(--ts)', fontWeight: 400, marginLeft: '3px' }}>/{totalLineas} total</span>
@@ -775,7 +820,7 @@ export default function MermasPage() {
               </div>
 
               {verCostos && costoTotal > 0 && (
-                <div>
+                <div className="save-metric">
                   <p style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 2px' }}>Pérdida estimada</p>
                   <p style={{ fontSize: '22px', fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: '#DC2626', margin: 0, lineHeight: 1.1 }}>
                     {formatCLP(costoTotal)}
@@ -808,12 +853,13 @@ export default function MermasPage() {
             <button type="submit" disabled={guardando} style={{
               background: guardando ? 'var(--ts)' : canSave ? '#DC2626' : 'var(--bo)',
               color: canSave || guardando ? '#fff' : 'var(--ts)',
-              border: 'none', borderRadius: '10px', padding: '12px 28px',
-              fontSize: '14px', fontWeight: 700,
+              border: 'none', borderRadius: '10px', padding: '13px 30px',
+              fontSize: '15px', fontWeight: 800,
               cursor: guardando ? 'wait' : canSave ? 'pointer' : 'not-allowed',
               fontFamily: 'DM Sans, sans-serif',
               display: 'flex', alignItems: 'center', gap: '8px',
               transition: 'all 0.2s', flexShrink: 0, minWidth: '200px', justifyContent: 'center',
+              boxShadow: canSave && !guardando ? '0 4px 14px rgba(220, 38, 38, 0.4)' : 'none',
             }}>
               {guardando ? (
                 <>

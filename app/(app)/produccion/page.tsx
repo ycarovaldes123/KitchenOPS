@@ -452,7 +452,56 @@ export default function ProduccionPage() {
     <>
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
-        @media (max-width: 1023px) { .prod-grid { grid-template-columns: 1fr !important; } }
+
+        /* ── Tablet 11" vertical y pantallas angostas ─────────────────────── */
+        @media (max-width: 1023px) {
+          .prod-grid { grid-template-columns: 1fr !important; }
+
+          /* La tabla de ingreso pasa a tarjetas verticales: todo cabe en pantalla, sin scroll lateral */
+          .entry-scroll { overflow-x: visible !important; }
+          table.entry-table { display: block; width: 100% !important; min-width: 0 !important; }
+          table.entry-table thead { display: none !important; }
+          table.entry-table tbody { display: block; }
+          table.entry-table tr {
+            display: block; position: relative;
+            border: 1.5px solid var(--bo) !important; border-radius: 12px;
+            background: var(--bg); padding: 12px 14px 10px; margin: 12px 14px;
+          }
+          table.entry-table td {
+            display: block !important; width: auto !important; min-width: 0 !important;
+            padding: 7px 0 !important; white-space: normal !important; text-align: left !important;
+          }
+          table.entry-table td[data-label]::before {
+            content: attr(data-label); display: block;
+            font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+            text-transform: uppercase; color: var(--ts); margin-bottom: 5px;
+          }
+          table.entry-table td.row-delete { padding: 8px 0 2px !important; }
+          table.entry-table td.row-delete button {
+            width: 100% !important; border: 1.5px solid var(--bo) !important; border-radius: 9px;
+            padding: 10px 0 !important; font-size: 14px !important; color: var(--rd) !important;
+          }
+          table.entry-table td.row-delete button::before { content: "Quitar  "; font-weight: 700; }
+          table.entry-table input, table.entry-table select { font-size: 16px !important; }
+          table.entry-table input[type="number"] { width: 100% !important; max-width: 150px; }
+
+          .add-row-btn { width: 100% !important; justify-content: center !important; padding: 12px 0 !important; font-size: 14px !important; }
+
+          /* Barra de guardar fija abajo, botón naranjo destacado sobre fondo blanco */
+          .save-bar {
+            position: sticky; bottom: 0; z-index: 30;
+            border-radius: 14px 14px 0 0 !important;
+            box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.14) !important;
+            padding: 12px 16px !important; gap: 10px !important;
+          }
+          .save-bar .save-metric { display: none !important; }
+          .save-bar button[type="submit"] {
+            width: 100% !important; min-width: 0 !important;
+            font-size: 16px !important; padding: 16px 20px !important;
+            box-shadow: 0 6px 18px rgba(232, 86, 10, 0.5) !important;
+          }
+          .page { padding-bottom: 150px !important; }
+        }
       `}</style>
 
       <div className="page" style={{ paddingBottom: '48px' }}>
@@ -630,8 +679,8 @@ export default function ProduccionPage() {
                     <EmptyPP onAdd={addPPRow} />
                   ) : (
                     <>
-                      <div style={{ overflowX: 'auto', flex: 1 }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '620px' }}>
+                      <div className="entry-scroll" style={{ overflowX: 'auto', flex: 1 }}>
+                        <table className="entry-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '620px' }}>
                           <thead>
                             <tr style={{ background: 'var(--bg)' }}>
                               {['Producto en proceso', 'Cant.', 'Total prod.', ...(verCostos ? ['Costo est.'] : []), 'Estado', ''].map((h, i, arr) => (
@@ -651,7 +700,7 @@ export default function ProduccionPage() {
                               return (
                                 <tr key={row.key} style={{ borderBottom: '1px solid var(--bo)' }}>
                                   {/* PP Selector */}
-                                  <td style={{ padding: '9px 12px', minWidth: '220px' }}>
+                                  <td data-label="Producto en proceso" style={{ padding: '9px 12px', minWidth: '220px' }}>
                                     <PPSelector
                                       pps={maestros?.pps ?? []}
                                       selectedId={row.pp_id}
@@ -662,7 +711,7 @@ export default function ProduccionPage() {
                                     />
                                   </td>
                                   {/* Cantidad */}
-                                  <td style={{ padding: '9px 8px', width: '120px' }}>
+                                  <td data-label="Cantidad" style={{ padding: '9px 8px', width: '120px' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                                       <input
                                         type="number" min="0" step="any" value={row.cantidad}
@@ -680,21 +729,21 @@ export default function ProduccionPage() {
                                     </div>
                                   </td>
                                   {/* Total */}
-                                  <td style={{ padding: '9px 12px', fontSize: '13px', color: 'var(--tx)', whiteSpace: 'nowrap', fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums' }}>
+                                  <td data-label="Total producido" style={{ padding: '9px 12px', fontSize: '13px', color: 'var(--tx)', whiteSpace: 'nowrap', fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums' }}>
                                     {totalLabel(row)}
                                   </td>
                                   {/* Costo — solo visible para roles con permiso financiero */}
                                   {verCostos && (
-                                    <td style={{ padding: '9px 12px', fontSize: '13px', whiteSpace: 'nowrap', fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: costo > 0 ? 'var(--tx)' : 'var(--ts)' }}>
+                                    <td data-label="Costo estimado" style={{ padding: '9px 12px', fontSize: '13px', whiteSpace: 'nowrap', fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: costo > 0 ? 'var(--tx)' : 'var(--ts)' }}>
                                       {costo > 0 ? formatCLP(costo) : '—'}
                                     </td>
                                   )}
                                   {/* Status */}
-                                  <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
+                                  <td data-label="Estado" style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
                                     <StatusBadge status={status} />
                                   </td>
                                   {/* Delete */}
-                                  <td style={{ padding: '9px 8px', textAlign: 'center', width: '44px' }}>
+                                  <td className="row-delete" style={{ padding: '9px 8px', textAlign: 'center', width: '44px' }}>
                                     <button type="button" onClick={() => removePPRow(row.key)}
                                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ts)', fontSize: '18px', lineHeight: 1, padding: '4px 6px', borderRadius: '6px' }}
                                       onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#FEE2E2'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--rd)'; }}
@@ -709,14 +758,12 @@ export default function ProduccionPage() {
                       </div>
                       {/* Add row */}
                       <div style={{ padding: '10px 14px', borderTop: '1px solid var(--bo)', flexShrink: 0 }}>
-                        <button type="button" onClick={addPPRow} style={{
+                        <button type="button" onClick={addPPRow} className="add-row-btn" style={{
                           display: 'inline-flex', alignItems: 'center', gap: '6px',
-                          background: 'none', border: '1.5px dashed var(--bo)', borderRadius: '8px',
-                          padding: '7px 16px', cursor: 'pointer', fontSize: '13px', color: 'var(--ts)',
+                          background: 'var(--al)', border: '1.5px solid var(--ac)', borderRadius: '8px',
+                          padding: '8px 16px', cursor: 'pointer', fontSize: '13px', color: 'var(--ac)', fontWeight: 700,
                           fontFamily: 'DM Sans, sans-serif', transition: 'all 0.15s',
                         }}
-                          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--ac)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--ac)'; }}
-                          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--bo)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--ts)'; }}
                         >
                           + Agregar PP
                         </button>
@@ -733,8 +780,8 @@ export default function ProduccionPage() {
                     <EmptyRend onAdd={addRendRow} />
                   ) : (
                     <>
-                      <div style={{ overflowX: 'auto', flex: 1 }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '560px' }}>
+                      <div className="entry-scroll" style={{ overflowX: 'auto', flex: 1 }}>
+                        <table className="entry-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '560px' }}>
                           <thead>
                             <tr style={{ background: 'var(--bg)' }}>
                               {['Verdura / MP', 'KG utilizados', 'KG rendidos', 'Merma kg', 'Merma %', ''].map((h, i) => (
@@ -755,7 +802,7 @@ export default function ProduccionPage() {
                               const col = !m ? 'var(--ts)' : m.estado === 'alto' ? 'var(--rd)' : m.estado === 'medio' ? 'var(--am)' : 'var(--tl)';
                               return (
                                 <tr key={row.key} style={{ borderBottom: '1px solid var(--bo)' }}>
-                                  <td style={{ padding: '9px 12px', minWidth: '180px' }}>
+                                  <td data-label="Verdura / MP" style={{ padding: '9px 12px', minWidth: '180px' }}>
                                     <select value={row.verdura} onChange={e => updateRend(row.key, 'verdura', e.target.value)}
                                       style={{ ...thinInp, width: '100%', color: row.verdura ? 'var(--tx)' : 'var(--ts)' }}
                                       onFocus={e => (e.currentTarget.style.borderColor = 'var(--ac)')}
@@ -765,7 +812,7 @@ export default function ProduccionPage() {
                                       {maestros?.verduras.map(v => <option key={v.id} value={v.nombre}>{v.nombre}</option>)}
                                     </select>
                                   </td>
-                                  <td style={{ padding: '9px 8px', width: '130px' }}>
+                                  <td data-label="KG utilizados" style={{ padding: '9px 8px', width: '130px' }}>
                                     <input type="number" min="0" step="0.01" value={row.kg_utilizados}
                                       onChange={e => updateRend(row.key, 'kg_utilizados', e.target.value)}
                                       placeholder="0.00" style={{ ...thinInp, width: '90px' }}
@@ -773,7 +820,7 @@ export default function ProduccionPage() {
                                       onBlur={e => (e.currentTarget.style.borderColor = 'var(--bo)')}
                                     />
                                   </td>
-                                  <td style={{ padding: '9px 8px', width: '130px' }}>
+                                  <td data-label="KG rendidos" style={{ padding: '9px 8px', width: '130px' }}>
                                     <input type="number" min="0" step="0.01" value={row.rendimiento_kg}
                                       onChange={e => updateRend(row.key, 'rendimiento_kg', e.target.value)}
                                       placeholder="0.00" style={{ ...thinInp, width: '90px' }}
@@ -781,13 +828,13 @@ export default function ProduccionPage() {
                                       onBlur={e => (e.currentTarget.style.borderColor = 'var(--bo)')}
                                     />
                                   </td>
-                                  <td style={{ padding: '9px 12px', fontSize: '13px', color: col, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                                  <td data-label="Merma kg" style={{ padding: '9px 12px', fontSize: '13px', color: col, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                                     {m ? `${m.mermaKg.toFixed(2)} kg` : '—'}
                                   </td>
-                                  <td style={{ padding: '9px 12px', fontSize: '13px', fontWeight: 700, color: col, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                                  <td data-label="Merma %" style={{ padding: '9px 12px', fontSize: '13px', fontWeight: 700, color: col, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                                     {m ? formatPct(m.mermaPct) : '—'}
                                   </td>
-                                  <td style={{ padding: '9px 8px', textAlign: 'center', width: '44px' }}>
+                                  <td className="row-delete" style={{ padding: '9px 8px', textAlign: 'center', width: '44px' }}>
                                     <button type="button" onClick={() => removeRendRow(row.key)}
                                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ts)', fontSize: '18px', lineHeight: 1, padding: '4px 6px', borderRadius: '6px' }}
                                       onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#FEE2E2'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--rd)'; }}
@@ -801,14 +848,12 @@ export default function ProduccionPage() {
                         </table>
                       </div>
                       <div style={{ padding: '10px 14px', borderTop: '1px solid var(--bo)', flexShrink: 0 }}>
-                        <button type="button" onClick={addRendRow} style={{
+                        <button type="button" onClick={addRendRow} className="add-row-btn" style={{
                           display: 'inline-flex', alignItems: 'center', gap: '6px',
-                          background: 'none', border: '1.5px dashed var(--bo)', borderRadius: '8px',
-                          padding: '7px 16px', cursor: 'pointer', fontSize: '13px', color: 'var(--ts)',
+                          background: 'var(--al)', border: '1.5px solid var(--ac)', borderRadius: '8px',
+                          padding: '8px 16px', cursor: 'pointer', fontSize: '13px', color: 'var(--ac)', fontWeight: 700,
                           fontFamily: 'DM Sans, sans-serif', transition: 'all 0.15s',
                         }}
-                          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--ac)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--ac)'; }}
-                          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--bo)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--ts)'; }}
                         >
                           + Agregar verdura
                         </button>
@@ -821,14 +866,14 @@ export default function ProduccionPage() {
           </div>
 
           {/* ── Summary + Save bar ──────────────────────────────────────────── */}
-          <div style={{
+          <div className="save-bar" style={{
             marginTop: '14px', background: 'var(--sf)', borderRadius: '14px',
             border: '1px solid var(--bo)', padding: '16px 22px',
             display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap',
           }}>
             {/* Metrics */}
             <div style={{ display: 'flex', gap: '24px', flex: 1, flexWrap: 'wrap', alignItems: 'center', minWidth: 0 }}>
-              <div>
+              <div className="save-metric">
                 <p style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 2px' }}>PPs registrados</p>
                 <p style={{ fontSize: '22px', fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: ppValidos.length > 0 ? 'var(--tx)' : 'var(--ts)', margin: 0, lineHeight: 1.1 }}>
                   {ppValidos.length}
@@ -839,7 +884,7 @@ export default function ProduccionPage() {
               </div>
 
               {costoTotal > 0 && (
-                <div>
+                <div className="save-metric">
                   <p style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 2px' }}>Costo estimado</p>
                   <p style={{ fontSize: '22px', fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: 'var(--ac)', margin: 0, lineHeight: 1.1 }}>
                     {formatCLP(costoTotal)}
@@ -848,7 +893,7 @@ export default function ProduccionPage() {
               )}
 
               {rendCount > 0 && (
-                <div>
+                <div className="save-metric">
                   <p style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 2px' }}>Rendimiento</p>
                   <p style={{ fontSize: '22px', fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: 'var(--tx)', margin: 0, lineHeight: 1.1 }}>
                     {rendCount} <span style={{ fontSize: '13px', fontWeight: 400, color: 'var(--ts)' }}>verdura{rendCount !== 1 ? 's' : ''}</span>
@@ -880,12 +925,13 @@ export default function ProduccionPage() {
             <button type="submit" disabled={guardando} style={{
               background: guardando ? 'var(--ts)' : canSave ? 'var(--ac)' : 'var(--bo)',
               color: canSave || guardando ? '#fff' : 'var(--ts)',
-              border: 'none', borderRadius: '10px', padding: '12px 28px',
-              fontSize: '14px', fontWeight: 700,
+              border: 'none', borderRadius: '10px', padding: '13px 30px',
+              fontSize: '15px', fontWeight: 800,
               cursor: guardando ? 'wait' : canSave ? 'pointer' : 'not-allowed',
               fontFamily: 'DM Sans, sans-serif',
               display: 'flex', alignItems: 'center', gap: '8px',
               transition: 'all 0.2s', flexShrink: 0, minWidth: '230px', justifyContent: 'center',
+              boxShadow: canSave && !guardando ? '0 4px 14px rgba(232, 86, 10, 0.4)' : 'none',
             }}>
               {guardando ? (
                 <>
