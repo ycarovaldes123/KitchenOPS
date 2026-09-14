@@ -109,7 +109,7 @@ function formatPPDisplay(item: Record<string, unknown>) {
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 type Tab = 'produccion' | 'colacion' | 'mermas' | 'frutas' | 'inventario';
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 25;
 
 type HistorialSummary = {
   registros?: number;
