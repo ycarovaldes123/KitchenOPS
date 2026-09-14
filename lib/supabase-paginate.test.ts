@@ -48,3 +48,33 @@ test('416 en la primera pagina (from=0) SI se propaga (no deberia pasar, pero po
   );
   assert.equal(error?.code, 'PGRST103');
 });
+
+// Simula PostgREST con count:'exact': cada pagina trae el total exacto, asi el paginador puede
+// pedir el resto de las paginas en paralelo en vez de una por una.
+function fakePostgrestConCount(total: number) {
+  let llamadas = 0;
+  return {
+    query: (from: number, to: number) => {
+      llamadas++;
+      const rows = Array.from({ length: Math.max(0, Math.min(to, total - 1) - from + 1) }, (_, i) => ({ n: from + i }));
+      return Promise.resolve({ data: rows as { n: number }[], error: null, count: total });
+    },
+    get llamadas() { return llamadas; },
+  };
+}
+
+test('con count:exact trae todas las filas de un total que abarca varias paginas', async () => {
+  const fake = fakePostgrestConCount(2500);
+  const { data, error } = await fetchAllRows(fake.query);
+  assert.equal(error, null);
+  assert.equal(data?.length, 2500);
+  assert.equal(fake.llamadas, 3); // 1000 + 1000 + 500, sin llamadas extra
+});
+
+test('con count:exact y total que cabe en 1 pagina no pide paginas de mas', async () => {
+  const fake = fakePostgrestConCount(400);
+  const { data, error } = await fetchAllRows(fake.query);
+  assert.equal(error, null);
+  assert.equal(data?.length, 400);
+  assert.equal(fake.llamadas, 1);
+});

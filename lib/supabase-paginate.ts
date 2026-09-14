@@ -21,21 +21,47 @@ function esRangoFueraDeAlcance(error: PaginateError | null): boolean {
 }
 
 export async function fetchAllRows<T>(
-  buildQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: PaginateError | null }>,
+  buildQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: PaginateError | null; count?: number | null }>,
 ): Promise<{ data: T[] | null; error: PaginateError | null }> {
-  const all: T[] = [];
-  let from = 0;
-  for (;;) {
-    const { data, error } = await buildQuery(from, from + PAGE_SIZE - 1);
-    if (error) {
-      // Multiplo exacto de PAGE_SIZE: ya trajimos todo en las paginas anteriores.
-      if (from > 0 && esRangoFueraDeAlcance(error)) break;
-      return { data: null, error };
+  const primera = await buildQuery(0, PAGE_SIZE - 1);
+  if (primera.error) return { data: null, error: primera.error };
+  const filas: T[] = [...(primera.data ?? [])];
+  const total = primera.count ?? null;
+
+  // Si el builder pide count:'exact' (Historial de Control Carnicos lo hace), ya sabemos con la
+  // 1ra pagina cuantas paginas faltan: se piden todas en paralelo en vez de una por una, asi un
+  // rango de varios miles de filas tarda lo que tarda la mas lenta del lote, no la suma de todas.
+  if (total !== null && total > filas.length) {
+    const totalPaginas = Math.ceil(total / PAGE_SIZE);
+    const restantes = await Promise.all(
+      Array.from({ length: totalPaginas - 1 }, (_, i) => {
+        const from = (i + 1) * PAGE_SIZE;
+        return buildQuery(from, from + PAGE_SIZE - 1);
+      })
+    );
+    for (const { data, error } of restantes) {
+      if (error) return { data: null, error };
+      if (data) filas.push(...data);
     }
-    if (!data || data.length === 0) break;
-    all.push(...data);
-    if (data.length < PAGE_SIZE) break;
-    from += PAGE_SIZE;
+    return { data: filas, error: null };
   }
-  return { data: all, error: null };
+
+  // Sin count (algun llamador no lo pide): respaldo secuencial pagina por pagina, igual que antes.
+  if (total === null && filas.length === PAGE_SIZE) {
+    let from = PAGE_SIZE;
+    for (;;) {
+      const { data, error } = await buildQuery(from, from + PAGE_SIZE - 1);
+      if (error) {
+        // Multiplo exacto de PAGE_SIZE: ya trajimos todo en las paginas anteriores.
+        if (esRangoFueraDeAlcance(error)) break;
+        return { data: null, error };
+      }
+      if (!data || data.length === 0) break;
+      filas.push(...data);
+      if (data.length < PAGE_SIZE) break;
+      from += PAGE_SIZE;
+    }
+  }
+
+  return { data: filas, error: null };
 }

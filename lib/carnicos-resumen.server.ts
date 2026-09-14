@@ -31,7 +31,7 @@ export async function calcularResumenFilas(
     fetchAllRows<MovimientoResumen>((from, to) =>
       supabase
         .from('carnicos_movimientos')
-        .select('producto_id,subtipo,cantidad')
+        .select('producto_id,subtipo,cantidad', { count: 'exact' })
         .gte('fecha', desde)
         .lte('fecha', hasta)
         .order('id', { ascending: true })

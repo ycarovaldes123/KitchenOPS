@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await fetchAllRows<InventarioRow>((from, to) =>
     supabase
       .from('carnicos_inventarios')
-      .select('id,fecha,responsable_id,responsable_nombre,turno,bodega,tipo,producto_id,producto_nombre,unidad_medida,cantidad')
+      .select('id,fecha,responsable_id,responsable_nombre,turno,bodega,tipo,producto_id,producto_nombre,unidad_medida,cantidad', { count: 'exact' })
       .gte('fecha', desde)
       .lte('fecha', hasta)
       .order('fecha', { ascending: false })

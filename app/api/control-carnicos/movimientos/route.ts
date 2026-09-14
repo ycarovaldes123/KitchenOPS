@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await fetchAllRows<MovimientoRow>((from, to) =>
       supabase
         .from('carnicos_movimientos')
-        .select(SELECT_MOVIMIENTO)
+        .select(SELECT_MOVIMIENTO, { count: 'exact' })
         .gte('fecha', desde)
         .lte('fecha', hasta)
         .order('fecha', { ascending: false })
