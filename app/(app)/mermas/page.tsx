@@ -36,7 +36,6 @@ interface PlatoRow {
   categoria:      string | null;
   cantidad:       string;
   motivo:         MotivoMerma | '';
-  observacion:    string;
   costo_unitario: number;
   ingredientes:   number;
 }
@@ -324,7 +323,7 @@ export default function MermasPage() {
   }
 
   function addPlatoRow() {
-    setPlatoRows(r => [...r, { key: newKey(), carta_id: '', nombre_plato: '', categoria: null, cantidad: '', motivo: '', observacion: '', costo_unitario: 0, ingredientes: 0 }]);
+    setPlatoRows(r => [...r, { key: newKey(), carta_id: '', nombre_plato: '', categoria: null, cantidad: '', motivo: '', costo_unitario: 0, ingredientes: 0 }]);
   }
 
   function selectProducto(key: number, p: Producto) {
@@ -358,7 +357,7 @@ export default function MermasPage() {
     setRows(rows => rows.map(r => r.key !== key ? r : { ...r, [field]: value }));
   }
 
-  function updatePlatoRow(key: number, field: 'cantidad' | 'motivo' | 'observacion', value: string) {
+  function updatePlatoRow(key: number, field: 'cantidad' | 'motivo', value: string) {
     setPlatoRows(rows => rows.map(r => r.key !== key ? r : { ...r, [field]: value }));
   }
 
@@ -388,7 +387,7 @@ export default function MermasPage() {
         nombre_plato: r.nombre_plato,
         cantidad: parseFloat(r.cantidad),
         motivo: r.motivo || null,
-        observacion: r.observacion.trim() || null,
+        observacion: null,
       }));
 
     if (!detalle.length && !platos.length) { setErr('Agrega al menos un producto o plato con cantidad valida.'); return; }
@@ -706,7 +705,7 @@ export default function MermasPage() {
                         <table className="entry-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '720px' }}>
                           <thead>
                             <tr style={{ background: 'var(--bg)' }}>
-                              {['Plato', 'Cantidad', 'Motivo', 'Obs.', ...(verCostos ? ['Costo perdida'] : []), 'Estado', ''].map((h, i) => (
+                              {['Plato', 'Cantidad', 'Motivo', ...(verCostos ? ['Costo perdida'] : []), 'Estado', ''].map((h, i) => (
                                 <th key={i} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: '1px solid var(--bo)', whiteSpace: 'nowrap' }}>{h}</th>
                               ))}
                             </tr>
@@ -760,15 +759,6 @@ export default function MermasPage() {
                                         {MOTIVOS_PLATO.map(m => <option key={m} value={m}>{m}</option>)}
                                       </select>
                                     )}
-                                  </td>
-                                  <td data-label="Observación" style={{ padding: '9px 8px', minWidth: '160px' }}>
-                                    <input value={row.observacion}
-                                      onChange={e => updatePlatoRow(row.key, 'observacion', e.target.value)}
-                                      placeholder="Opcional"
-                                      style={{ ...thinInp, width: '100%' }}
-                                      onFocus={e => (e.currentTarget.style.borderColor = 'var(--ac)')}
-                                      onBlur={e => (e.currentTarget.style.borderColor = 'var(--bo)')}
-                                    />
                                   </td>
                                   {verCostos && (
                                     <td data-label="Costo pérdida" style={{ padding: '9px 12px', fontSize: '13px', whiteSpace: 'nowrap', fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: costo > 0 ? '#DC2626' : 'var(--ts)', fontWeight: costo > 0 ? 600 : 400 }}>
