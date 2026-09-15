@@ -37,8 +37,24 @@ export async function calcularResumenFilas(
         .order('id', { ascending: true })
         .range(from, to)
     ),
-    supabase.from('carnicos_inventarios').select('producto_id,cantidad').eq('fecha', desde).eq('tipo', 'INICIAL'),
-    supabase.from('carnicos_inventarios').select('producto_id,cantidad').eq('fecha', hasta).eq('tipo', 'FINAL'),
+    fetchAllRows<{ producto_id: string; cantidad: number }>((from, to) =>
+      supabase
+        .from('carnicos_inventarios')
+        .select('producto_id,cantidad', { count: 'exact' })
+        .eq('fecha', desde)
+        .eq('tipo', 'INICIAL')
+        .order('id', { ascending: true })
+        .range(from, to)
+    ),
+    fetchAllRows<{ producto_id: string; cantidad: number }>((from, to) =>
+      supabase
+        .from('carnicos_inventarios')
+        .select('producto_id,cantidad', { count: 'exact' })
+        .eq('fecha', hasta)
+        .eq('tipo', 'FINAL')
+        .order('id', { ascending: true })
+        .range(from, to)
+    ),
   ]);
 
   if (productosRes.error) throw new Error(`${productosRes.error.message}. Ejecuta scripts/supabase_control_carnicos.sql, scripts/supabase_carnicos_costo_unitario.sql y el importador de Excel.`);
@@ -104,6 +120,29 @@ export async function calcularResumenFilas(
       diferencia_valor,
     };
   });
+}
+
+/**
+ * Si el usuario filtra hasta una fecha sin conteo FINAL, usa el ultimo cierre FINAL
+ * disponible dentro del rango. Asi la vista mensual no queda "sin conteo final" cuando
+ * hoy es posterior al ultimo inventario cargado.
+ */
+export async function resolverHastaConConteoFinal(
+  supabase: SupabaseServerClient,
+  desde: string,
+  hasta: string,
+): Promise<string> {
+  const { data, error } = await supabase
+    .from('carnicos_inventarios')
+    .select('fecha')
+    .eq('tipo', 'FINAL')
+    .gte('fecha', desde)
+    .lte('fecha', hasta)
+    .order('fecha', { ascending: false })
+    .limit(1);
+
+  if (error) throw new Error(error.message);
+  return data?.[0]?.fecha ?? hasta;
 }
 
 /** Quita los valores monetarios de las filas para roles sin permiso verCostos en controlCarnicos. */

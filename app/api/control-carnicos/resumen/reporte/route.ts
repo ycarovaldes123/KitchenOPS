@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol } from '@/lib/auth-server';
-import { calcularResumenFilas, ocultarValorizacion } from '@/lib/carnicos-resumen.server';
+import { calcularResumenFilas, ocultarValorizacion, resolverHastaConConteoFinal } from '@/lib/carnicos-resumen.server';
 import { construirReporteWorkbook } from '@/lib/carnicos-reporte-excel';
 import { formatFechaCompacta } from '@/lib/config-carnicos';
 import { puedeHacer } from '@/lib/permissions';
@@ -29,8 +29,10 @@ export async function GET(req: NextRequest) {
   const supabase = await createClient();
 
   let filas;
+  let hastaConConteo = hasta;
   try {
-    filas = await calcularResumenFilas(supabase, desde, hasta);
+    hastaConConteo = await resolverHastaConConteoFinal(supabase, desde, hasta);
+    filas = await calcularResumenFilas(supabase, desde, hastaConConteo);
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Error generando el reporte' }, { status: 500 });
   }
@@ -39,9 +41,9 @@ export async function GET(req: NextRequest) {
 
   const wb = construirReporteWorkbook(filas, verCostos);
   const buffer = await wb.xlsx.writeBuffer();
-  const filename = desde === hasta
+  const filename = desde === hastaConConteo
     ? `Reporte_${formatFechaCompacta(desde)}.xlsx`
-    : `Reporte_${formatFechaCompacta(desde)}_${formatFechaCompacta(hasta)}.xlsx`;
+    : `Reporte_${formatFechaCompacta(desde)}_${formatFechaCompacta(hastaConConteo)}.xlsx`;
 
   return new NextResponse(new Uint8Array(buffer), {
     status: 200,

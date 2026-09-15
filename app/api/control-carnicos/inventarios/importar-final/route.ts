@@ -18,6 +18,10 @@ const BODEGA_HEADERS: Record<(typeof BODEGAS_CONTEO)[number], string[]> = {
   COCINA: ['COCINA'],
 };
 const PRODUCTO_HEADERS_NORMALIZADOS = PRODUCTO_HEADERS.map(norm);
+const PRODUCTO_ALIASES: Record<string, string> = {
+  [norm('PP SALMON TROZO GR (250')]: norm('PP SALMON TROZO GR (250)'),
+  [norm('PP SALMON CEVICHE GR')]: norm('PP SALMON CEVICHE (GR)'),
+};
 
 type ProductoCarnicoDb = {
   id: string;
@@ -77,6 +81,11 @@ function pushProducto(productosPorNombre: Map<string, ProductoCarnicoDb[]>, prod
   const existentes = productosPorNombre.get(key) ?? [];
   existentes.push(producto);
   productosPorNombre.set(key, existentes);
+}
+
+function normalizarNombreProducto(value: unknown) {
+  const normalizado = norm(value);
+  return PRODUCTO_ALIASES[normalizado] ?? normalizado;
 }
 
 export async function POST(req: NextRequest) {
@@ -140,7 +149,7 @@ export async function POST(req: NextRequest) {
   for (let rowNumber = dataStartRow; rowNumber <= ws.rowCount; rowNumber++) {
     const row = ws.getRow(rowNumber);
     const nombreRaw = cellText(row.getCell(colProducto));
-    const nombre = norm(nombreRaw);
+    const nombre = normalizarNombreProducto(nombreRaw);
     const conteos = BODEGAS_CONTEO.map(bodega => [bodega, numberValue(row.getCell(colBodega.get(bodega)!))] as const);
     const tieneConteo = conteos.some(([, conteo]) => conteo.kind !== 'empty');
     if (!nombre && !tieneConteo) continue;

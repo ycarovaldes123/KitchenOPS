@@ -255,6 +255,11 @@ export default function TablaResumenTab({ onRangoTexto }: { onRangoTexto?: (text
       setFilas(data.filas ?? []);
       const nuevoRango = { desde: data.desde ?? d, hasta: data.hasta ?? h };
       setRangoConsultado(nuevoRango);
+      if (nuevoRango.desde !== d || nuevoRango.hasta !== h) {
+        setDesde(nuevoRango.desde);
+        setHasta(nuevoRango.hasta);
+        setModo('personalizado');
+      }
       setUltimaActualizacion(new Date());
       onRangoTexto?.(nuevoRango.desde === nuevoRango.hasta
         ? fmtFechaBarra(nuevoRango.desde)
