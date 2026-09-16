@@ -11,7 +11,7 @@ function normalizarNombre(value: string) {
 }
 
 export async function GET() {
-  const s = await requireRol(['admin', 'bodega', 'jefatura']);
+  const s = await requireRol(['admin', 'bodega', 'jefatura', 'gerencia']);
   if (!s.ok) return s.response;
 
   const supabase = await createClient();

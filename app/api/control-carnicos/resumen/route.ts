@@ -9,7 +9,7 @@ function isIsoDate(value: unknown): value is string {
 }
 
 export async function GET(req: NextRequest) {
-  const s = await requireRol(['admin', 'bodega', 'jefatura']);
+  const s = await requireRol(['admin', 'bodega', 'jefatura', 'gerencia']);
   if (!s.ok) return s.response;
 
   const { searchParams } = new URL(req.url);

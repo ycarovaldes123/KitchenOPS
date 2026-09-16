@@ -135,6 +135,25 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     export:     NADA,
     maestros:   NADA,
   },
+
+  // Gerente de Operaciones (mdelannoy): solo consulta/visualizacion en Historial, Ventas,
+  // Costos (solo pestaña Carta, igual que cocina) y Control Carnicos (solo Tabla Resumen,
+  // igual que jefatura). No puede registrar, editar ni eliminar nada.
+  gerencia: {
+    dashboard:  NADA,
+    produccion: NADA,
+    colacion:   NADA,
+    frutas:     NADA,
+    inventario: NADA,
+    controlCarnicos: { ...NADA, ver: true, verCostos: true },
+    mermas:     NADA,
+    historial:  LECTURA_COSTOS,
+    ventas:     LECTURA_COSTOS,
+    kpis:       NADA,
+    costos:     LECTURA_COSTOS,
+    export:     NADA,
+    maestros:   NADA,
+  },
 };
 
 export function puedeAcceder(rol: RolType, modulo: Modulo): boolean {

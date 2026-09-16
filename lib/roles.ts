@@ -1,4 +1,4 @@
-export type RolType = 'cocina' | 'economo' | 'bodega' | 'jefatura' | 'finanzas' | 'admin';
+export type RolType = 'cocina' | 'economo' | 'bodega' | 'jefatura' | 'finanzas' | 'admin' | 'gerencia';
 
 export const RMAP: Record<string, RolType> = {
   'ycaro@cerveceriakunstmann.cl':         'admin',
@@ -8,6 +8,7 @@ export const RMAP: Record<string, RolType> = {
   'fcaro@cerveceriakunstmann.cl':         'jefatura',
   'jmendez@cerveceriakunstmann.cl':       'bodega',
   'chefstorobayo@cerveceriakunstmann.cl': 'cocina',
+  'mdelannoy@cerveceriakunstmann.cl':     'gerencia',
 };
 
 export const RUTAS_ROL: Record<RolType, string[]> = {
@@ -17,6 +18,8 @@ export const RUTAS_ROL: Record<RolType, string[]> = {
   bodega:   ['/mermas', '/ventas', '/historial', '/control-carnicos'],
   economo:  ['/colacion', '/frutas', '/inventario', '/mermas', '/historial', '/ventas'],
   cocina:   ['/produccion', '/mermas', '/ventas', '/kpis', '/historial', '/costos'],
+  // Gerente de Operaciones: solo consulta/visualizacion, sin registrar/editar/eliminar en ningun modulo.
+  gerencia: ['/historial', '/ventas', '/costos', '/control-carnicos'],
 };
 
 // Pantalla Inicio comun: grilla de modulos a los que el rol tiene acceso. "/" y el logo
@@ -31,6 +34,7 @@ export const RUTA_INICIO: Record<RolType, string> = {
   bodega:   '/mermas',
   economo:  '/inventario',
   cocina:   '/produccion',
+  gerencia: '/historial',
 };
 
 // Nombre para mostrar en el saludo de la pantalla Inicio ("Hola, ..."). Si el correo no esta
@@ -52,6 +56,7 @@ export const ROL_LABEL: Record<RolType, string> = {
   bodega:   'Bodega',
   economo:  'Economo',
   cocina:   'Cocina',
+  gerencia: 'Gerente de Operaciones',
 };
 
 export interface NavItem {
@@ -67,13 +72,13 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/colacion',   label: 'Colacion',   icon: 'utensils', roles: ['admin', 'economo'], descripcion: 'Inscripciones y costos de colación' },
   { href: '/frutas',     label: 'Frutas',     icon: 'utensils', roles: ['admin', 'economo', 'finanzas'], descripcion: 'Control de frutas' },
   { href: '/inventario', label: 'Toma Inventario', icon: 'grid', roles: ['admin', 'economo', 'finanzas'], descripcion: 'Toma de inventario físico' },
-  { href: '/control-carnicos', label: 'Control Carnicos', icon: 'grid', roles: ['admin', 'bodega', 'jefatura'], descripcion: 'Ingresos, ventas, inventarios y cuadre de carnes' },
+  { href: '/control-carnicos', label: 'Control Carnicos', icon: 'grid', roles: ['admin', 'bodega', 'jefatura', 'gerencia'], descripcion: 'Ingresos, ventas, inventarios y cuadre de carnes' },
   { href: '/mermas',     label: 'Mermas',     icon: 'trending', roles: ['admin', 'cocina', 'economo', 'bodega'], descripcion: 'Rendimiento y mermas de verduras' },
-  { href: '/historial',  label: 'Historial',  icon: 'clock',    roles: ['admin', 'jefatura', 'finanzas', 'economo', 'cocina', 'bodega'], descripcion: 'Historial de registros' },
-  { href: '/ventas',     label: 'Ventas',     icon: 'barchart', roles: ['admin', 'cocina', 'finanzas', 'jefatura', 'economo', 'bodega'], descripcion: 'Ventas Toteat por período' },
+  { href: '/historial',  label: 'Historial',  icon: 'clock',    roles: ['admin', 'jefatura', 'finanzas', 'economo', 'cocina', 'bodega', 'gerencia'], descripcion: 'Historial de registros' },
+  { href: '/ventas',     label: 'Ventas',     icon: 'barchart', roles: ['admin', 'cocina', 'finanzas', 'jefatura', 'economo', 'bodega', 'gerencia'], descripcion: 'Ventas Toteat por período' },
   { href: '/dashboard',  label: 'Dashboard',  icon: 'grid',     roles: ['admin', 'finanzas'], descripcion: 'KPIs y filtros por período' },
   { href: '/kpis',       label: 'KPIs',       icon: 'barchart', roles: ['admin', 'finanzas', 'jefatura', 'cocina'], descripcion: 'Indicadores operacionales' },
-  { href: '/costos',     label: 'Costos',     icon: 'dollar',   roles: ['admin', 'finanzas', 'jefatura', 'cocina'], descripcion: 'Reportería de costos y fichas técnicas' },
+  { href: '/costos',     label: 'Costos',     icon: 'dollar',   roles: ['admin', 'finanzas', 'jefatura', 'cocina', 'gerencia'], descripcion: 'Reportería de costos y fichas técnicas' },
   { href: '/export',     label: 'Exportar',   icon: 'download', roles: ['admin', 'finanzas'], descripcion: 'Exportar datos a Excel' },
   { href: '/maestros',   label: 'Maestros',   icon: 'settings', roles: ['admin', 'finanzas'], descripcion: 'PP, productos y personal' },
 ];

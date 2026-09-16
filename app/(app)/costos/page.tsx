@@ -187,8 +187,8 @@ export default function CostosPage() {
   const { rol } = useRol();
   const isAdmin = rol === 'admin';
   const canManage = rol === 'admin' || rol === 'finanzas';
-  // Cocina entra a Costos solo en modo consulta y solo a la pestaña Carta.
-  const puedeVerConsumo = rol !== 'cocina';
+  // Cocina y Gerencia entran a Costos solo en modo consulta y solo a la pestaña Carta.
+  const puedeVerConsumo = rol !== 'cocina' && rol !== 'gerencia';
   const [platos, setPlatos] = useState<Plato[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

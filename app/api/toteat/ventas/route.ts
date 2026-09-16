@@ -3,7 +3,7 @@ import { requireRol } from '@/lib/auth-server';
 import { fetchToteatSales } from '@/lib/toteat';
 
 export async function GET(req: NextRequest) {
-  const s = await requireRol(['admin', 'finanzas', 'jefatura', 'economo', 'cocina', 'bodega']);
+  const s = await requireRol(['admin', 'finanzas', 'jefatura', 'economo', 'cocina', 'bodega', 'gerencia']);
   if (!s.ok) return s.response;
 
   const { searchParams } = new URL(req.url);
