@@ -30,6 +30,15 @@ export const FOOD_SUBCATEGORIAS = [
   'SANDWICH Y HAMBURGUESAS PROMOCIÓN',
 ] as const;
 
+// Subconjunto de FOOD_SUBCATEGORIAS que corresponde a Cafeteria (no a platos de cocina): se usa
+// para calcular la venta "solo cocina" (Control Carnicos > Tabla Resumen), que excluye Cafeteria
+// aunque Toteat la clasifique dentro de la jerarquia de Alimentos.
+export const CAFETERIA_SUBCATEGORIAS = [
+  'CAFETERIA',
+  'CAFETERIA GASTOS PERSONAL',
+  'CAFETERIA PERSONAL',
+] as const;
+
 const RAW_CATALOG: ToteatCatalogItem[] = [
   { codigo: 'K13000', categoria: 'PICADAS', nombre_canonico: '3 EMPANADAS DE QUESO' },
   { codigo: 'K13001', categoria: 'PICADAS', nombre_canonico: '6 EMPANADAS DE QUESO' },

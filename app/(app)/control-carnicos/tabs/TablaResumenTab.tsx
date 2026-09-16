@@ -16,6 +16,10 @@ function fmtMoney(value: number) {
   return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(value);
 }
 
+function fmtPct(value: number) {
+  return new Intl.NumberFormat('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+}
+
 function normalizarTexto(value: string): string {
   return value.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 }
@@ -210,6 +214,11 @@ export default function TablaResumenTab({ onRangoTexto }: { onRangoTexto?: (text
   const [hasta, setHasta] = useState(hoy);
   const [rangoConsultado, setRangoConsultado] = useState<{ desde: string; hasta: string } | null>(null);
   const [filas, setFilas] = useState<ResumenFila[] | null>(null);
+  // Venta Toteat "solo cocina" (sin Cafeteria) del rango consultado, para el KPI de % diferencia $ vs
+  // venta. Se pide aparte (no bloquea la tabla): consulta Toteat en vivo y puede tardar bastante en
+  // rangos largos (no hay nada sincronizado todavia en ventas_toteat). null = aun no se sabe / error.
+  const [ventaCocinaTotal, setVentaCocinaTotal] = useState<number | null>(null);
+  const [cargandoVenta, setCargandoVenta] = useState(false);
   // Arranca en true: se auto-consulta al montar, asi que nunca debe mostrarse el mensaje
   // "Selecciona un rango" antes de que la carga automatica dispare.
   const [loading, setLoading] = useState(true);
@@ -245,6 +254,22 @@ export default function TablaResumenTab({ onRangoTexto }: { onRangoTexto?: (text
     setDescargandoReporte(false);
   }
 
+  async function fetchVentaCocina(d: string, h: string) {
+    if (!verCostos) return;
+    setCargandoVenta(true);
+    setVentaCocinaTotal(null);
+    try {
+      const res = await fetch(`/api/control-carnicos/resumen/venta-cocina?desde=${d}&hasta=${h}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Error consultando venta');
+      setVentaCocinaTotal(Number(data.ventaCocinaTotal) || 0);
+    } catch {
+      setVentaCocinaTotal(null);
+    } finally {
+      setCargandoVenta(false);
+    }
+  }
+
   async function fetchResumen(d: string, h: string) {
     setLoading(true);
     setError('');
@@ -255,6 +280,7 @@ export default function TablaResumenTab({ onRangoTexto }: { onRangoTexto?: (text
       setFilas(data.filas ?? []);
       const nuevoRango = { desde: data.desde ?? d, hasta: data.hasta ?? h };
       setRangoConsultado(nuevoRango);
+      fetchVentaCocina(nuevoRango.desde, nuevoRango.hasta);
       if (nuevoRango.desde !== d || nuevoRango.hasta !== h) {
         setDesde(nuevoRango.desde);
         setHasta(nuevoRango.hasta);
@@ -334,8 +360,21 @@ export default function TablaResumenTab({ onRangoTexto }: { onRangoTexto?: (text
     const diferenciaValor = filas.filter(f => f.diferencia_valor !== null).reduce((acc, f) => acc + (f.diferencia_valor ?? 0), 0);
     const alertas = filas.filter(f => f.estado === 'alerta').length;
     const ok = filas.filter(f => f.estado === 'ok').length;
-    return { total, conDiferencia, pctConDiferencia: total > 0 ? (conDiferencia / total) * 100 : 0, diferenciaKg, diferenciaValor, alertas, ok };
-  }, [filas]);
+    // % que representa la Diferencia total ($) sobre la venta Toteat "solo cocina" (sin Cafeteria)
+    // del mismo rango. null si todavia no se conoce la venta (cargando o fallo la consulta a Toteat).
+    const pctVsVentaCocina = ventaCocinaTotal !== null && ventaCocinaTotal > 0.001 ? (diferenciaValor / ventaCocinaTotal) * 100 : null;
+    // Desglose de la Diferencia ($) por unidad de medida (UN/KG/GR/PR/...), para ver que tipo de
+    // producto explica mas el cuadre en plata (sumar KG con UN en fisico no tiene sentido, pero en $ si).
+    const diferenciaValorPorUnidad = new Map<string, number>();
+    for (const f of filas) {
+      if (f.diferencia_valor === null) continue;
+      diferenciaValorPorUnidad.set(f.unidad_medida, (diferenciaValorPorUnidad.get(f.unidad_medida) ?? 0) + f.diferencia_valor);
+    }
+    const desgloseUnidad = [...diferenciaValorPorUnidad.entries()]
+      .filter(([, valor]) => Math.abs(valor) > 0.5)
+      .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+    return { total, conDiferencia, pctConDiferencia: total > 0 ? (conDiferencia / total) * 100 : 0, diferenciaKg, diferenciaValor, alertas, ok, pctVsVentaCocina, desgloseUnidad };
+  }, [filas, ventaCocinaTotal]);
 
   return (
     <div style={{ display: 'grid', gap: '14px' }}>
@@ -384,9 +423,35 @@ export default function TablaResumenTab({ onRangoTexto }: { onRangoTexto?: (text
             {verCostos && (
               <KpiCard label="Diferencia total ($)" value={fmtMoney(kpis.diferenciaValor)} color={kpis.diferenciaValor < 0 ? COLOR_NEGATIVO : kpis.diferenciaValor > 0 ? COLOR_POSITIVO : 'var(--tx)'} iconBg="#FEE2E2" iconColor="#B91C1C" icon={<NavIcon name="dollar" size={18} />} />
             )}
+            {verCostos && (cargandoVenta || kpis.pctVsVentaCocina !== null) && (
+              <KpiCard
+                label="% Dif. $ vs Venta Cocina"
+                value={cargandoVenta ? '…' : `${kpis.pctVsVentaCocina! > 0 ? '+' : ''}${fmtPct(kpis.pctVsVentaCocina!)}`}
+                unit={cargandoVenta ? undefined : '%'}
+                sub={cargandoVenta ? 'Consultando venta Toteat...' : 'Venta Toteat cocina, sin Cafeteria'}
+                color={cargandoVenta ? 'var(--tx)' : kpis.pctVsVentaCocina! < 0 ? COLOR_NEGATIVO : kpis.pctVsVentaCocina! > 0 ? COLOR_POSITIVO : 'var(--tx)'}
+                iconBg="#FEE2E2" iconColor="#B91C1C" icon={<NavIcon name="dollar" size={18} />}
+              />
+            )}
             <KpiCard label="Alertas" value={String(kpis.alertas)} unit="productos" iconBg="#FEE2E2" iconColor="#DC2626" icon={<IconAlerta />} />
             <KpiCard label="OK" value={String(kpis.ok)} unit="productos" iconBg="#D1FAE5" iconColor="#059669" icon={<IconOk />} />
           </div>
+
+          {verCostos && kpis.desgloseUnidad.length > 0 && (
+            <div style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '10px', padding: '12px 16px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 22px' }}>
+              <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                Diferencia ($) por unidad de medida
+              </span>
+              {kpis.desgloseUnidad.map(([unidad, valor]) => (
+                <span key={unidad} style={{ display: 'inline-flex', alignItems: 'baseline', gap: '6px', fontSize: '13px' }}>
+                  <span style={{ fontWeight: 700, color: 'var(--tx)' }}>{unidad}</span>
+                  <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: valor < 0 ? COLOR_NEGATIVO : COLOR_POSITIVO }}>
+                    {fmtMoney(valor)}
+                  </span>
+                </span>
+              ))}
+            </div>
+          )}
 
           <div style={{ background: '#F3F7FC', border: '1px solid #E1E9F3', borderRadius: '10px', padding: '7px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', fontSize: '11.5px', color: '#5B6B80' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>

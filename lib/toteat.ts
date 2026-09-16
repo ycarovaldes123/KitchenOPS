@@ -1,4 +1,4 @@
-import { FOOD_SUBCATEGORIAS } from '@/lib/toteat-catalog';
+import { FOOD_SUBCATEGORIAS, CAFETERIA_SUBCATEGORIAS } from '@/lib/toteat-catalog';
 
 const DEFAULT_TOTEAT_BASE_URL = 'https://toteatglobal.appspot.com/mw/or/1.0';
 const MAX_DAYS_PER_REQUEST = 15;
@@ -34,6 +34,9 @@ export interface ToteatSalesOptions {
 }
 
 const FOOD_CATEGORIES = new Set(FOOD_SUBCATEGORIAS.map(normalizeText));
+const CAFETERIA_CATEGORIES = new Set(CAFETERIA_SUBCATEGORIAS.map(normalizeText));
+
+type SaleClassifiable = Pick<ToteatVentaItem, 'category' | 'product_code' | 'product_name'>;
 
 const FOOD_CODE_PREFIXES = [
   'K130',
@@ -121,7 +124,7 @@ export async function fetchToteatSales(desde: string, hasta: string, options: To
   return { raw, items, chunks: chunkMeta };
 }
 
-export function isFoodSale(item: ToteatVentaItem) {
+export function isFoodSale(item: SaleClassifiable) {
   const category = normalizeText(item.category ?? '');
   if (FOOD_CATEGORIES.has(category)) return true;
 
@@ -130,6 +133,16 @@ export function isFoodSale(item: ToteatVentaItem) {
 
   const name = normalizeText(item.product_name);
   return FOOD_NAME_KEYWORDS.some(keyword => name.includes(keyword));
+}
+
+export function isCafeteriaSale(item: SaleClassifiable) {
+  return CAFETERIA_CATEGORIES.has(normalizeText(item.category ?? ''));
+}
+
+/** Venta "cocina real": comida (no bebidas) y excluyendo Cafeteria. Usado en Control Carnicos
+ * > Tabla Resumen para calcular el % que representa la diferencia de cuadre sobre la venta. */
+export function isCocinaSale(item: SaleClassifiable) {
+  return isFoodSale(item) && !isCafeteriaSale(item);
 }
 
 async function fetchToteatSalesChunk(credentials: ToteatCredentials, ini: string, end: string) {
