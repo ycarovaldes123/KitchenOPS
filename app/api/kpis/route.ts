@@ -5,7 +5,7 @@ import { getDashboardPayload } from '@/lib/dashboard-data';
 
 // GET /api/kpis?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
 export async function GET(req: NextRequest) {
-  const s = await requireRol(['admin', 'finanzas', 'jefatura', 'cocina']);
+  const s = await requireRol(['admin', 'finanzas', 'jefatura', 'cocina', 'gerencia']);
   if (!s.ok) return s.response;
 
   const supabase = await createClient();

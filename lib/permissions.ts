@@ -149,7 +149,7 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     mermas:     NADA,
     historial:  LECTURA_COSTOS,
     ventas:     LECTURA_COSTOS,
-    kpis:       NADA,
+    kpis:       LECTURA_COSTOS,
     costos:     LECTURA_COSTOS,
     export:     NADA,
     maestros:   NADA,

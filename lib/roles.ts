@@ -19,7 +19,7 @@ export const RUTAS_ROL: Record<RolType, string[]> = {
   economo:  ['/colacion', '/frutas', '/inventario', '/mermas', '/historial', '/ventas'],
   cocina:   ['/produccion', '/mermas', '/ventas', '/kpis', '/historial', '/costos'],
   // Gerente de Operaciones: solo consulta/visualizacion, sin registrar/editar/eliminar en ningun modulo.
-  gerencia: ['/historial', '/ventas', '/costos', '/control-carnicos'],
+  gerencia: ['/historial', '/ventas', '/costos', '/control-carnicos', '/kpis'],
 };
 
 // Pantalla Inicio comun: grilla de modulos a los que el rol tiene acceso. "/" y el logo
@@ -47,6 +47,7 @@ export const NOMBRE_POR_EMAIL: Record<string, string> = {
   'fcaro@cerveceriakunstmann.cl':         'Felipe',
   'jmendez@cerveceriakunstmann.cl':       'Joel',
   'chefstorobayo@cerveceriakunstmann.cl': 'Chefs',
+  'mdelannoy@cerveceriakunstmann.cl':     'Mauricio',
 };
 
 export const ROL_LABEL: Record<RolType, string> = {
@@ -77,7 +78,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/historial',  label: 'Historial',  icon: 'clock',    roles: ['admin', 'jefatura', 'finanzas', 'economo', 'cocina', 'bodega', 'gerencia'], descripcion: 'Historial de registros' },
   { href: '/ventas',     label: 'Ventas',     icon: 'barchart', roles: ['admin', 'cocina', 'finanzas', 'jefatura', 'economo', 'bodega', 'gerencia'], descripcion: 'Ventas Toteat por período' },
   { href: '/dashboard',  label: 'Dashboard',  icon: 'grid',     roles: ['admin', 'finanzas'], descripcion: 'KPIs y filtros por período' },
-  { href: '/kpis',       label: 'KPIs',       icon: 'barchart', roles: ['admin', 'finanzas', 'jefatura', 'cocina'], descripcion: 'Indicadores operacionales' },
+  { href: '/kpis',       label: 'KPIs',       icon: 'barchart', roles: ['admin', 'finanzas', 'jefatura', 'cocina', 'gerencia'], descripcion: 'Indicadores operacionales' },
   { href: '/costos',     label: 'Costos',     icon: 'dollar',   roles: ['admin', 'finanzas', 'jefatura', 'cocina', 'gerencia'], descripcion: 'Reportería de costos y fichas técnicas' },
   { href: '/export',     label: 'Exportar',   icon: 'download', roles: ['admin', 'finanzas'], descripcion: 'Exportar datos a Excel' },
   { href: '/maestros',   label: 'Maestros',   icon: 'settings', roles: ['admin', 'finanzas'], descripcion: 'PP, productos y personal' },
