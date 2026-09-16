@@ -355,8 +355,6 @@ export default function TablaResumenTab({ onRangoTexto }: { onRangoTexto?: (text
     if (!filas) return null;
     const total = filas.length;
     const conDiferencia = filas.filter(f => f.diferencia !== null && Math.abs(f.diferencia) > 0.0001).length;
-    // Diferencia total en KG: solo suma productos cuya unidad es KG (sumar KG con UN/GR/PR no tendria sentido).
-    const diferenciaKg = filas.filter(f => f.unidad_medida === 'KG' && f.diferencia !== null).reduce((acc, f) => acc + (f.diferencia ?? 0), 0);
     const diferenciaValor = filas.filter(f => f.diferencia_valor !== null).reduce((acc, f) => acc + (f.diferencia_valor ?? 0), 0);
     const alertas = filas.filter(f => f.estado === 'alerta').length;
     const ok = filas.filter(f => f.estado === 'ok').length;
@@ -373,7 +371,7 @@ export default function TablaResumenTab({ onRangoTexto }: { onRangoTexto?: (text
     const desgloseUnidad = [...diferenciaValorPorUnidad.entries()]
       .filter(([, valor]) => Math.abs(valor) > 0.5)
       .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
-    return { total, conDiferencia, pctConDiferencia: total > 0 ? (conDiferencia / total) * 100 : 0, diferenciaKg, diferenciaValor, alertas, ok, pctVsVentaCocina, desgloseUnidad };
+    return { total, conDiferencia, pctConDiferencia: total > 0 ? (conDiferencia / total) * 100 : 0, diferenciaValor, alertas, ok, pctVsVentaCocina, desgloseUnidad };
   }, [filas, ventaCocinaTotal]);
 
   return (
@@ -419,7 +417,6 @@ export default function TablaResumenTab({ onRangoTexto }: { onRangoTexto?: (text
           <div className="carn-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '12px' }}>
             <KpiCard label="Productos totales" value={String(kpis.total)} unit="productos" iconBg="var(--al)" iconColor="var(--ac)" icon={<NavIcon name="grid" size={18} />} />
             <KpiCard label="Con diferencia" value={String(kpis.conDiferencia)} sub={`${fmt(kpis.pctConDiferencia)}% del total`} iconBg="#FEF3C7" iconColor="#CA8A04" icon={<NavIcon name="trending" size={18} />} />
-            <KpiCard label="Diferencia total (KG)" value={`${kpis.diferenciaKg > 0 ? '+' : ''}${fmt(kpis.diferenciaKg)} KG`} color={kpis.diferenciaKg < 0 ? COLOR_NEGATIVO : kpis.diferenciaKg > 0 ? COLOR_POSITIVO : 'var(--tx)'} iconBg="#FEE2E2" iconColor="#B91C1C" icon={<NavIcon name="barchart" size={18} />} />
             {verCostos && (
               <KpiCard label="Diferencia total ($)" value={fmtMoney(kpis.diferenciaValor)} color={kpis.diferenciaValor < 0 ? COLOR_NEGATIVO : kpis.diferenciaValor > 0 ? COLOR_POSITIVO : 'var(--tx)'} iconBg="#FEE2E2" iconColor="#B91C1C" icon={<NavIcon name="dollar" size={18} />} />
             )}
