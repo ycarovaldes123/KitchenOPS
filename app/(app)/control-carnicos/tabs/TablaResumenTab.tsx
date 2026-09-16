@@ -66,6 +66,35 @@ function IconOk() {
   );
 }
 
+// Ficha combinada de Alertas + OK: mismos dos contadores que antes vivian en dos KpiCard
+// separadas, ahora en un solo boton/ficha para no duplicar espacio.
+function KpiCardEstados({ alertas, ok }: { alertas: number; ok: number }) {
+  return (
+    <div style={{
+      background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '10px',
+      padding: '14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '9px', minHeight: '80px',
+    }}>
+      <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--ts)', margin: 0, whiteSpace: 'nowrap' }}>Estado productos</p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ width: '26px', height: '26px', borderRadius: '50%', background: '#FEE2E2', color: '#DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <IconAlerta />
+          </span>
+          <span style={{ fontSize: '19px', fontWeight: 800, color: '#DC2626', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{alertas}</span>
+          <span style={{ fontSize: '11px', color: 'var(--ts)' }}>alerta{alertas === 1 ? '' : 's'}</span>
+        </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ width: '26px', height: '26px', borderRadius: '50%', background: '#D1FAE5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <IconOk />
+          </span>
+          <span style={{ fontSize: '19px', fontWeight: 800, color: '#059669', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{ok}</span>
+          <span style={{ fontSize: '11px', color: 'var(--ts)' }}>OK</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function IconRefresh() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -430,8 +459,15 @@ export default function TablaResumenTab({ onRangoTexto }: { onRangoTexto?: (text
                 iconBg="#FEE2E2" iconColor="#B91C1C" icon={<NavIcon name="dollar" size={18} />}
               />
             )}
-            <KpiCard label="Alertas" value={String(kpis.alertas)} unit="productos" iconBg="#FEE2E2" iconColor="#DC2626" icon={<IconAlerta />} />
-            <KpiCard label="OK" value={String(kpis.ok)} unit="productos" iconBg="#D1FAE5" iconColor="#059669" icon={<IconOk />} />
+            {verCostos && (cargandoVenta || ventaCocinaTotal !== null) && (
+              <KpiCard
+                label="Venta Cocina (sin Cafeteria)"
+                value={cargandoVenta ? '…' : fmtMoney(ventaCocinaTotal ?? 0)}
+                sub="Venta Toteat, segun filtro aplicado"
+                iconBg="var(--al)" iconColor="var(--ac)" icon={<NavIcon name="dollar" size={18} />}
+              />
+            )}
+            <KpiCardEstados alertas={kpis.alertas} ok={kpis.ok} />
           </div>
 
           {verCostos && kpis.desgloseUnidad.length > 0 && (
