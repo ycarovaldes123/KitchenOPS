@@ -387,7 +387,9 @@ export default function InventarioPage() {
         })));
         setOk(`Archivo validado: ${review.length} producto(s) listos para enviar en ${ubicacionActiva}.`);
       } else {
-        setErr(`Archivo con errores: ${data.errores ?? review.filter(row => row.estado !== 'OK').length} linea(s) requieren revision.`);
+        const validos = data.validos ?? review.filter(row => row.estado === 'OK').length;
+        const errores = data.errores ?? review.filter(row => row.estado !== 'OK').length;
+        setErr(`${validos} dato(s) tomados. Archivo con errores: ${errores} linea(s) requieren revision.`);
       }
     } catch (error) {
       setErr(error instanceof Error ? error.message : 'Error importando inventario');
