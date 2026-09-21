@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, type CSSProperties } from 'react';
-import { SUBTIPOS_POR_MOVIMIENTO } from '@/lib/config-carnicos';
+import { BODEGA_LABEL } from '@/lib/config-carnicos';
 import type { SubtipoCarnico, TipoMovimientoCarnico } from '@/types/carnicos';
 import ProductoCarnicoSelector from './ProductoCarnicoSelector';
 import type { Maestros } from '../page';
@@ -45,6 +45,32 @@ const field: CSSProperties = {
 const label: CSSProperties = {
   display: 'block', fontSize: '10.5px', fontWeight: 700, color: 'var(--ts)',
   textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '4px',
+};
+
+// ─── Estilos de la tabla de productos (compacta, sin cards) ──────────────────
+
+const thTabla: CSSProperties = {
+  position: 'sticky', top: 0, zIndex: 1, background: 'var(--sf)',
+  padding: '7px 8px', textAlign: 'left', fontSize: '9.5px', fontWeight: 700, color: 'var(--ts)',
+  textTransform: 'uppercase', letterSpacing: '0.4px', borderBottom: '1.5px solid var(--bo)', whiteSpace: 'nowrap',
+};
+const tdTabla: CSSProperties = { padding: '6px 8px', fontSize: '12.5px', verticalAlign: 'middle' };
+
+const conteoInputBase: CSSProperties = {
+  width: '84px', border: '1.5px solid var(--bo)', borderRadius: '7px', padding: '6px 8px',
+  fontSize: '13px', fontWeight: 700, textAlign: 'right', background: 'var(--bg)', color: 'var(--tx)',
+  outline: 'none', fontFamily: "'Space Grotesk', sans-serif", boxSizing: 'border-box',
+};
+
+const umBadge: CSSProperties = {
+  display: 'inline-block', minWidth: '38px', textAlign: 'center', padding: '3px 8px',
+  borderRadius: '6px', background: 'var(--bg)', border: '1px solid var(--bo)', color: 'var(--ts)',
+  fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.3px',
+};
+
+const trashBtn: CSSProperties = {
+  background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', fontSize: '14px', lineHeight: 1,
+  padding: '6px 8px', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
 };
 
 function fmt(value: number) {
@@ -237,9 +263,14 @@ export default function HistorialEditorDrawer({
     }
   }
 
-  const tituloTipo = grupo.variante === 'movimiento'
+  const esMovimiento = grupo.variante === 'movimiento';
+  const tituloTipo = esMovimiento
     ? (grupo.movimiento === 'INGRESO' ? 'Ingreso' : 'Salida')
-    : `Inventario ${grupo.tipoInventario === 'INICIAL' ? 'Inicial' : 'Final'} — ${grupo.bodega}`;
+    : `Inventario ${grupo.tipoInventario === 'INICIAL' ? 'Inicial' : 'Final'}`;
+  const badgeColor = esMovimiento
+    ? (grupo.movimiento === 'INGRESO' ? { bg: '#D1FAE5', fg: '#065F46' } : { bg: '#FEE2E2', fg: '#991B1B' })
+    : (grupo.tipoInventario === 'INICIAL' ? { bg: '#DBEAFE', fg: '#1E40AF' } : { bg: '#EDE9FE', fg: '#5B21B6' });
+  const bodegaLabel = grupo.bodega ? (BODEGA_LABEL[grupo.bodega as keyof typeof BODEGA_LABEL] ?? grupo.bodega) : null;
 
   return (
     <>
@@ -257,39 +288,43 @@ export default function HistorialEditorDrawer({
           position: 'sticky', top: '14px', maxHeight: 'calc(100vh - 28px)', overflow: 'hidden',
         }}
       >
-        <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--bo)', flexShrink: 0 }}>
+        {/* Header: titulo + contexto (tipo + camara/bodega) */}
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--bo)', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
-            <div>
-              <h2 style={{ fontFamily: 'Syne, sans-serif', fontSize: '17px', fontWeight: 800, margin: 0 }}>Editar movimiento</h2>
-              <p style={{ margin: '3px 0 0', fontSize: '12.5px', color: 'var(--ts)' }}>{tituloTipo}</p>
-            </div>
-            <button type="button" onClick={onClose} aria-label="Cerrar editor" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ts)', fontSize: '20px', lineHeight: 1, padding: '2px' }}>×</button>
+            <h2 style={{ fontFamily: 'Syne, sans-serif', fontSize: '16px', fontWeight: 800, margin: 0 }}>Editar movimiento</h2>
+            <button type="button" onClick={onClose} aria-label="Cerrar editor" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ts)', fontSize: '19px', lineHeight: 1, padding: '2px' }}>×</button>
           </div>
-          <p style={{ margin: '8px 0 0', fontSize: '10.5px', color: 'var(--ts)', fontWeight: 600 }}>Solo visible para administradores</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+            <span style={{ display: 'inline-block', padding: '2px 9px', borderRadius: '20px', fontSize: '10.5px', fontWeight: 700, background: badgeColor.bg, color: badgeColor.fg }}>
+              {tituloTipo}
+            </span>
+            {bodegaLabel && <span style={{ fontSize: '12px', color: 'var(--ts)', fontWeight: 600 }}>{bodegaLabel}</span>}
+            {grupo.turno && <span style={{ fontSize: '11.5px', color: 'var(--ts)' }}>· Turno {grupo.turno}</span>}
+          </div>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px', display: 'grid', gap: '16px' }}>
-          {error && <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', borderRadius: '8px', padding: '10px 12px', fontSize: '12.5px' }}>{error}</div>}
-          {exito && <div style={{ background: '#ECFDF5', border: '1px solid #6EE7B7', color: '#065F46', borderRadius: '8px', padding: '10px 12px', fontSize: '12.5px' }}>✓ {exito}</div>}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 18px', display: 'grid', gap: '14px' }}>
+          {error && <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', borderRadius: '8px', padding: '9px 12px', fontSize: '12.5px' }}>{error}</div>}
+          {exito && <div style={{ background: '#ECFDF5', border: '1px solid #6EE7B7', color: '#065F46', borderRadius: '8px', padding: '9px 12px', fontSize: '12.5px' }}>✓ {exito}</div>}
 
-          {/* Resumen reactivo */}
-          <div style={{ display: 'flex', gap: '18px', padding: '10px 4px' }}>
+          {/* Resumen superior */}
+          <div style={{ display: 'flex', background: 'var(--bg)', border: '1px solid var(--bo)', borderRadius: '10px', overflow: 'hidden' }}>
             {[
-              ['Movimientos', '1'],
+              [esMovimiento ? 'Movimientos' : 'Conteos', '1'],
               ['Productos', String(itemsVisibles.length)],
               ['Cantidad total', totalPorUnidad(itemsVisibles)],
-            ].map(([lbl, val]) => (
-              <div key={lbl}>
-                <p style={{ margin: '0 0 2px', fontSize: '9.5px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{lbl}</p>
-                <p style={{ margin: 0, fontSize: '15px', fontWeight: 800, fontFamily: "'Space Grotesk', sans-serif" }}>{val}</p>
+            ].map(([lbl, val], i) => (
+              <div key={lbl} style={{ flex: 1, padding: '9px 12px', borderLeft: i > 0 ? '1px solid var(--bo)' : 'none', minWidth: 0 }}>
+                <p style={{ margin: '0 0 2px', fontSize: '9px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{lbl}</p>
+                <p style={{ margin: 0, fontSize: '14px', fontWeight: 800, fontFamily: "'Space Grotesk', sans-serif", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{val}</p>
               </div>
             ))}
           </div>
 
-          {/* Fecha y responsable */}
+          {/* Datos principales */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
             <div>
-              <label style={label}>Fecha del movimiento</label>
+              <label style={label}>Fecha</label>
               <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={field} />
             </div>
             <div>
@@ -301,109 +336,101 @@ export default function HistorialEditorDrawer({
             </div>
           </div>
 
-          {/* Productos */}
+          {/* Tabla de productos */}
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
               <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Productos</span>
+              <button
+                type="button"
+                onClick={() => setAgregando(v => !v)}
+                style={{ background: 'none', border: 'none', color: 'var(--ac)', fontSize: '12px', fontWeight: 700, cursor: 'pointer', padding: '2px 4px' }}
+              >
+                + Agregar producto
+              </button>
             </div>
 
-            <div style={{ display: 'grid', gap: '10px' }}>
-              {itemsVisibles.map(it => (
-                <div key={it.id} style={{ border: '1px solid var(--bo)', borderRadius: '10px', padding: '10px 12px', display: 'grid', gap: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                    <span style={{ fontSize: '13px', fontWeight: 700, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.producto_nombre}</span>
-                    <button
-                      type="button"
-                      onClick={() => confirmarEliminarProducto(it)}
-                      title={`Eliminar ${it.producto_nombre}`}
-                      aria-label={`Eliminar ${it.producto_nombre} del movimiento`}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ts)', fontSize: '15px', lineHeight: 1, padding: '3px 5px', flexShrink: 0 }}
-                    >
-                      🗑
-                    </button>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: grupo.variante === 'movimiento' ? '1fr 60px 1fr' : '1fr 60px', gap: '8px', alignItems: 'end' }}>
-                    <div>
-                      <label style={label}>{grupo.variante === 'movimiento' ? 'Cantidad' : 'Conteo'}</label>
-                      <input
-                        type="number" min="0" step="0.01" value={Number.isFinite(it.cantidad) ? it.cantidad : ''}
-                        onChange={e => actualizarItem(it.id, { cantidad: Number(e.target.value) })}
-                        style={field}
-                      />
-                    </div>
-                    <div>
-                      <label style={label}>U/M</label>
-                      <div style={{ ...field, background: 'var(--bg)', color: 'var(--ts)', display: 'flex', alignItems: 'center', height: '32px' }}>{it.unidad_medida}</div>
-                    </div>
-                    {grupo.variante === 'movimiento' && (
-                      <div>
-                        <label style={label}>Subtipo</label>
-                        <select value={it.subtipo ?? ''} onChange={e => actualizarItem(it.id, { subtipo: e.target.value as SubtipoCarnico })} style={field}>
-                          {SUBTIPOS_POR_MOVIMIENTO[grupo.movimiento as TipoMovimientoCarnico].map(s => (
-                            <option key={s.value} value={s.value}>{s.label}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                  {grupo.variante === 'movimiento' && (
-                    <div>
-                      <label style={label}>Observación</label>
-                      <input
-                        type="text" value={it.observacion ?? ''}
-                        onChange={e => actualizarItem(it.id, { observacion: e.target.value })}
-                        placeholder="Opcional"
-                        style={field}
-                      />
-                    </div>
-                  )}
-                </div>
-              ))}
-              {itemsVisibles.length === 0 && (
-                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--ts)', fontSize: '12.5px', border: '1px dashed var(--bo)', borderRadius: '10px' }}>
-                  Sin productos. Agrega al menos uno para poder guardar.
-                </div>
-              )}
-            </div>
+            {agregando && (
+              <div style={{ border: '1.5px solid var(--ac)', borderRadius: '10px', padding: '10px', marginBottom: '8px' }}>
+                <ProductoCarnicoSelector
+                  productos={productosDisponibles}
+                  selectedId=""
+                  selectedNombre=""
+                  selectedUM=""
+                  onSelect={p => agregarProducto(p)}
+                  onClear={() => {}}
+                />
+                <button type="button" onClick={() => setAgregando(false)} style={{ marginTop: '8px', background: 'none', border: 'none', color: 'var(--ts)', fontSize: '12px', cursor: 'pointer' }}>Cancelar</button>
+              </div>
+            )}
 
-            <div style={{ marginTop: '10px' }}>
-              {agregando ? (
-                <div style={{ border: '1.5px solid var(--ac)', borderRadius: '10px', padding: '10px' }}>
-                  <ProductoCarnicoSelector
-                    productos={productosDisponibles}
-                    selectedId=""
-                    selectedNombre=""
-                    selectedUM=""
-                    onSelect={p => agregarProducto(p)}
-                    onClear={() => {}}
-                  />
-                  <button type="button" onClick={() => setAgregando(false)} style={{ marginTop: '8px', background: 'none', border: 'none', color: 'var(--ts)', fontSize: '12px', cursor: 'pointer' }}>Cancelar</button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setAgregando(true)}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'none', border: '1.5px dashed var(--bo)', borderRadius: '8px', padding: '7px 14px', cursor: 'pointer', fontSize: '12.5px', color: 'var(--ts)' }}
-                >
-                  + Agregar producto
-                </button>
-              )}
-            </div>
+            {itemsVisibles.length === 0 ? (
+              <div style={{ padding: '16px', textAlign: 'center', color: 'var(--ts)', fontSize: '12.5px', border: '1px dashed var(--bo)', borderRadius: '10px' }}>
+                Sin productos. Agrega al menos uno para poder guardar.
+              </div>
+            ) : (
+              <div className="mov-tabla-wrap" style={{ border: '1px solid var(--bo)', borderRadius: '10px', overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...thTabla, width: '26px', textAlign: 'center' }}>#</th>
+                      <th style={thTabla}>Producto</th>
+                      <th style={{ ...thTabla, width: '94px', textAlign: 'right' }}>{esMovimiento ? 'Cantidad' : 'Conteo'}</th>
+                      <th style={{ ...thTabla, width: '58px', textAlign: 'center' }}>U/M</th>
+                      <th style={{ ...thTabla, width: '40px', textAlign: 'center' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {itemsVisibles.map((it, idx) => (
+                      <tr key={it.id} className="mov-tabla-fila">
+                        <td style={{ ...tdTabla, textAlign: 'center', color: 'var(--ts)', fontSize: '11px' }}>{idx + 1}</td>
+                        <td style={{ ...tdTabla, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {it.producto_nombre}
+                        </td>
+                        <td style={{ ...tdTabla, textAlign: 'right' }}>
+                          <input
+                            type="number" min="0" step="0.01" value={Number.isFinite(it.cantidad) ? it.cantidad : ''}
+                            onChange={e => actualizarItem(it.id, { cantidad: Number(e.target.value) })}
+                            className="mov-conteo-input"
+                            style={conteoInputBase}
+                          />
+                        </td>
+                        <td style={{ ...tdTabla, textAlign: 'center' }}>
+                          <span style={umBadge}>{it.unidad_medida}</span>
+                        </td>
+                        <td style={{ ...tdTabla, textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => confirmarEliminarProducto(it)}
+                            title={`Eliminar ${it.producto_nombre}`}
+                            aria-label={`Eliminar ${it.producto_nombre} del movimiento`}
+                            className="mov-trash-btn"
+                            style={trashBtn}
+                          >
+                            🗑
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
-          <p style={{ margin: 0, fontSize: '11px', color: 'var(--ts)', lineHeight: 1.5 }}>
-            Los cambios realizados serán registrados en el historial de auditoría.
+          <p style={{ margin: 0, fontSize: '10.5px', color: 'var(--ts)', lineHeight: 1.5 }}>
+            Los cambios realizados serán registrados en el historial de auditoría. Solo visible para administradores.
           </p>
         </div>
 
-        <div style={{ padding: '14px 22px', borderTop: '1px solid var(--bo)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+        {/* Acciones finales */}
+        <div style={{ padding: '12px 18px', borderTop: '1px solid var(--bo)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
           <button
             type="button"
             onClick={() => setConfirmacion({ tipo: 'movimiento' })}
             disabled={guardando || eliminandoTodo}
             style={{ background: 'none', border: '1px solid #FCA5A5', color: '#DC2626', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
           >
-            🗑 Eliminar movimiento completo
+            🗑 Eliminar movimiento
           </button>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button
@@ -472,6 +499,13 @@ export default function HistorialEditorDrawer({
             max-height: 100vh !important; border-radius: 0 !important; z-index: 901;
           }
         }
+        .mov-tabla-wrap { max-height: 360px; overflow-y: auto; }
+        .mov-tabla-fila { border-top: 1px solid var(--bo); transition: background 0.1s; }
+        .mov-tabla-fila:first-child { border-top: none; }
+        .mov-tabla-fila:hover { background: var(--bg); }
+        .mov-conteo-input:focus { border-color: var(--ac) !important; box-shadow: 0 0 0 2px color-mix(in srgb, var(--ac) 20%, transparent); }
+        .mov-conteo-input:hover { border-color: var(--ac); }
+        .mov-trash-btn:hover { background: #FEE2E2; }
       `}</style>
     </>
   );
