@@ -242,7 +242,7 @@ export default function CostosPage() {
       (cartaFiltro === 'all' || (p.tipo_carta ?? 'ANTIGUA') === cartaFiltro) &&
       (catFiltro === 'all' || p.categoria === catFiltro) &&
       (semFiltro === 'all' || p.semaforo === semFiltro) &&
-      (!productoQuery || matchingIngredientes(p, productoQuery).length > 0),
+      (!productoQuery || normalizeSearch(p.nombre).includes(productoQuery) || matchingIngredientes(p, productoQuery).length > 0),
     )
   ), [platos, cartaFiltro, catFiltro, semFiltro, productoQuery]);
 
@@ -397,7 +397,7 @@ export default function CostosPage() {
             type="search"
             value={productoBusqueda}
             onChange={e => setProductoBusqueda(e.target.value)}
-            placeholder="Buscar producto en recetas..."
+            placeholder="Buscar plato o producto en recetas..."
             style={{ width: '100%', border: '1.5px solid var(--bo)', borderRadius: '8px', padding: '7px 34px 7px 12px', fontSize: '13px', background: 'var(--bg)', color: 'var(--tx)', fontFamily: 'DM Sans, sans-serif', outline: 'none', boxSizing: 'border-box' }}
             onFocus={e => (e.currentTarget.style.borderColor = 'var(--ac)')}
             onBlur={e => (e.currentTarget.style.borderColor = 'var(--bo)')}
@@ -482,7 +482,7 @@ export default function CostosPage() {
 
       {filtrados.length === 0 && (
         <div style={{ background: 'var(--sf)', borderRadius: '12px', border: '1px solid var(--bo)', padding: '40px 24px', textAlign: 'center', color: 'var(--ts)', fontSize: '14px' }}>
-          {productoQuery ? 'No hay platos que contengan ese producto.' : 'No hay platos que coincidan con los filtros.'}
+          {productoQuery ? 'No hay platos con ese nombre o que contengan ese producto.' : 'No hay platos que coincidan con los filtros.'}
         </div>
       )}
 
