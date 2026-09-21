@@ -38,7 +38,7 @@ const HOJAS = [
   { nombre: 'VERDURAS',   desc: 'Rendimiento de verduras: KG utilizados, rendimiento, merma %' },
   { nombre: 'COLACION',   desc: 'Colaciones del personal con ingredientes y costo por plato' },
   { nombre: 'TOMA INVENTARIO', desc: 'Toma de inventario por camaras y bodegas con stock registrado' },
-  { nombre: 'MERMA',      desc: 'Registros de mermas y desperdicios con motivo y costo' },
+  { nombre: 'MERMA',      desc: 'Registros de mermas y desperdicios con costo asociado' },
   { nombre: 'MERMA PLATOS', desc: 'Desglose de platos preparados en merma e insumos asociados' },
 ];
 

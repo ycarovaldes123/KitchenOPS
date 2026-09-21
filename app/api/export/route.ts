@@ -3,7 +3,6 @@ import * as XLSX from 'xlsx';
 
 import { requireRol } from '@/lib/auth-server';
 import { createClient } from '@/utils/supabase/server';
-import { normalizeMotivoMerma } from '@/lib/mermas';
 
 type RendRow = {
   fecha: string;
@@ -304,49 +303,39 @@ export async function GET(req: NextRequest) {
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rowsRes), 'RESUMEN');
 
-  const headerProd = verCostos
-    ? ['Fecha', 'Responsable', 'Turno', 'Observacion', 'Código PP', 'PP', 'Tipo', 'Cantidad', 'Gramos/PP', 'Total producido (g)', 'Costo unitario', 'Costo total']
-    : ['Fecha', 'Responsable', 'Turno', 'Observacion', 'Código PP', 'PP', 'Tipo', 'Cantidad', 'Gramos/PP', 'Total producido (g)'];
+  const headerProd = ['Fecha', 'Responsable', 'Turno', 'Codigo', 'PP', 'Gramos/PP', 'Cantidad', 'Total producido (g)', 'Costo unitario', 'Costo total', 'Observacion'];
   const rowsProd: unknown[][] = [headerProd];
   for (const produccion of producciones) {
     for (const detalle of produccion.detalle_produccion ?? []) {
-      const row: unknown[] = [
+      rowsProd.push([
         produccion.fecha,
         produccion.responsable_nombre,
         produccion.turno,
-        produccion.observacion,
         detalle.codigo_producto ?? '',
         detalle.nombre_pp,
-        detalle.tipo_pp,
-        detalle.cantidad,
         detalle.gramos_por_pp ?? '',
+        detalle.cantidad,
         detalle.total_producido ?? '',
-      ];
-      if (verCostos) row.push(detalle.costo_unitario, detalle.costo_total);
-      rowsProd.push(row);
+        detalle.costo_unitario,
+        detalle.costo_total,
+        produccion.observacion,
+      ]);
     }
 
     if (!produccion.detalle_produccion?.length) {
-      const row: unknown[] = [
+      rowsProd.push([
         produccion.fecha,
         produccion.responsable_nombre,
         produccion.turno,
+        '', '', '', '', '', '', '',
         produccion.observacion,
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-      ];
-      if (verCostos) row.push('', '');
-      rowsProd.push(row);
+      ]);
     }
   }
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rowsProd), 'PRODUCCION');
 
   const rowsVerd: unknown[][] = [
-    ['Fecha', 'Responsable', 'Código producto', 'Verdura', 'KG utilizados', 'KG rendimiento', 'Merma KG', 'Merma %'],
+    ['Fecha', 'Responsable', 'CODIGO', 'Verdura', 'KG utilizados', 'KG rendimiento', 'Merma KG', 'Merma %'],
   ];
   for (const produccion of producciones) {
     for (const rendimiento of produccion.rendimiento ?? []) {
@@ -371,9 +360,7 @@ export async function GET(req: NextRequest) {
   }
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rowsVerd), 'VERDURAS');
 
-  const headerCol = verCostos
-    ? ['Fecha', 'Responsable', 'Menú', 'N° inscritos', 'Costo total', 'Costo por plato', 'Código producto', 'Ingrediente', 'Cantidad', 'Unidad', 'Costo unitario', 'Costo ingrediente']
-    : ['Fecha', 'Responsable', 'Menú', 'N° inscritos', 'Código producto', 'Ingrediente', 'Cantidad', 'Unidad'];
+  const headerCol = ['FECHA', 'Responsable', 'N° inscritos', 'Menú', 'CODIGO', 'Ingrediente', 'Cantidad', 'Costo ingrediente', 'Costo por plato', 'Costo total'];
   const rowsCol: unknown[][] = [headerCol];
   for (const colacion of colaciones) {
     const costoPorPlato = colacion.n_inscritos > 0
@@ -381,39 +368,25 @@ export async function GET(req: NextRequest) {
       : 0;
 
     for (const detalle of colacion.detalle_colacion ?? []) {
-      const row: unknown[] = verCostos
-        ? [
-            colacion.fecha,
-            colacion.responsable_nombre,
-            colacion.menu,
-            colacion.n_inscritos,
-            colacion.costo_total,
-            costoPorPlato,
-            detalle.codigo_producto ?? '',
-            detalle.nombre_producto,
-            detalle.cantidad,
-            detalle.unidad_medida ?? '',
-            detalle.costo_unitario,
-            detalle.costo_total,
-          ]
-        : [
-            colacion.fecha,
-            colacion.responsable_nombre,
-            colacion.menu,
-            colacion.n_inscritos,
-            detalle.codigo_producto ?? '',
-            detalle.nombre_producto,
-            detalle.cantidad,
-            detalle.unidad_medida ?? '',
-          ];
-      rowsCol.push(row);
+      rowsCol.push([
+        colacion.fecha,
+        colacion.responsable_nombre,
+        colacion.n_inscritos,
+        colacion.menu,
+        detalle.codigo_producto ?? '',
+        detalle.nombre_producto,
+        detalle.cantidad,
+        detalle.costo_total,
+        costoPorPlato,
+        colacion.costo_total,
+      ]);
     }
 
     if (!colacion.detalle_colacion?.length) {
-      const row: unknown[] = verCostos
-        ? [colacion.fecha, colacion.responsable_nombre, colacion.menu, colacion.n_inscritos, colacion.costo_total, costoPorPlato, '', '', '', '', '', '']
-        : [colacion.fecha, colacion.responsable_nombre, colacion.menu, colacion.n_inscritos, '', '', '', ''];
-      rowsCol.push(row);
+      rowsCol.push([
+        colacion.fecha, colacion.responsable_nombre, colacion.n_inscritos, colacion.menu,
+        '', '', '', '', costoPorPlato, colacion.costo_total,
+      ]);
     }
   }
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rowsCol), 'COLACION');
@@ -458,7 +431,7 @@ export async function GET(req: NextRequest) {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rowsFrutas), 'FRUTAS');
 
   const rowsInventario: unknown[][] = [
-    ['Camaras', 'Codigo de producto', 'Nombre o producto', 'Cantidad ingresada', 'Responsable'],
+    ['BODEGAS', 'Codigo', 'Producto', 'INVENTARIO'],
   ];
   for (const inventario of inventarios) {
     for (const detalle of inventario.detalle_inventario ?? []) {
@@ -467,108 +440,61 @@ export async function GET(req: NextRequest) {
         detalle.codigo_producto ?? '',
         detalle.nombre_producto,
         detalle.cantidad,
-        inventario.responsable_nombre,
       ]);
-    }
-
-    if (!inventario.detalle_inventario?.length) {
-      rowsInventario.push(['', '', '', '', inventario.responsable_nombre]);
     }
   }
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rowsInventario), 'TOMA INVENTARIO');
 
-  const headerMer = verCostos
-    ? ['Fecha', 'Responsable', 'Observación', 'Código producto', 'Producto', 'Cantidad', 'Unidad', 'Motivo', 'Costo unitario', 'Costo total']
-    : ['Fecha', 'Responsable', 'Observación', 'Código producto', 'Producto', 'Cantidad', 'Unidad', 'Motivo'];
+  const headerMer = ['FECHA', 'Responsable', 'CODIGO', 'Producto', 'Cantidad', 'Costo total', 'CANT. PLATO', 'PALTO:', 'Observación'];
   const rowsMer: unknown[][] = [headerMer];
   for (const merma of mermas) {
     for (const detalle of merma.detalle_mermas ?? []) {
-      const motivo = normalizeMotivoMerma(detalle.motivo) ?? '';
-      const row: unknown[] = verCostos
-        ? [
-            merma.fecha,
-            merma.responsable_nombre,
-            merma.observacion,
-            detalle.codigo_producto ?? '',
-            detalle.nombre_producto,
-            detalle.cantidad,
-            detalle.unidad_medida ?? '',
-            motivo,
-            detalle.costo_unitario,
-            detalle.costo_total,
-          ]
-        : [
-            merma.fecha,
-            merma.responsable_nombre,
-            merma.observacion,
-            detalle.codigo_producto ?? '',
-            detalle.nombre_producto,
-            detalle.cantidad,
-            detalle.unidad_medida ?? '',
-            motivo,
-          ];
-      rowsMer.push(row);
+      rowsMer.push([
+        merma.fecha,
+        merma.responsable_nombre,
+        detalle.codigo_producto ?? '',
+        detalle.nombre_producto,
+        detalle.cantidad,
+        detalle.costo_total,
+        '',
+        '',
+        merma.observacion,
+      ]);
     }
 
     if (!merma.detalle_mermas?.length) {
-      const row: unknown[] = verCostos
-        ? [merma.fecha, merma.responsable_nombre, merma.observacion, '', '', '', '', '', '', '']
-        : [merma.fecha, merma.responsable_nombre, merma.observacion, '', '', '', '', ''];
-      rowsMer.push(row);
+      rowsMer.push([merma.fecha, merma.responsable_nombre, '', '', '', '', '', '', merma.observacion]);
     }
   }
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rowsMer), 'MERMA');
 
-  const headerMerPlatos = verCostos
-    ? ['Fecha', 'Responsable', 'Observacion merma', 'Plato', 'Cantidad plato', 'Motivo', 'Observacion plato', 'Codigo producto', 'Insumo', 'Cantidad unitaria', 'Cantidad total', 'Unidad', 'Precio unitario', 'Costo insumo']
-    : ['Fecha', 'Responsable', 'Observacion merma', 'Plato', 'Cantidad plato', 'Motivo', 'Observacion plato', 'Codigo producto', 'Insumo', 'Cantidad unitaria', 'Cantidad total', 'Unidad'];
+  const headerMerPlatos = ['FECHA', 'Responsable', 'CODIGO', 'Producto', 'Cantidad', 'Costo total', 'CANT. PLATO', 'PALTO:', 'Observación'];
   const rowsMerPlatos: unknown[][] = [headerMerPlatos];
   for (const merma of mermas) {
     for (const plato of merma.detalle_mermas_platos ?? []) {
       const insumos = plato.detalle_mermas_platos_insumos ?? [];
-      const motivo = normalizeMotivoMerma(plato.motivo) ?? '';
 
       if (!insumos.length) {
-        const row: unknown[] = verCostos
-          ? [merma.fecha, merma.responsable_nombre, merma.observacion, plato.nombre_plato, plato.cantidad, motivo, plato.observacion ?? '', '', '', '', '', '', '', plato.costo_total]
-          : [merma.fecha, merma.responsable_nombre, merma.observacion, plato.nombre_plato, plato.cantidad, motivo, plato.observacion ?? '', '', '', '', '', ''];
-        rowsMerPlatos.push(row);
+        rowsMerPlatos.push([
+          merma.fecha, merma.responsable_nombre,
+          '', '', '', plato.costo_total,
+          plato.cantidad, plato.nombre_plato, plato.observacion ?? '',
+        ]);
         continue;
       }
 
       for (const insumo of insumos) {
-        const row: unknown[] = verCostos
-          ? [
-              merma.fecha,
-              merma.responsable_nombre,
-              merma.observacion,
-              plato.nombre_plato,
-              plato.cantidad,
-              motivo,
-              plato.observacion ?? '',
-              insumo.codigo_producto ?? '',
-              insumo.nombre,
-              insumo.cantidad_unitaria,
-              insumo.cantidad_total,
-              insumo.unidad_medida ?? '',
-              insumo.precio_unitario,
-              insumo.costo_total,
-            ]
-          : [
-              merma.fecha,
-              merma.responsable_nombre,
-              merma.observacion,
-              plato.nombre_plato,
-              plato.cantidad,
-              motivo,
-              plato.observacion ?? '',
-              insumo.codigo_producto ?? '',
-              insumo.nombre,
-              insumo.cantidad_unitaria,
-              insumo.cantidad_total,
-              insumo.unidad_medida ?? '',
-            ];
-        rowsMerPlatos.push(row);
+        rowsMerPlatos.push([
+          merma.fecha,
+          merma.responsable_nombre,
+          insumo.codigo_producto ?? '',
+          insumo.nombre,
+          insumo.cantidad_total,
+          insumo.costo_total,
+          plato.cantidad,
+          plato.nombre_plato,
+          plato.observacion ?? '',
+        ]);
       }
     }
   }
