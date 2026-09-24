@@ -79,7 +79,11 @@ function parseProduccionSheet(buffer: Buffer): RecetaRow[] {
   const ws   = wb.Sheets['PRODUCCION'];
   if (!ws) throw new Error('No se encontró la hoja PRODUCCION en el archivo');
 
-  const rows = XLSX.utils.sheet_to_json<(string | number | null)[]>(ws, { header: 1, defval: null }) as (string | number | null)[][];
+  // Anclar la lectura en A1: si la columna A está vacía, !ref parte en B y todas las columnas se corren.
+  const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1');
+  range.s.c = 0;
+  range.s.r = 0;
+  const rows = XLSX.utils.sheet_to_json<(string | number | null)[]>(ws, { header: 1, defval: null, range }) as (string | number | null)[][];
 
   const recetas: RecetaRow[] = [];
   const seenCodes = new Map<string, number>();

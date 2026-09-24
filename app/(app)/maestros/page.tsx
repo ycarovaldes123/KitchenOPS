@@ -1,39 +1,16 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useSyncExternalStore } from 'react';
 import { useRol } from '@/components/RolProvider';
 import type { Producto, PP, Responsable, TipoPP } from '@/types/database';
+import RecetaPPEditorModal from '@/components/maestros/RecetaPPEditorModal';
+import RecetaPPFicha, { RecetaEstadoChip } from '@/components/maestros/RecetaPPFicha';
+import NavIcon from '@/components/layout/NavIcon';
+import type { PPReceta } from '@/components/maestros/types';
+import { formatCostoUnitario, formatCantidad } from '@/lib/costo-receta-pp';
+import './recetas-pp.css';
 
 type Tab = 'pp' | 'recetas' | 'productos' | 'personal';
-
-interface PPRecetaIngrediente {
-  id: string;
-  orden: number;
-  codigo_ingrediente: string | null;
-  nombre_ingrediente: string;
-  cantidad: number;
-  unidad_medida: string;
-  costo_unitario_snap: number;
-  costo_linea_calculado: number;
-  sin_codigo: boolean;
-  sin_costo: boolean;
-}
-
-interface PPReceta {
-  id: string;
-  codigo_receta: string;
-  codigo_pp: string | null;
-  nombre: string;
-  rendimiento: number;
-  unidad_rendimiento: string;
-  costo_total_calculado: number;
-  costo_unitario_calculado: number;
-  estado: string;
-  activo: boolean;
-  importado_at: string | null;
-  calculado_at: string | null;
-  ingredientes: PPRecetaIngrediente[];
-}
 
 interface ActualizarResult {
   total_en_planilla: number;
@@ -47,7 +24,7 @@ interface ActualizarResult {
 }
 
 const TIPOS_PP: TipoPP[] = ['PORCION', 'UND', 'CC', 'DIRECTO'];
-const UNIDADES = ['KG', 'GR', 'LT', 'UN', 'CC', 'PR'];
+const UNIDADES = ['KG', 'GR', 'LT', 'UN', 'CC', 'PR', 'PQ'];
 
 const TIPO_LABEL: Record<TipoPP, string> = {
   PORCION: 'Porción',
@@ -89,6 +66,7 @@ export default function MaestrosPage() {
   const [prodEditCode, setProdEditCode]   = useState('');
   const [prodEditName, setProdEditName]   = useState('');
   const [prodEditCost, setProdEditCost]   = useState('');
+  const [prodEditUnidad, setProdEditUnidad] = useState('');
   const [prodEditSaving, setProdEditSaving] = useState(false);
   const [prodEditError, setProdEditError] = useState('');
 
@@ -114,6 +92,21 @@ export default function MaestrosPage() {
   const [recetasMsg, setRecetasMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [selectedReceta, setSelectedReceta] = useState<PPReceta | null>(null);
   const [recetaSearch, setRecetaSearch] = useState('');
+  const [recetaModal, setRecetaModal] = useState<false | 'new' | { edit: PPReceta } | { copy: PPReceta }>(false);
+  const [mostrarInactivas, setMostrarInactivas] = useState(false);
+  const [soloDuplicadas, setSoloDuplicadas] = useState(false);
+  const [recetaAccion, setRecetaAccion] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const recetasBodyRef = useRef<HTMLTableSectionElement>(null);
+  // Bajo 1100px la ficha no cabe al lado del listado: se abre como drawer
+  const fichaEnDrawer = useMediaQuery('(max-width: 1099px)');
+
+  useEffect(() => {
+    if (!fichaEnDrawer || !drawerOpen || recetaModal !== false) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setDrawerOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [fichaEnDrawer, drawerOpen, recetaModal]);
 
   useEffect(() => { load(); }, []);
 
@@ -132,8 +125,10 @@ export default function MaestrosPage() {
 
   async function loadRecetas() {
     setRecetasLoading(true);
-    const r = await fetch('/api/maestros/recetas-pp').then(res => res.json());
-    setRecetas(Array.isArray(r) ? r : []);
+    const r = await fetch('/api/maestros/recetas-pp?todas=1', { cache: 'no-store' }).then(res => res.json());
+    const lista: PPReceta[] = Array.isArray(r) ? r : [];
+    setRecetas(lista);
+    setSelectedReceta(sel => sel ? lista.find(x => x.id === sel.id) ?? null : null);
     setRecetasLoading(false);
   }
 
@@ -188,6 +183,57 @@ export default function MaestrosPage() {
       setRecetasMsg({ ok: false, text: 'Error de conexión' });
     } finally {
       setRecalcProd(false);
+    }
+  }
+
+  function seleccionarReceta(rec: PPReceta) {
+    setSelectedReceta(rec);
+    setDrawerOpen(true);
+  }
+
+  // ↑/↓ recorre el listado seleccionando (revisar recetas seguidas); Enter/Espacio selecciona
+  function onRecetaRowKey(e: React.KeyboardEvent<HTMLTableRowElement>, idx: number) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      seleccionarReceta(filteredRecetas[idx]);
+      return;
+    }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    const next = Math.min(Math.max(idx + (e.key === 'ArrowDown' ? 1 : -1), 0), filteredRecetas.length - 1);
+    if (next === idx) return;
+    setSelectedReceta(filteredRecetas[next]);
+    recetasBodyRef.current?.querySelector<HTMLElement>(`tr[data-idx="${next}"]`)?.focus();
+  }
+
+  async function toggleReceta(rec: PPReceta) {
+    setRecetaAccion(rec.id);
+    setRecetasMsg(null);
+    try {
+      const r = await fetch(`/api/maestros/recetas-pp/${rec.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ activo: !rec.activo }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setRecetasMsg({ ok: false, text: d.error ?? 'Error al actualizar' }); return; }
+      setRecetasMsg({ ok: true, text: `Receta ${rec.codigo_receta} ${rec.activo ? 'desactivada' : 'activada'}` });
+      await loadRecetas();
+    } finally {
+      setRecetaAccion(null);
+    }
+  }
+
+  async function eliminarReceta(rec: PPReceta) {
+    const ok = window.confirm(`¿Eliminar definitivamente la receta ${rec.codigo_receta} "${rec.nombre}"?\n\nSe borran también sus ${rec.ingredientes?.length ?? 0} ingredientes. Esta acción no se puede deshacer; si solo ya no se usa, es mejor Desactivarla.`);
+    if (!ok) return;
+    setRecetaAccion(rec.id);
+    setRecetasMsg(null);
+    try {
+      const r = await fetch(`/api/maestros/recetas-pp/${rec.id}`, { method: 'DELETE' });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setRecetasMsg({ ok: false, text: d.error ?? 'Error al eliminar' }); return; }
+      setRecetasMsg({ ok: true, text: `Receta ${rec.codigo_receta} eliminada` });
+      setSelectedReceta(null);
+      await loadRecetas();
+    } finally {
+      setRecetaAccion(null);
     }
   }
 
@@ -259,6 +305,7 @@ export default function MaestrosPage() {
     setProdEditCode(p.codigo);
     setProdEditName(p.nombre);
     setProdEditCost(String(p.costo_promedio ?? 0));
+    setProdEditUnidad((p.unidad_medida ?? '').toUpperCase());
     setProdEditError('');
   }
 
@@ -270,13 +317,16 @@ export default function MaestrosPage() {
     if (isAdmin && !codigo) { setProdEditError('El codigo es requerido'); return; }
     if (!nombre) { setProdEditError('El nombre es requerido'); return; }
     if (!Number.isFinite(costo) || costo < 0) { setProdEditError('El costo debe ser un numero valido'); return; }
+    if (!prodEditUnidad) { setProdEditError('La unidad de medida es requerida'); return; }
 
     setProdEditSaving(true);
     setProdEditError('');
     const r = await fetch(`/api/maestros/productos/${encodeURIComponent(prodEditModal.codigo)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(isAdmin ? { codigo, nombre, costo_promedio: costo } : { nombre, costo_promedio: costo }),
+      body: JSON.stringify(isAdmin
+        ? { codigo, nombre, unidad_medida: prodEditUnidad, costo_promedio: costo }
+        : { nombre, unidad_medida: prodEditUnidad, costo_promedio: costo }),
     });
     const data = await r.json();
     if (!r.ok) {
@@ -362,23 +412,30 @@ export default function MaestrosPage() {
     p.codigo.toLowerCase().includes(prodSearch.toLowerCase())
   ).slice(0, 8);
 
+  const recetasActivas = recetas.filter(r => r.activo !== false);
+  const duplicadas = recetasDuplicadas(recetasActivas);
+
   const filteredRecetas = recetas.filter(rec =>
-    rec.nombre.toLowerCase().includes(recetaSearch.toLowerCase()) ||
-    rec.codigo_receta.toLowerCase().includes(recetaSearch.toLowerCase())
+    (mostrarInactivas || rec.activo !== false) &&
+    (!soloDuplicadas || duplicadas.has(rec.id)) &&
+    (rec.nombre.toLowerCase().includes(recetaSearch.toLowerCase()) ||
+     rec.codigo_receta.toLowerCase().includes(recetaSearch.toLowerCase()) ||
+     (rec.codigo_pp ?? '').includes(recetaSearch))
   );
 
-  const recetasNoActivo = recetas.filter(r => r.estado !== 'ACTIVO');
+  const recetasNoActivo = recetasActivas.filter(r => r.estado !== 'ACTIVO');
+  const recetasInactivas = recetas.length - recetasActivas.length;
 
   const needsGramos = ppForm.tipo_pp === 'PORCION' || ppForm.tipo_pp === 'UND';
 
   // ── Render ────────────────────────────────────────────────────
 
   return (
-    <div className="page">
+    <div className={tab === 'recetas' ? 'page rpp-page' : 'page'}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '24px', fontWeight: 800, margin: 0 }}>Maestros</h1>
+          <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '28px', fontWeight: 800, margin: 0, lineHeight: 1.15 }}>Maestros</h1>
           <p style={{ color: 'var(--ts)', marginTop: '4px', fontSize: '14px' }}>Datos base del sistema</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -386,7 +443,7 @@ export default function MaestrosPage() {
             <button onClick={openNewPP} style={btnPrimary}>+ Nuevo PP</button>
           )}
           {tab === 'recetas' && (
-            <>
+            <div className="rpp rpp-actions">
               <input
                 ref={recetasFileRef}
                 type="file"
@@ -394,28 +451,19 @@ export default function MaestrosPage() {
                 style={{ display: 'none' }}
                 onChange={e => { const f = e.target.files?.[0]; if (f) importarRecetas(f); }}
               />
-              <button
-                onClick={recalcularRecetas}
-                disabled={recetasRecalculando || recetas.length === 0}
-                style={btnSecondary}
-              >
-                {recetasRecalculando ? 'Recalculando…' : '↻ Recalcular costos PP'}
+              <button type="button" className="rpp-btn" onClick={recalcularRecetas} disabled={recetasRecalculando || recetas.length === 0}>
+                <NavIcon name="refresh" size={15} /> {recetasRecalculando ? 'Recalculando…' : 'Recalcular costos PP'}
               </button>
-              <button
-                onClick={recalcularCostosProduccion}
-                disabled={recalcProd}
-                style={{ ...btnSecondary, borderColor: '#6366F1', color: '#6366F1' }}
-              >
-                {recalcProd ? 'Actualizando…' : '↻ Costos producción histórica'}
+              <button type="button" className="rpp-btn" onClick={recalcularCostosProduccion} disabled={recalcProd}>
+                <NavIcon name="history" size={15} /> {recalcProd ? 'Actualizando…' : 'Costos producción histórica'}
               </button>
-              <button
-                onClick={() => recetasFileRef.current?.click()}
-                disabled={recetasImportando}
-                style={btnPrimary}
-              >
-                {recetasImportando ? 'Importando…' : '↑ Importar recetas PP'}
+              <button type="button" className="rpp-btn" onClick={() => recetasFileRef.current?.click()} disabled={recetasImportando}>
+                <NavIcon name="upload" size={15} /> {recetasImportando ? 'Importando…' : 'Importar recetas PP'}
               </button>
-            </>
+              <button type="button" className="rpp-btn rpp-btn-primary" onClick={() => setRecetaModal('new')}>
+                <NavIcon name="plus" size={15} /> Nueva receta
+              </button>
+            </div>
           )}
           {tab === 'productos' && canManageProductos && (
             <>
@@ -484,10 +532,13 @@ export default function MaestrosPage() {
           personal: 'Personal',
         };
         return (
-          <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', borderBottom: '1px solid var(--bo)', paddingBottom: '0' }}>
+          <div role="tablist" aria-label="Maestros" style={{ display: 'flex', gap: '4px', marginBottom: '24px', boxShadow: 'inset 0 -1px 0 var(--bo)', overflowX: 'auto', scrollbarWidth: 'none' }}>
             {(['pp', 'recetas', 'productos', 'personal'] as Tab[]).map(t => (
               <button
                 key={t}
+                type="button"
+                role="tab"
+                aria-selected={tab === t}
                 onClick={() => {
                   setTab(t);
                   setSearch('');
@@ -499,7 +550,7 @@ export default function MaestrosPage() {
                   padding: '10px 16px', fontSize: '14px', fontWeight: tab === t ? 600 : 400,
                   color: tab === t ? 'var(--ac)' : 'var(--ts)',
                   borderBottom: tab === t ? '2px solid var(--ac)' : '2px solid transparent',
-                  marginBottom: '-1px', transition: 'color 0.15s',
+                  transition: 'color 0.15s', whiteSpace: 'nowrap', flexShrink: 0,
                 }}
               >
                 {tabLabels[t]}
@@ -592,124 +643,151 @@ export default function MaestrosPage() {
 
           {/* ── Tab Recetas PP ── */}
           {tab === 'recetas' && (
-            <>
+            <div className="rpp">
               {recetasMsg && (
-                <div style={{ background: recetasMsg.ok ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${recetasMsg.ok ? '#BBF7D0' : '#FECACA'}`, borderRadius: '10px', padding: '10px 14px', marginBottom: '12px', fontSize: '13px', color: recetasMsg.ok ? '#166534' : '#DC2626', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div role="status" style={{ background: recetasMsg.ok ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${recetasMsg.ok ? '#BBF7D0' : '#FECACA'}`, borderRadius: '10px', padding: '10px 16px', marginBottom: '16px', fontSize: '13px', color: recetasMsg.ok ? '#166534' : '#DC2626', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
                   <span>{recetasMsg.ok ? '✓' : '⚠'} {recetasMsg.text}</span>
-                  <button onClick={() => setRecetasMsg(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: 'inherit', opacity: 0.6 }}>×</button>
+                  <button type="button" aria-label="Cerrar mensaje" onClick={() => setRecetasMsg(null)} className="rpp-icon-btn" style={{ width: 28, height: 28, color: 'inherit' }}><NavIcon name="x" size={14} /></button>
                 </div>
               )}
 
-              <input
-                value={recetaSearch}
-                onChange={e => { setRecetaSearch(e.target.value); setSelectedReceta(null); }}
-                placeholder="Buscar receta..."
-                style={{ ...inputStyle, maxWidth: '280px', marginBottom: '16px' }}
-              />
+              <div className="rpp-toolbar">
+                <div className="rpp-search">
+                  <NavIcon name="search" size={16} />
+                  <input
+                    value={recetaSearch}
+                    onChange={e => setRecetaSearch(e.target.value)}
+                    placeholder="Buscar receta o código..."
+                    aria-label="Buscar receta"
+                  />
+                  {recetaSearch && (
+                    <button type="button" className="rpp-search-clear" aria-label="Limpiar búsqueda" onClick={() => setRecetaSearch('')}>
+                      <NavIcon name="x" size={14} />
+                    </button>
+                  )}
+                </div>
+                <label className="rpp-check">
+                  <input type="checkbox" checked={mostrarInactivas} onChange={e => setMostrarInactivas(e.target.checked)} />
+                  Mostrar inactivas
+                  {recetasInactivas > 0 && <span className="rpp-check-count">{recetasInactivas}</span>}
+                </label>
+                <label className="rpp-check">
+                  <input type="checkbox" checked={soloDuplicadas} onChange={e => setSoloDuplicadas(e.target.checked)} />
+                  Solo posibles duplicadas
+                  <span className={`rpp-check-count${duplicadas.size > 0 ? ' is-warn' : ''}`}>{duplicadas.size}</span>
+                </label>
+              </div>
 
               {recetasLoading ? (
                 <p style={{ color: 'var(--ts)', fontSize: '14px' }}>Cargando recetas…</p>
               ) : recetas.length === 0 ? (
-                <div style={{ background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '12px', padding: '48px 24px', textAlign: 'center' }}>
-                  <p style={{ color: 'var(--ts)', fontSize: '14px', marginBottom: '8px' }}>No hay recetas importadas</p>
-                  <p style={{ color: 'var(--ts)', fontSize: '12px' }}>Usa &quot;↑ Importar recetas PP&quot; para cargar el archivo Recetas Torobayo Actualizadas.xlsx</p>
+                <div className="rpp-card rpp-empty">
+                  <p style={{ fontSize: '14px', margin: '0 0 8px', color: 'var(--tx)' }}>No hay recetas PP</p>
+                  <p style={{ margin: 0 }}>Usa &quot;Nueva receta&quot; o &quot;Importar recetas PP&quot; (hoja PRODUCCION de Recetas Torobayo Actualizadas.xlsx)</p>
                 </div>
               ) : (
-                <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
-                  {/* Tabla principal */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <TableCard>
+                <div className="rpp-layout">
+                  {/* Listado */}
+                  <div className="rpp-card rpp-table-wrap">
+                    <table className="rpp-table">
                       <thead>
                         <tr>
-                          {['Código', 'Nombre', 'Rendimiento', 'Costo unit.', 'Estado', ''].map(h => <Th key={h}>{h}</Th>)}
+                          <th className="col-code" scope="col">Código</th>
+                          <th scope="col">Nombre</th>
+                          <th className="num col-rend" scope="col">Rendimiento</th>
+                          <th className="num" scope="col">Costo unit.</th>
+                          <th scope="col">Estado</th>
+                          <th className="rpp-chevron" aria-hidden="true" />
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody ref={recetasBodyRef}>
                         {filteredRecetas.length === 0 && (
-                          <tr><td colSpan={6} style={emptyCell}>Sin resultados</td></tr>
+                          <tr><td colSpan={6} className="rpp-empty">Sin resultados{recetaSearch ? ` para “${recetaSearch}”` : ''}</td></tr>
                         )}
-                        {filteredRecetas.map(rec => (
-                          <tr
-                            key={rec.id}
-                            style={{ cursor: 'pointer', background: selectedReceta?.id === rec.id ? 'var(--bg)' : undefined }}
-                            onClick={() => setSelectedReceta(selectedReceta?.id === rec.id ? null : rec)}
-                          >
-                            <Td><code style={{ fontSize: '11px', background: 'var(--bg)', padding: '2px 6px', borderRadius: '4px' }}>{rec.codigo_receta}</code></Td>
-                            <Td style={{ fontWeight: 500, fontSize: '13px' }}>{rec.nombre}</Td>
-                            <Td style={{ fontSize: '12px', color: 'var(--ts)' }}>{rec.rendimiento} {rec.unidad_rendimiento}</Td>
-                            <Td style={{ fontSize: '13px', fontFamily: "'Space Grotesk', sans-serif" }}>
-                              {rec.costo_unitario_calculado > 0
-                                ? `$${rec.costo_unitario_calculado.toLocaleString('es-CL')}`
-                                : <span style={{ color: 'var(--ts)', fontSize: '12px' }}>Sin calcular</span>
-                              }
-                            </Td>
-                            <Td><RecetaEstadoBadge estado={rec.estado} /></Td>
-                            <Td><span style={{ fontSize: '12px', color: 'var(--ts)' }}>{selectedReceta?.id === rec.id ? '▲' : '▶'}</span></Td>
-                          </tr>
-                        ))}
+                        {filteredRecetas.map((rec, idx) => {
+                          const selected = selectedReceta?.id === rec.id;
+                          return (
+                            <tr
+                              key={rec.id}
+                              data-idx={idx}
+                              tabIndex={0}
+                              aria-selected={selected}
+                              className={`rpp-row${selected ? ' is-selected' : ''}${rec.activo === false ? ' is-inactive' : ''}`}
+                              onClick={() => seleccionarReceta(rec)}
+                              onKeyDown={e => onRecetaRowKey(e, idx)}
+                            >
+                              <td className="col-code"><span className="rpp-code">{rec.codigo_receta}</span></td>
+                              <td>
+                                <span className="rpp-row-name">{rec.nombre}</span>
+                                {duplicadas.has(rec.id) && <span className="rpp-tag" title="Otra receta activa tiene el mismo nombre o código PP">Duplicada</span>}
+                                <span className="rpp-row-sub">{rec.codigo_receta} · {formatCantidad(rec.rendimiento)} {rec.unidad_rendimiento}</span>
+                              </td>
+                              <td className="num col-rend"><span className="rpp-num">{formatCantidad(rec.rendimiento)}</span><span className="rpp-num-unit">{rec.unidad_rendimiento}</span></td>
+                              <td className="num">
+                                {rec.costo_unitario_calculado > 0
+                                  ? <><span className="rpp-num">{formatCostoUnitario(rec.costo_unitario_calculado)}</span><span className="rpp-num-unit">/{rec.unidad_rendimiento}</span></>
+                                  : <span className="rpp-muted">Sin calcular</span>}
+                              </td>
+                              <td><RecetaEstadoChip receta={rec} /></td>
+                              <td className="rpp-chevron"><NavIcon name="chevron" size={16} /></td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
-                    </TableCard>
+                    </table>
                   </div>
 
-                  {/* Panel detalle */}
-                  {selectedReceta && (
-                    <div style={{ width: '360px', flexShrink: 0, background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '12px', padding: '18px 16px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
-                        <div>
-                          <p style={{ fontSize: '11px', color: 'var(--ts)', margin: '0 0 2px' }}>{selectedReceta.codigo_receta}{selectedReceta.codigo_pp ? ` → ${selectedReceta.codigo_pp}` : ''}</p>
-                          <h3 style={{ fontFamily: 'Syne, sans-serif', fontSize: '15px', fontWeight: 700, margin: 0 }}>{selectedReceta.nombre}</h3>
-                        </div>
-                        <button onClick={() => setSelectedReceta(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: 'var(--ts)', padding: '0' }}>×</button>
-                      </div>
-
-                      <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}>
-                        <div style={{ flex: 1, background: 'var(--bg)', borderRadius: '8px', padding: '8px 10px' }}>
-                          <p style={{ fontSize: '10px', color: 'var(--ts)', textTransform: 'uppercase', fontWeight: 600, margin: '0 0 2px' }}>Rendimiento</p>
-                          <p style={{ fontSize: '16px', fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", margin: 0 }}>{selectedReceta.rendimiento} {selectedReceta.unidad_rendimiento}</p>
-                        </div>
-                        <div style={{ flex: 1, background: 'var(--bg)', borderRadius: '8px', padding: '8px 10px' }}>
-                          <p style={{ fontSize: '10px', color: 'var(--ts)', textTransform: 'uppercase', fontWeight: 600, margin: '0 0 2px' }}>Costo/{selectedReceta.unidad_rendimiento}</p>
-                          <p style={{ fontSize: '16px', fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", margin: 0 }}>
-                            {selectedReceta.costo_unitario_calculado > 0 ? `$${selectedReceta.costo_unitario_calculado.toLocaleString('es-CL')}` : '—'}
-                          </p>
-                        </div>
-                      </div>
-
-                      <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 8px' }}>
-                        Ingredientes ({selectedReceta.ingredientes?.length ?? 0})
-                      </p>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '380px', overflowY: 'auto' }}>
-                        {(selectedReceta.ingredientes ?? []).sort((a, b) => a.orden - b.orden).map(ing => (
-                          <div key={ing.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', background: ing.sin_codigo ? '#FEF2F2' : ing.sin_costo ? '#FFFBEB' : 'var(--bg)', borderRadius: '6px', border: `1px solid ${ing.sin_codigo ? '#FECACA' : ing.sin_costo ? '#FDE68A' : 'var(--bo)'}` }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <p style={{ fontSize: '12px', fontWeight: 500, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ing.nombre_ingrediente}</p>
-                              <p style={{ fontSize: '11px', color: 'var(--ts)', margin: 0 }}>
-                                {ing.cantidad} {ing.unidad_medida}
-                                {ing.sin_codigo && <span style={{ color: '#DC2626', marginLeft: '6px' }}>sin código</span>}
-                                {!ing.sin_codigo && ing.sin_costo && <span style={{ color: '#92400E', marginLeft: '6px' }}>sin costo</span>}
-                              </p>
-                            </div>
-                            <span style={{ fontSize: '12px', fontFamily: "'Space Grotesk', sans-serif", color: ing.costo_linea_calculado > 0 ? 'var(--tx)' : 'var(--ts)', whiteSpace: 'nowrap', marginLeft: '8px' }}>
-                              {ing.costo_linea_calculado > 0 ? `$${ing.costo_linea_calculado.toLocaleString('es-CL')}` : '—'}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-
-                      {selectedReceta.costo_total_calculado > 0 && (
-                        <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--bo)', display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '12px', fontWeight: 600 }}>Costo total receta</span>
-                          <span style={{ fontSize: '13px', fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>${selectedReceta.costo_total_calculado.toLocaleString('es-CL')}</span>
+                  {/* Ficha: panel sticky en escritorio; drawer bajo 1100px */}
+                  {!fichaEnDrawer && (
+                    <aside className="rpp-aside" aria-label="Detalle de la receta">
+                      {selectedReceta ? (
+                        <RecetaPPFicha
+                          receta={selectedReceta}
+                          duplicada={duplicadas.has(selectedReceta.id)}
+                          busy={recetaAccion === selectedReceta.id}
+                          onEdit={() => setRecetaModal({ edit: selectedReceta })}
+                          onCopy={() => setRecetaModal({ copy: selectedReceta })}
+                          onToggle={() => toggleReceta(selectedReceta)}
+                          onDelete={() => eliminarReceta(selectedReceta)}
+                        />
+                      ) : (
+                        <div className="rpp-card rpp-ficha-empty">
+                          <NavIcon name="utensils" size={28} strokeWidth={1.5} />
+                          <p style={{ margin: '0 0 4px', fontWeight: 600, color: 'var(--tx)' }}>Selecciona una receta</p>
+                          <p style={{ margin: 0 }}>Haz clic en una fila o usa ↑ ↓ para recorrer el listado.</p>
                         </div>
                       )}
-                    </div>
+                    </aside>
                   )}
                 </div>
               )}
-            </>
-          )}
 
+              {fichaEnDrawer && drawerOpen && selectedReceta && (
+                <>
+                  <div className="rpp-drawer-backdrop" onClick={() => setDrawerOpen(false)} />
+                  <div className="rpp rpp-drawer" role="dialog" aria-modal="true" aria-label={`Ficha ${selectedReceta.nombre}`}>
+                    <div className="rpp-drawer-bar">
+                      <button type="button" className="rpp-btn rpp-btn-sm" onClick={() => setDrawerOpen(false)} style={{ border: 'none', paddingLeft: 4 }}>
+                        <NavIcon name="back" size={16} /> Recetas
+                      </button>
+                      <button type="button" className="rpp-icon-btn" aria-label="Cerrar ficha" onClick={() => setDrawerOpen(false)}>
+                        <NavIcon name="x" size={18} />
+                      </button>
+                    </div>
+                    <RecetaPPFicha
+                      receta={selectedReceta}
+                      duplicada={duplicadas.has(selectedReceta.id)}
+                      busy={recetaAccion === selectedReceta.id}
+                      onEdit={() => setRecetaModal({ edit: selectedReceta })}
+                      onCopy={() => setRecetaModal({ copy: selectedReceta })}
+                      onToggle={() => toggleReceta(selectedReceta)}
+                      onDelete={() => eliminarReceta(selectedReceta)}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           {/* ── Tab Productos ── */}
           {tab === 'productos' && uploadError && (
             <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '10px', padding: '12px 16px', marginBottom: '12px', fontSize: '13px', color: '#DC2626' }}>
@@ -923,6 +1001,22 @@ export default function MaestrosPage() {
         </Modal>
       )}
 
+      {/* ── Modal Receta PP ── */}
+      {recetaModal !== false && (
+        <RecetaPPEditorModal
+          receta={recetaModal !== 'new' && 'edit' in recetaModal ? recetaModal.edit : null}
+          copyFrom={recetaModal !== 'new' && 'copy' in recetaModal ? recetaModal.copy : null}
+          productos={productos}
+          onClose={() => setRecetaModal(false)}
+          onSaved={msg => {
+            setRecetaModal(false);
+            setRecetasMsg({ ok: true, text: msg });
+            loadRecetas();
+            load();
+          }}
+        />
+      )}
+
       {/* ── Modal Producto ── */}
       {prodModal && (
         <Modal title="Nuevo producto" onClose={() => setProdModal(false)}>
@@ -974,7 +1068,23 @@ export default function MaestrosPage() {
             style={{ ...inputStyle, marginBottom: '12px' }}
           />
 
-          <label style={labelStyle}>Costo promedio (CLP)</label>
+          <label style={labelStyle}>Unidad de medida</label>
+          <select
+            value={prodEditUnidad}
+            onChange={e => setProdEditUnidad(e.target.value)}
+            style={{ ...inputStyle, marginBottom: prodEditUnidad !== (prodEditModal.unidad_medida ?? '').toUpperCase() ? '6px' : '12px' }}
+          >
+            {!UNIDADES.includes(prodEditUnidad) && <option value={prodEditUnidad}>{prodEditUnidad || '—'}</option>}
+            {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+          </select>
+          {prodEditUnidad !== (prodEditModal.unidad_medida ?? '').toUpperCase() && (
+            <p style={{ fontSize: '12px', color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '8px', padding: '8px 10px', margin: '0 0 12px' }}>
+              ⚠ Cambias {prodEditModal.unidad_medida || '—'} → {prodEditUnidad}. Revisa que el costo corresponda a la nueva unidad (ej. costo por GR, no por KG).
+              Se recalculan las recetas PP; los registros ya guardados de producción, mermas y colación no cambian.
+            </p>
+          )}
+
+          <label style={labelStyle}>Costo promedio (CLP{prodEditUnidad ? ` por ${prodEditUnidad}` : ''})</label>
           <input
             type="number"
             value={prodEditCost}
@@ -1036,18 +1146,31 @@ function SinCostoPanel({
   );
 }
 
-function RecetaEstadoBadge({ estado }: { estado: string }) {
-  const map: Record<string, { bg: string; color: string; border: string; label: string }> = {
-    ACTIVO:     { bg: '#F0FDF4', color: '#166534', border: '#BBF7D0', label: 'Activo' },
-    PENDIENTE:  { bg: '#FFFBEB', color: '#92400E', border: '#FDE68A', label: 'Pendiente' },
-    INCOMPLETO: { bg: '#FEF2F2', color: '#991B1B', border: '#FECACA', label: 'Incompleto' },
-  };
-  const s = map[estado] ?? map['PENDIENTE'];
-  return (
-    <span style={{ fontSize: '11px', fontWeight: 600, background: s.bg, color: s.color, border: `1px solid ${s.border}`, borderRadius: '20px', padding: '2px 8px' }}>
-      {s.label}
-    </span>
+function useMediaQuery(query: string): boolean {
+  return useSyncExternalStore(
+    onChange => {
+      const mql = window.matchMedia(query);
+      mql.addEventListener('change', onChange);
+      return () => mql.removeEventListener('change', onChange);
+    },
+    () => window.matchMedia(query).matches,
+    () => false,
   );
+}
+
+// Recetas activas que comparten nombre (ignorando tildes, signos y el prefijo PP) o código PP.
+// Ej: "PP CHAMPIÑONES HIDRATADOS" y "PP. CHAMPIÑONES HIDRATADOS", o 0501015 y 0501015-B.
+function recetasDuplicadas(recetas: PPReceta[]): Set<string> {
+  const norm = (s: string) => s.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9]/g, '').replace(/^PP/, '');
+  const grupos = new Map<string, string[]>();
+  const add = (k: string, id: string) => grupos.set(k, [...(grupos.get(k) ?? []), id]);
+  for (const r of recetas) {
+    add('n:' + norm(r.nombre), r.id);
+    if (r.codigo_pp) add('c:' + r.codigo_pp, r.id);
+  }
+  const ids = new Set<string>();
+  for (const g of grupos.values()) if (g.length > 1) g.forEach(id => ids.add(id));
+  return ids;
 }
 
 function TableCard({ children }: { children: React.ReactNode }) {
