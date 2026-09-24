@@ -1,10 +1,12 @@
 import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import { createClient } from '@/utils/supabase/server';
 import { RMAP, ROL_LABEL, NAV_ITEMS, RUTAS_ROL, type NavItem } from '@/lib/roles';
 import Sidebar      from '@/components/layout/Sidebar';
 import TopBar       from '@/components/layout/TopBar';
 import BottomNav    from '@/components/layout/BottomNav';
 import { RolProvider } from '@/components/RolProvider';
+import { conModuloAlertas } from '@/lib/alertas/acceso';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -15,9 +17,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const rol = RMAP[user.email ?? ''];
   if (!rol) redirect('/login?error=unauthorized');
 
-  const navItems  = RUTAS_ROL[rol]
-    .map(href => NAV_ITEMS.find(item => item.href === href && item.roles.includes(rol)))
-    .filter((item): item is NavItem => Boolean(item));
+  const navItems  = conModuloAlertas(
+    RUTAS_ROL[rol]
+      .map(href => NAV_ITEMS.find(item => item.href === href && item.roles.includes(rol)))
+      .filter((item): item is NavItem => Boolean(item)),
+    rol,
+    (await headers()).get('host'),
+  );
   const iniciales = (user.email ?? '').split('@')[0].slice(0, 2).toUpperCase();
   const userInfo  = { email: user.email!, rolLabel: ROL_LABEL[rol], iniciales };
 

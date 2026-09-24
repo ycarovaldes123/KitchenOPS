@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
+import { notificarAlertasDeRegistro } from '@/lib/alertas/notificar';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol, getSessionRol } from '@/lib/auth-server';
 import { puedeHacer } from '@/lib/permissions';
@@ -252,6 +253,10 @@ export async function POST(req: NextRequest) {
       }
     }
   }
+
+  // Piloto Alertas: analiza el registro recién creado y avisa por correo si tiene alertas.
+  // Corre después de responder; no afecta el guardado (ver lib/alertas/notificar.ts).
+  after(() => notificarAlertasDeRegistro(supabase, 'Mermas', mer.id));
 
   return NextResponse.json({ id: mer.id }, { status: 201 });
 }

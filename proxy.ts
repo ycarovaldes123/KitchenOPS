@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { updateSession } from '@/utils/supabase/middleware';
 import { RMAP, RUTAS_ROL, RUTA_INICIO, RUTA_INICIO_COMUN } from '@/lib/roles';
+import { ALERTAS_HREF, alertasHabilitadas } from '@/lib/alertas/acceso';
 
 const PUBLIC_PATHS = ['/login', '/auth', '/logout'];
 
@@ -59,6 +60,13 @@ export async function proxy(req: NextRequest) {
       return res;
     }
     supabaseResponse.cookies.set(COOKIE_VISITA, hoyChile, opciones);
+  }
+
+  // Piloto "Alertas y Validaciones": solo next dev + ENABLE_ALERTAS_MODULE + localhost (lib/alertas/acceso.ts)
+  if (segmento === ALERTAS_HREF) {
+    return alertasHabilitadas(req.nextUrl.hostname, rol)
+      ? supabaseResponse
+      : NextResponse.redirect(new URL(RUTA_INICIO[rol], req.url));
   }
 
   // Check module access. La pantalla Inicio esta disponible para cualquier rol autenticado.

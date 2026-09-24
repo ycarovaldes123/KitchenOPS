@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
+import { notificarAlertasDeRegistro } from '@/lib/alertas/notificar';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol, getSessionRol } from '@/lib/auth-server';
 
@@ -77,6 +78,10 @@ export async function POST(req: NextRequest) {
     .from('detalle_colacion')
     .insert(detalleRows.map((d: Record<string, unknown>) => ({ ...d, colacion_id: col.id })));
   if (dErr) return NextResponse.json({ error: dErr.message }, { status: 500 });
+
+  // Piloto Alertas: analiza el registro recién creado y avisa por correo si tiene alertas.
+  // Corre después de responder; no afecta el guardado (ver lib/alertas/notificar.ts).
+  after(() => notificarAlertasDeRegistro(supabase, 'Colación', col.id));
 
   return NextResponse.json({ id: col.id }, { status: 201 });
 }

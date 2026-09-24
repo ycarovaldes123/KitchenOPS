@@ -1,7 +1,9 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/utils/supabase/server';
 import { RMAP, ROL_LABEL, NAV_ITEMS, RUTAS_ROL, NOMBRE_POR_EMAIL, type NavItem } from '@/lib/roles';
+import { headers } from 'next/headers';
 import InicioGrid from '@/components/InicioGrid';
+import { ALERTAS_HREF, conModuloAlertas } from '@/lib/alertas/acceso';
 
 export const metadata = { title: 'Inicio · KitchenOps' };
 
@@ -14,9 +16,14 @@ export default async function InicioPage() {
   if (!rol) redirect('/login?error=unauthorized');
 
   // Mismos modulos que la barra de navegacion: cada rol ve solo los suyos.
-  const navItems = RUTAS_ROL[rol]
-    .map(href => NAV_ITEMS.find(item => item.href === href && item.roles.includes(rol)))
-    .filter((item): item is NavItem => Boolean(item));
+  // En la tarjeta de Inicio el piloto local se muestra con su nombre completo.
+  const navItems = conModuloAlertas(
+    RUTAS_ROL[rol]
+      .map(href => NAV_ITEMS.find(item => item.href === href && item.roles.includes(rol)))
+      .filter((item): item is NavItem => Boolean(item)),
+    rol,
+    (await headers()).get('host'),
+  ).map(item => item.href === ALERTAS_HREF ? { ...item, label: 'Alertas y Validaciones' } : item);
 
   const email = user.email ?? '';
   const nombre = NOMBRE_POR_EMAIL[email] ?? email.split('@')[0];

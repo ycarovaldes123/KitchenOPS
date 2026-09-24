@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
+import { notificarAlertasDeRegistro } from '@/lib/alertas/notificar';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol, getSessionRol } from '@/lib/auth-server';
 import { calcTotalPP, calcCostoProduccionPP } from '@/lib/calculos';
@@ -127,6 +128,10 @@ export async function POST(req: NextRequest) {
       .insert(rendimientoValido.map(r => ({ ...r, produccion_id: prod.id })));
     if (rErr) return NextResponse.json({ error: rErr.message }, { status: 500 });
   }
+
+  // Piloto Alertas: analiza el registro recién creado y avisa por correo si tiene alertas.
+  // Corre después de responder; no afecta el guardado (ver lib/alertas/notificar.ts).
+  after(() => notificarAlertasDeRegistro(supabase, 'Producción', prod.id));
 
   return NextResponse.json({ id: prod.id }, { status: 201 });
 }
