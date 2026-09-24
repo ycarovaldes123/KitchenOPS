@@ -69,17 +69,17 @@ export interface NavItem {
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { href: '/produccion', label: 'Produccion', icon: 'flame',    roles: ['admin', 'cocina'], descripcion: 'Registro diario de PP y producción' },
+  { href: '/produccion', label: 'Produccion', icon: 'cooking-pot',    roles: ['admin', 'cocina'], descripcion: 'Registro diario de PP y producción' },
   { href: '/colacion',   label: 'Colacion',   icon: 'utensils', roles: ['admin', 'economo'], descripcion: 'Inscripciones y costos de colación' },
-  { href: '/frutas',     label: 'Frutas',     icon: 'utensils', roles: ['admin', 'economo', 'finanzas'], descripcion: 'Control de frutas' },
-  { href: '/inventario', label: 'Toma Inventario', icon: 'grid', roles: ['admin', 'economo', 'finanzas'], descripcion: 'Toma de inventario físico' },
-  { href: '/control-carnicos', label: 'Control Carnicos', icon: 'grid', roles: ['admin', 'bodega', 'jefatura', 'gerencia'], descripcion: 'Ingresos, ventas, inventarios y cuadre de carnes' },
+  { href: '/frutas',     label: 'Frutas',     icon: 'apple', roles: ['admin', 'economo', 'finanzas'], descripcion: 'Control de frutas' },
+  { href: '/inventario', label: 'Toma Inventario', icon: 'clipboard', roles: ['admin', 'economo', 'finanzas'], descripcion: 'Toma de inventario físico' },
+  { href: '/control-carnicos', label: 'Control Carnicos', icon: 'beef', roles: ['admin', 'bodega', 'jefatura', 'gerencia'], descripcion: 'Ingresos, ventas, inventarios y cuadre de carnes' },
   { href: '/mermas',     label: 'Mermas',     icon: 'trending', roles: ['admin', 'cocina', 'economo', 'bodega'], descripcion: 'Rendimiento y mermas de verduras' },
   { href: '/historial',  label: 'Historial',  icon: 'clock',    roles: ['admin', 'jefatura', 'finanzas', 'economo', 'cocina', 'bodega', 'gerencia'], descripcion: 'Historial de registros' },
-  { href: '/ventas',     label: 'Ventas',     icon: 'barchart', roles: ['admin', 'cocina', 'finanzas', 'jefatura', 'economo', 'bodega', 'gerencia'], descripcion: 'Ventas Toteat por período' },
-  { href: '/dashboard',  label: 'Dashboard',  icon: 'grid',     roles: ['admin', 'finanzas'], descripcion: 'KPIs y filtros por período' },
-  { href: '/kpis',       label: 'KPIs',       icon: 'barchart', roles: ['admin', 'finanzas', 'jefatura', 'cocina', 'gerencia'], descripcion: 'Indicadores operacionales' },
-  { href: '/costos',     label: 'Costos',     icon: 'dollar',   roles: ['admin', 'finanzas', 'jefatura', 'cocina', 'gerencia'], descripcion: 'Reportería de costos y fichas técnicas' },
-  { href: '/export',     label: 'Exportar',   icon: 'download', roles: ['admin', 'finanzas'], descripcion: 'Exportar datos a Excel' },
+  { href: '/ventas',     label: 'Ventas',     icon: 'chart-column', roles: ['admin', 'cocina', 'finanzas', 'jefatura', 'economo', 'bodega', 'gerencia'], descripcion: 'Ventas Toteat por período' },
+  { href: '/dashboard',  label: 'Dashboard',  icon: 'dashboard',     roles: ['admin', 'finanzas'], descripcion: 'KPIs y filtros por período' },
+  { href: '/kpis',       label: 'KPIs',       icon: 'chart-line', roles: ['admin', 'finanzas', 'jefatura', 'cocina', 'gerencia'], descripcion: 'Indicadores operacionales' },
+  { href: '/costos',     label: 'Costos',     icon: 'coins',   roles: ['admin', 'finanzas', 'jefatura', 'cocina', 'gerencia'], descripcion: 'Reportería de costos y fichas técnicas' },
+  { href: '/export',     label: 'Exportar',   icon: 'file-down', roles: ['admin', 'finanzas'], descripcion: 'Exportar datos a Excel' },
   { href: '/maestros',   label: 'Maestros',   icon: 'settings', roles: ['admin', 'finanzas'], descripcion: 'PP, productos y personal' },
 ];

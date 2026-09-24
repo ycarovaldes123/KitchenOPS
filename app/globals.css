@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 @import "tailwindcss";
 
 /* ─── Paleta Kunstmann ──────────────────────────────────────── */
@@ -15,6 +15,12 @@
   --ra:  12px;
   --tx:  #141414;
   --ts:  #6B6560;
+
+  /* Superficies interactivas (tarjetas de Inicio, etc.) */
+  --bo-ac:        color-mix(in srgb, var(--ac) 38%, var(--bo)); /* borde naranjo tenue en hover */
+  --sh-card:      0 2px 8px rgba(20, 16, 10, 0.03);
+  --sh-card-hover: 0 8px 20px rgba(20, 16, 10, 0.07);
+  --dur-ui:       180ms;
 }
 
 /* ─── Tailwind v4 custom theme ─────────────────────────────── */

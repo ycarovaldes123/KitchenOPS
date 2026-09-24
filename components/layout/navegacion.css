@@ -1,0 +1,122 @@
+/* ─── Navegación: barra lateral + tarjetas de Inicio ──────────────────
+   Colores y superficies desde los tokens de app/globals.css (--sb, --ac, --al,
+   --bo, --bo-ac, --sh-card, --dur-ui). Iconos: components/layout/NavIcon.tsx. */
+
+/* ── Barra lateral ─────────────────────────────────────────────────── */
+/* Columna única: logo, botón contraer, links y pie comparten el mismo
+   margen interno, así iconos y textos arrancan en la misma vertical. */
+.sb {
+  --sb-pad: 10px;          /* margen lateral del contenido */
+  --sb-item-pad: 12px;     /* margen interno de cada fila */
+  --sb-gap: 12px;          /* separación icono → texto */
+  --sb-muted: rgba(255, 255, 255, 0.62);
+  --sb-hover: rgba(255, 255, 255, 0.08);
+  --sb-line: rgba(255, 255, 255, 0.10);
+}
+
+.sb-head { padding: 20px var(--sb-pad) 12px; display: flex; flex-direction: column; gap: 12px; }
+.sb-brand {
+  display: block; padding: 2px var(--sb-item-pad) 4px calc(var(--sb-item-pad) + 1px); text-decoration: none;
+  border-radius: 8px; min-width: 0;
+}
+.sb-brand__name { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; color: #fff; white-space: nowrap; line-height: 1.2; }
+.sb-brand__name span { color: var(--ac); }
+.sb-brand__place { font-size: 11px; color: rgba(255, 255, 255, 0.4); margin: 2px 0 0; white-space: nowrap; }
+.sb-brand__mark { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; color: var(--ac); line-height: 1; }
+
+.sb-nav { flex: 1; padding: 4px var(--sb-pad); overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 2px; }
+
+/* Fila de navegación y botones del menú: misma altura, radio, icono y tipografía */
+.sb-link,
+.sb-btn {
+  display: flex; align-items: center; gap: var(--sb-gap);
+  height: 40px; padding: 0 var(--sb-item-pad); width: 100%;
+  border-radius: 8px; border: 1px solid transparent;
+  color: var(--sb-muted); background: transparent;
+  font-size: 14px; font-weight: 500; line-height: 1; text-decoration: none; text-align: left;
+  white-space: nowrap; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  transition: background var(--dur-ui) ease, color var(--dur-ui) ease, border-color var(--dur-ui) ease;
+}
+.sb-icon { width: 20px; height: 20px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
+.sb-label { overflow: hidden; text-overflow: ellipsis; }
+
+.sb-link:hover { background: var(--sb-hover); color: #fff; }
+.sb-link.is-active { background: var(--ac); color: #fff; font-weight: 600; }
+.sb-link.is-active:hover { background: color-mix(in srgb, var(--ac) 88%, #000); }
+
+/* Botones (contraer menú, cerrar sesión): superficie sutil con borde, sin competir con el activo naranjo */
+.sb-btn { background: rgba(255, 255, 255, 0.06); border-color: var(--sb-line); color: rgba(255, 255, 255, 0.8); font-size: 13px; }
+.sb-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.2); color: #fff; }
+.sb-btn:active:not(:disabled) { background: rgba(255, 255, 255, 0.16); }
+.sb-btn:disabled { opacity: 0.6; cursor: default; }
+.sb-btn .sb-icon svg { transition: transform var(--dur-ui) ease; }
+
+/* Foco por teclado: anillo naranjo separado del fondo negro */
+.sb-link:focus-visible,
+.sb-btn:focus-visible,
+.sb-brand:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--sb), 0 0 0 4px var(--ac);
+}
+
+.sb-foot { padding: 12px var(--sb-pad) 16px; border-top: 1px solid rgba(255, 255, 255, 0.08); display: flex; flex-direction: column; gap: 10px; }
+.sb-user { display: flex; align-items: center; gap: var(--sb-gap); padding: 0 calc(var(--sb-item-pad) - 6px); min-width: 0; }
+.sb-avatar {
+  width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+  background: var(--ac); color: #fff; font-size: 12px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.sb-user__name { margin: 0; font-size: 13px; color: #fff; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-user__rol  { margin: 0; font-size: 11px; color: rgba(255, 255, 255, 0.4); }
+
+/* Contraída (72px): solo iconos, centrados en la misma columna */
+.sb.is-collapsed { --sb-pad: 12px; }
+.sb.is-collapsed .sb-head { padding-top: 16px; align-items: center; }
+.sb.is-collapsed .sb-brand { padding: 4px 0; }
+.sb.is-collapsed .sb-link,
+.sb.is-collapsed .sb-btn { justify-content: center; padding: 0; gap: 0; }
+.sb.is-collapsed .sb-user { justify-content: center; padding: 0; }
+
+/* ── Inicio: tarjetas de módulos ───────────────────────────────────── */
+.inicio-grid {
+  display: grid;
+  gap: 16px;
+  /* Máximo 4 columnas; baja sola a 3 / 2 / 1 cuando cada tarjeta quedaría bajo 220px */
+  grid-template-columns: repeat(auto-fill, minmax(max(220px, calc((100% - 3 * 16px) / 4)), 1fr));
+}
+.inicio-card {
+  display: flex; flex-direction: column;
+  padding: 20px;
+  border-radius: var(--ra);
+  background: var(--sf);
+  border: 1px solid var(--bo);
+  box-shadow: var(--sh-card);
+  color: var(--tx);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform var(--dur-ui) ease, border-color var(--dur-ui) ease, box-shadow var(--dur-ui) ease, background var(--dur-ui) ease;
+}
+.inicio-card__icon {
+  width: 46px; height: 46px; border-radius: 12px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--al);
+  color: var(--ac);
+}
+.inicio-card__title { margin-top: 16px; font-size: 16px; font-weight: 600; line-height: 1.25; color: var(--tx); }
+.inicio-card__desc  { margin-top: 6px; font-size: 13px; font-weight: 400; line-height: 1.45; color: var(--ts); }
+
+.inicio-card:focus-visible { outline: 3px solid var(--ac); outline-offset: 2px; }
+.inicio-card:active { transform: translateY(0); box-shadow: var(--sh-card); }
+
+@media (hover: hover) {
+  .inicio-card:hover { transform: translateY(-2px); border-color: var(--bo-ac); box-shadow: var(--sh-card-hover); }
+}
+/* Pantalla táctil: sin hover; el toque se confirma con un tinte suave */
+@media (hover: none) {
+  .inicio-card:active { background: color-mix(in srgb, var(--ac) 6%, var(--sf)); border-color: var(--bo-ac); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .inicio-card, .sb-link, .sb-btn, .sb-btn .sb-icon svg { transition: none; }
+  .inicio-card:hover { transform: none; }
+}
