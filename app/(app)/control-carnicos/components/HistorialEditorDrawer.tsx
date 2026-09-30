@@ -303,7 +303,9 @@ export default function HistorialEditorDrawer({
           </div>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 18px', display: 'grid', gap: '14px' }}>
+        {/* gridAutoRows max-content: sin esto la grilla encoge las filas para caber en el alto del drawer
+            y la tabla (overflow hidden) queda recortada en vez de activar el scroll. */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 18px', display: 'grid', gridAutoRows: 'max-content', gap: '14px' }}>
           {error && <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', borderRadius: '8px', padding: '9px 12px', fontSize: '12.5px' }}>{error}</div>}
           {exito && <div style={{ background: '#ECFDF5', border: '1px solid #6EE7B7', color: '#065F46', borderRadius: '8px', padding: '9px 12px', fontSize: '12.5px' }}>✓ {exito}</div>}
 
@@ -496,7 +498,7 @@ export default function HistorialEditorDrawer({
           }
           .hist-drawer {
             position: fixed !important; inset: 0 !important; top: 0 !important; width: 100vw !important;
-            max-height: 100vh !important; border-radius: 0 !important; z-index: 901;
+            max-height: 100vh !important; max-height: 100dvh !important; border-radius: 0 !important; z-index: 901;
           }
         }
         .mov-tabla-fila { border-top: 1px solid var(--bo); transition: background 0.1s; }
