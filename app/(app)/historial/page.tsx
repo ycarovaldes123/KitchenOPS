@@ -1125,7 +1125,7 @@ function TablaFrutas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
   };
   const productoOptions = useMemo(() => productos.map(prod => ({
     value: prod.codigo as string,
-    label: `${prod.codigo as string} Â· ${prod.nombre as string}`,
+    label: `${prod.codigo as string} · ${prod.nombre as string}`,
     searchText: [prod.codigo, prod.nombre, prod.unidad_medida].filter(Boolean).join(' '),
   })), [productos]);
   const saveEditFrutas = async (frutaId: string, det: Record<string, unknown>[]) => {
@@ -1164,7 +1164,7 @@ function TablaFrutas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
     onRefresh();
   };
 
-  if (!datos.length) return <Empty msg="No hay informes de frutas registrados en este perÃ­odo." />;
+  if (!datos.length) return <Empty msg="No hay informes de frutas registrados en este período." />;
 
   return (
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -1208,7 +1208,7 @@ function TablaFrutas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
                 <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums' }}>{det.length}</td>
                 {verCostos && (
                   <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: ct > 0 ? 'var(--ac)' : 'var(--ts)', fontWeight: ct > 0 ? 700 : 400 }}>
-                    {ct > 0 ? formatCLP(ct) : 'â€”'}
+                    {ct > 0 ? formatCLP(ct) : '—'}
                   </td>
                 )}
                 <td style={{ ...tdSt, textAlign: 'right', width: '48px' }}><ExpandBtn open={open} /></td>
@@ -1219,9 +1219,9 @@ function TablaFrutas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
                   <td colSpan={verCostos ? 6 : 5} style={{ background: 'var(--al)', padding: '0 0 2px' }}>
                     <div style={{ padding: '16px 20px', display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
                       <div style={{ minWidth: '180px' }}>
-                        <DetailLabel>QuiÃ©n / cuÃ¡ndo</DetailLabel>
-                        <MetaRow icon="ðŸ‘¤" label="Responsable" value={f.responsable_nombre as string} />
-                        {!!f.created_at && <MetaRow icon="ðŸ•" label="Hora registro" value={fmtHora(f.created_at as string) ?? 'â€”'} />}
+                        <DetailLabel>Quién / cuándo</DetailLabel>
+                        <MetaRow icon="👤" label="Responsable" value={f.responsable_nombre as string} />
+                        {!!f.created_at && <MetaRow icon="🕐" label="Hora registro" value={fmtHora(f.created_at as string) ?? '—'} />}
                         {editingId === id && isAdmin && (
                           <div style={{ marginTop: '10px' }}>
                             <DetailLabel>Fecha registro</DetailLabel>
@@ -1232,7 +1232,7 @@ function TablaFrutas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
                         )}
                         {(f.observacion as string) && (
                           <div style={{ marginTop: '10px' }}>
-                            <DetailLabel>ObservaciÃ³n</DetailLabel>
+                            <DetailLabel>Observación</DetailLabel>
                             <p style={{ fontSize: '13px', color: 'var(--tx)', margin: 0, lineHeight: 1.5, maxWidth: '280px' }}>{f.observacion as string}</p>
                           </div>
                         )}
@@ -1288,7 +1288,7 @@ function TablaFrutas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
                                     {isAdmin && (
                                       <button type="button" onClick={e => { e.stopPropagation(); removeDetalle(d.id as string); }} title="Quitar linea"
                                         style={{ border: 'none', background: 'transparent', color: '#B91C1C', cursor: 'pointer', fontSize: '16px', lineHeight: 1, fontWeight: 700, padding: '0 2px' }}>
-                                        Ã—
+                                        ×
                                       </button>
                                     )}
                                   </>
@@ -1310,7 +1310,7 @@ function TablaFrutas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
                                 <SearchablePicker
                                   value={row.codigo_producto}
                                   options={productoOptions}
-                                  placeholder="Buscar por nombre o cÃ³digo"
+                                  placeholder="Buscar por nombre o código"
                                   width="300px"
                                   onChange={value => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, codigo_producto: value } : x))}
                                 />
@@ -1319,7 +1319,7 @@ function TablaFrutas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
                                 />
                                 <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{String(p?.unidad_medida ?? '')}</span>
                                 {verCostos && <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(Math.round(qty * costoUnitario))}</span>}
-                                <button type="button" onClick={e => { e.stopPropagation(); setNewRows(v => v.filter(x => x.localId !== row.localId)); }} style={{ border: 'none', background: 'transparent', color: 'var(--rd)', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }}>Ã—</button>
+                                <button type="button" onClick={e => { e.stopPropagation(); setNewRows(v => v.filter(x => x.localId !== row.localId)); }} style={{ border: 'none', background: 'transparent', color: 'var(--rd)', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }}>×</button>
                               </div>
                             );
                           })}
@@ -1518,7 +1518,7 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos }: { datos: Reco
                   <td colSpan={5} style={{ background: 'var(--al)', padding: '0 0 2px' }}>
                     <div style={{ padding: '16px 20px', display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
                       <div style={{ minWidth: '190px' }}>
-                        <DetailLabel>Quien / cuando</DetailLabel>
+                        <DetailLabel>Quién / cuándo</DetailLabel>
                         <MetaRow icon="👤" label="Responsable" value={String(inventario.responsable_nombre ?? '')} />
                         {!!inventario.created_at && <MetaRow icon="🕐" label="Hora registro" value={fmtHora(inventario.created_at as string) ?? '-'} />}
                         {editingId === id && (
