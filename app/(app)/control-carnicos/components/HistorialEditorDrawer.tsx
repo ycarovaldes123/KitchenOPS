@@ -368,7 +368,7 @@ export default function HistorialEditorDrawer({
                 Sin productos. Agrega al menos uno para poder guardar.
               </div>
             ) : (
-              <div className="mov-tabla-wrap" style={{ border: '1px solid var(--bo)', borderRadius: '10px', overflow: 'hidden' }}>
+              <div style={{ border: '1px solid var(--bo)', borderRadius: '10px', overflow: 'hidden' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
@@ -499,7 +499,6 @@ export default function HistorialEditorDrawer({
             max-height: 100vh !important; border-radius: 0 !important; z-index: 901;
           }
         }
-        .mov-tabla-wrap { max-height: 360px; overflow-y: auto; }
         .mov-tabla-fila { border-top: 1px solid var(--bo); transition: background 0.1s; }
         .mov-tabla-fila:first-child { border-top: none; }
         .mov-tabla-fila:hover { background: var(--bg); }
