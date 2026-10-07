@@ -165,6 +165,32 @@ function coincidenciasProduccion(rows: Record<string, unknown>[], terms: string[
   return [...grupos.values()].sort((a, b) => b.cantidad - a.cantidad);
 }
 
+// Colación, frutas, mermas e inventario: suma por producto (código + unidad) de las líneas que
+// coinciden con la búsqueda.
+const DETALLE_POR_TIPO: Record<string, string> = { colacion: 'detalle_colacion', frutas: 'detalle_frutas', mermas: 'detalle_mermas', inventario: 'detalle_inventario' };
+function coincidenciasLineas(tipo: string, rows: Record<string, unknown>[], terms: string[], verCostos: boolean) {
+  const key = DETALLE_POR_TIPO[tipo];
+  const grupos = new Map<string, { codigo_producto: string | null; nombre: string; unidad_medida: string | null; cantidad: number; costo_total: number | null; registros: number }>();
+  for (const row of rows) {
+    const vistos = new Set<string>();
+    for (const d of childRows(row, key)) {
+      const texto = normalizarBusqueda(`${d.codigo_producto ?? ''} ${d.nombre_producto ?? ''} ${d.ubicacion ?? ''}`);
+      if (!terms.every(t => texto.includes(t))) continue;
+      const k = `${d.codigo_producto ?? ''}|${d.nombre_producto ?? ''}|${d.unidad_medida ?? ''}`;
+      const g = grupos.get(k) ?? {
+        codigo_producto: (d.codigo_producto as string | null) ?? null, nombre: String(d.nombre_producto ?? ''),
+        unidad_medida: (d.unidad_medida as string | null) ?? null, cantidad: 0,
+        costo_total: verCostos && tipo !== 'inventario' ? 0 : null, registros: 0,
+      };
+      g.cantidad += num(d.cantidad);
+      if (g.costo_total != null) g.costo_total += num(d.costo_total);
+      if (!vistos.has(k)) { g.registros++; vistos.add(k); }
+      grupos.set(k, g);
+    }
+  }
+  return [...grupos.values()].sort((a, b) => b.registros - a.registros || b.cantidad - a.cantidad);
+}
+
 function responderConBusqueda(data: unknown[] | null, busqueda: string, offset: number, limit: number, tipo: string, verCostos: boolean, baseCount?: number | null, extra: Record<string, unknown> = {}) {
   const terms = normalizarBusqueda(busqueda).split(/\s+/).filter(Boolean);
   const rows = data ?? [];
@@ -182,7 +208,9 @@ function responderConBusqueda(data: unknown[] | null, busqueda: string, offset: 
     nextOffset: offset + items.length,
     truncated: Boolean(baseCount && baseCount > SEARCH_FETCH_LIMIT),
     summary: buildSummary(tipo, filtered, verCostos, Boolean(baseCount && baseCount > SEARCH_FETCH_LIMIT)),
-    ...(tipo === 'produccion' ? { coincidencias: coincidenciasProduccion(asRecordRows(filtered), terms, verCostos) } : {}),
+    coincidencias: tipo === 'produccion'
+      ? coincidenciasProduccion(asRecordRows(filtered), terms, verCostos)
+      : coincidenciasLineas(tipo, asRecordRows(filtered), terms, verCostos),
     ...extra,
   });
 }
@@ -263,8 +291,8 @@ export async function GET(req: NextRequest) {
 
   if (tipo === 'colacion') {
     const detalleSelect = verCostos
-      ? 'id,nombre_producto,cantidad,unidad_medida,costo_unitario,costo_total'
-      : 'id,nombre_producto,cantidad,unidad_medida';
+      ? 'id,codigo_producto,nombre_producto,cantidad,unidad_medida,costo_unitario,costo_total'
+      : 'id,codigo_producto,nombre_producto,cantidad,unidad_medida';
     const parentSelect = verCostos
       ? `id,fecha,responsable_nombre,menu,n_inscritos,costo_total,created_at,detalle_colacion(${detalleSelect})`
       : `id,fecha,responsable_nombre,menu,n_inscritos,created_at,detalle_colacion(${detalleSelect})`;
@@ -298,8 +326,8 @@ export async function GET(req: NextRequest) {
 
   if (tipo === 'mermas') {
     const detalleSelect = verCostos
-      ? 'id,nombre_producto,cantidad,unidad_medida,motivo,costo_unitario,costo_total'
-      : 'id,nombre_producto,cantidad,unidad_medida,motivo';
+      ? 'id,codigo_producto,nombre_producto,cantidad,unidad_medida,motivo,costo_unitario,costo_total'
+      : 'id,codigo_producto,nombre_producto,cantidad,unidad_medida,motivo';
     const baseSelect = `id,fecha,responsable_nombre,observacion,estado,created_at,detalle_mermas(${detalleSelect})`;
     const platosSelect = `${baseSelect},detalle_mermas_platos(id,nombre_plato,cantidad,motivo,costo_unitario,costo_total,observacion,detalle_mermas_platos_insumos(id,nombre,codigo_producto,cantidad_unitaria,cantidad_total,unidad_medida,precio_unitario,costo_total))`;
     const buildQuery = (select: string) => {
@@ -334,8 +362,8 @@ export async function GET(req: NextRequest) {
 
   if (tipo === 'frutas') {
     const detalleSelect = verCostos
-      ? 'id,nombre_producto,cantidad,unidad_medida,costo_unitario,costo_total'
-      : 'id,nombre_producto,cantidad,unidad_medida';
+      ? 'id,codigo_producto,nombre_producto,cantidad,unidad_medida,costo_unitario,costo_total'
+      : 'id,codigo_producto,nombre_producto,cantidad,unidad_medida';
     const parentSelect = verCostos
       ? `id,fecha,responsable_nombre,observacion,costo_total,created_at,detalle_frutas(${detalleSelect})`
       : `id,fecha,responsable_nombre,observacion,created_at,detalle_frutas(${detalleSelect})`;

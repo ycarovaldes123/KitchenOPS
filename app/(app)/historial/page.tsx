@@ -25,11 +25,6 @@ function fmtFecha(fecha: string) {
   const [y, m, d] = fecha.split('-');
   return `${d}/${m}/${y}`;
 }
-function fmtHora(iso: string) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  return d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Santiago' });
-}
 
 const MESES_CORTOS = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
 const DIAS_SEMANA = ['DOMINGO', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO'];
@@ -205,77 +200,6 @@ type HistorialSummary = {
   promedio_productos?: number | null;
   truncated?: boolean;
 };
-
-// ─── Shared styles ──────────────────────────────────────────────────────────
-
-const thSt: React.CSSProperties = {
-  textAlign: 'left', fontSize: '10px', fontWeight: 700,
-  color: 'var(--ts)', textTransform: 'uppercase',
-  letterSpacing: '0.5px', padding: '10px 14px', whiteSpace: 'nowrap',
-  borderBottom: '1px solid var(--bo)', background: 'var(--bg)',
-};
-const tdSt: React.CSSProperties = { padding: '11px 14px', fontSize: '13px', color: 'var(--tx)' };
-
-function Chip({ label, color }: { label: string; color: string }) {
-  return (
-    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '20px', fontSize: '10px', fontWeight: 700, background: `${color}18`, color, border: `1px solid ${color}30`, whiteSpace: 'nowrap' }}>
-      {label}
-    </span>
-  );
-}
-
-function ExpandBtn({ open }: { open: boolean }) {
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '50%', background: open ? 'var(--ac)' : 'var(--bo)', color: open ? '#fff' : 'var(--ts)', fontSize: '10px', fontWeight: 700, flexShrink: 0, transition: 'all 0.2s' }}>
-      {open ? '▲' : '▼'}
-    </span>
-  );
-}
-
-// Acciones de fila para el administrador: editar (abre el detalle en modo edición) y eliminar el movimiento.
-function RowActions({ open, editing, onEdit, onDelete }: { open: boolean; editing: boolean; onEdit: () => void; onDelete: () => void }) {
-  const btn: React.CSSProperties = {
-    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px',
-    borderRadius: '7px', border: '1px solid var(--bo)', background: 'var(--sf)', cursor: 'pointer', padding: 0,
-  };
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
-      <button
-        type="button" title="Editar movimiento" aria-label="Editar movimiento" disabled={editing}
-        onClick={e => { e.stopPropagation(); onEdit(); }}
-        style={{ ...btn, color: editing ? 'var(--ts)' : 'var(--ac)', opacity: editing ? 0.5 : 1, cursor: editing ? 'default' : 'pointer' }}
-      >
-        <NavIcon name="pencil" size={15} />
-      </button>
-      <button
-        type="button" title="Eliminar movimiento" aria-label="Eliminar movimiento"
-        onClick={e => { e.stopPropagation(); onDelete(); }}
-        style={{ ...btn, color: 'var(--rd)', borderColor: '#FCA5A5', background: '#FEF2F2' }}
-      >
-        <NavIcon name="trash" size={15} />
-      </button>
-      <ExpandBtn open={open} />
-    </div>
-  );
-}
-
-function DetailLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <p style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px' }}>
-      {children}
-    </p>
-  );
-}
-
-function MetaRow({ icon, label, value }: { icon: string; label: string; value: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', marginBottom: '4px' }}>
-      <span style={{ fontSize: '13px', flexShrink: 0 }}>{icon}</span>
-      <span style={{ color: 'var(--ts)' }}>{label}:</span>
-      <span style={{ color: 'var(--tx)', fontWeight: 600 }}>{value}</span>
-    </div>
-  );
-}
 
 // KPI compactos que van arriba, junto al filtro de fechas. Reutiliza el `summary` que ya
 // calcula /api/historial (mismos números que mostraba el panel inferior anterior).
@@ -490,6 +414,217 @@ function SearchablePicker({
     </div>
   );
 }
+
+// ─── Piezas compartidas del Historial (Colación, Frutas, Inventario, Mermas) ─
+// Mismo diseño que Producción: lista agrupada por día, tarjeta por movimiento y detalle expandido.
+
+type CoincidenciaLinea = { codigo_producto: string | null; nombre: string; unidad_medida: string | null; cantidad: number; costo_total: number | null; registros: number };
+
+// Con búsqueda activa los movimientos se muestran abiertos: `expanded` guarda los que el usuario cerró.
+function vistaBusqueda(busqueda: ResultadoBusqueda | null | undefined, expanded: Set<string>, setExpanded: React.Dispatch<React.SetStateAction<Set<string>>>) {
+  const terminos = busqueda ? terminosBusqueda(busqueda.q) : [];
+  const autoAbrir = terminos.length > 0;
+  return {
+    terminos,
+    estaAbierto: (id: string) => expanded.has(id) !== autoAbrir,
+    abrir: (id: string) => setExpanded(s => { const n = new Set(s); if (autoAbrir) n.delete(id); else n.add(id); return n; }),
+  };
+}
+
+function agruparPorDia(datos: Record<string, unknown>[]) {
+  const dias: { fecha: string; items: Record<string, unknown>[] }[] = [];
+  for (const p of datos) {
+    const fecha = String(p.fecha ?? '');
+    const ultimo = dias[dias.length - 1];
+    if (ultimo && ultimo.fecha === fecha) ultimo.items.push(p);
+    else dias.push({ fecha, items: [p] });
+  }
+  return dias;
+}
+
+function DiaHeader({ fecha, registros, lineas, unidad, costo }: { fecha: string; registros: number; lineas: number; unidad: string; costo: number | null }) {
+  return (
+    <header className="hst-day-head">
+      <span className="hst-day-title">{fmtFechaLarga(fecha)}</span>
+      <span className="hst-day-meta">
+        {registros} registro{registros !== 1 ? 's' : ''}
+        <i aria-hidden>|</i>{lineas} {unidad}
+        {costo != null && <><i aria-hidden>|</i><b>{formatCLP(costo)}</b></>}
+      </span>
+    </header>
+  );
+}
+
+function MovCard({ id, fecha, createdAt, open, editando, isAdmin, principal, etiqueta, resumen, costo, onToggle, onEdit, onDelete, children }: {
+  id: string; fecha: string; createdAt?: string | null; open: boolean; editando: boolean; isAdmin: boolean;
+  principal: React.ReactNode; etiqueta?: React.ReactNode; resumen: { valor: string; label: string };
+  costo: { valor: number; label: string } | null;
+  onToggle: () => void; onEdit: () => void; onDelete: () => void; children: React.ReactNode;
+}) {
+  const [, mes, anio] = fmtFecha(fecha).split('/');
+  return (
+    <article className={`hst-mov${open ? ' is-open' : ''}`} data-id={id}>
+      <div className={`hst-mov-head${costo ? '' : ' sin-costo'}`} onClick={onToggle}>
+        <span className="hst-mov-dia">{fmtFecha(fecha).slice(0, 2)}</span>
+        <span className="hst-mov-fecha">
+          <b>{MESES_CORTOS[Number(mes) - 1]} {anio}</b>
+          {!!createdAt && <small>{fmtHora12(createdAt)}</small>}
+        </span>
+        <span className="hst-mov-resp hst-mov-principal">{principal}</span>
+        <span className="hst-mov-turno">{etiqueta}</span>
+        <span className="hst-mov-pp">
+          <b>{resumen.valor}</b>
+          <small>{resumen.label}</small>
+        </span>
+        {costo && (
+          <span className="hst-mov-costo">
+            <small>{costo.label}</small>
+            <b>{costo.valor > 0 ? formatCLP(costo.valor) : '—'}</b>
+          </span>
+        )}
+        <span className="hst-mov-acciones" onClick={e => e.stopPropagation()}>
+          {isAdmin && (
+            <>
+              <button type="button" className="hst-icon-btn" title="Editar" aria-label="Editar movimiento" disabled={editando} onClick={onEdit}>
+                <NavIcon name="pencil" size={16} />
+              </button>
+              <button type="button" className="hst-icon-btn is-danger" title="Eliminar" aria-label="Eliminar movimiento" onClick={onDelete}>
+                <NavIcon name="trash" size={16} />
+              </button>
+            </>
+          )}
+          <button type="button" className={`hst-icon-btn${open ? ' is-open' : ''}`} title={open ? 'Contraer' : 'Expandir'} aria-label={open ? 'Contraer' : 'Expandir'} aria-expanded={open} onClick={onToggle}>
+            <NavIcon name={open ? 'chevron-up' : 'chevron-down'} size={17} />
+          </button>
+        </span>
+      </div>
+      {open && <div className="hst-mov-body">{children}</div>}
+    </article>
+  );
+}
+
+function EditBar({ conFecha, editFecha, setEditFecha, addLabel, onAdd, onSave, onCancel, saving, extra }: {
+  conFecha: boolean; editFecha: string; setEditFecha: (v: string) => void; addLabel: string;
+  onAdd: () => void; onSave: () => void; onCancel: () => void; saving: boolean; extra?: React.ReactNode;
+}) {
+  return (
+    <div className="hst-edit-bar">
+      {conFecha && (
+        <label className="hst-edit-fecha">
+          <span>Fecha registro</span>
+          <input type="date" value={editFecha} onChange={e => setEditFecha(e.target.value)} />
+        </label>
+      )}
+      {extra}
+      <button type="button" className="hst-btn-sec" onClick={onAdd} disabled={saving}>+ {addLabel}</button>
+      <button type="button" className="hst-btn-ok" onClick={onSave} disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</button>
+      <button type="button" className="hst-btn-sec" onClick={onCancel}>Cancelar</button>
+    </div>
+  );
+}
+
+// Línea de producto: código - nombre | Ingresado (cantidad + unidad, o casilla al editar) | Costo
+function LineaProducto({ nombre, sub, cantidad, unidad, editando, onCantidad, costo, onQuitar }: {
+  nombre: string; sub?: React.ReactNode; cantidad: number; unidad: string;
+  editando: boolean; onCantidad: (v: number) => void; costo: number | null; onQuitar?: () => void;
+}) {
+  return (
+    <div className={`hst-pp hst-linea${editando ? ' is-edit' : ''}${costo == null ? ' sin-costo' : ''}`}>
+      <div className="hst-pp-nombre">
+        <b title={nombre}>{nombre}</b>
+        {sub && <small>{sub}</small>}
+      </div>
+      <div className="hst-pp-ing">
+        {editando ? (
+          <span className="hst-pp-input">
+            <input type="number" value={cantidad} min={0} step="any" aria-label={`Cantidad de ${nombre}`} onChange={e => onCantidad(parseFloat(e.target.value) || 0)} />
+            {unidad}
+          </span>
+        ) : (
+          <b>{fmtNum(cantidad)} {unidad}</b>
+        )}
+        <small>Ingresado</small>
+      </div>
+      {costo != null && (
+        <div className="hst-pp-costo">
+          <b>{costo > 0 ? formatCLP(costo) : '—'}</b>
+          <small>Costo est.</small>
+        </div>
+      )}
+      {editando && onQuitar && (
+        <button type="button" className="hst-quitar" title="Quitar línea" aria-label="Quitar línea" onClick={onQuitar}>×</button>
+      )}
+    </div>
+  );
+}
+
+function NuevaLinea({ picker, sub, cantidad, onCantidad, unidad, costo, onQuitar }: {
+  picker: React.ReactNode; sub: React.ReactNode; cantidad: number; onCantidad: (v: number) => void; unidad: string; costo: number | null; onQuitar: () => void;
+}) {
+  return (
+    <div className={`hst-pp hst-linea is-edit is-new${costo == null ? ' sin-costo' : ''}`}>
+      <div className="hst-pp-nombre">
+        {picker}
+        <small>{sub}</small>
+      </div>
+      <div className="hst-pp-ing">
+        <span className="hst-pp-input">
+          <input type="number" min={0} step="any" value={cantidad} aria-label="Cantidad de la nueva línea" onChange={e => onCantidad(parseFloat(e.target.value) || 0)} />
+          {unidad}
+        </span>
+        <small>Ingresado</small>
+      </div>
+      {costo != null && (
+        <div className="hst-pp-costo"><b>{costo > 0 ? formatCLP(costo) : '—'}</b><small>Costo est.</small></div>
+      )}
+      <button type="button" className="hst-quitar" title="Quitar línea" aria-label="Quitar línea" onClick={onQuitar}>×</button>
+    </div>
+  );
+}
+
+function CoincidenciasLineas({ busqueda, verCostos }: { busqueda?: ResultadoBusqueda | null; verCostos: boolean }) {
+  const filas = (busqueda?.coincidencias ?? []) as unknown as CoincidenciaLinea[];
+  if (!busqueda || !filas.length) return null;
+  return (
+    <section className="hst-coinc" aria-label="Totales de la búsqueda">
+      <h4 className="hst-sec-title">
+        <span className="hst-prod-ico"><NavIcon name="sigma" size={14} /></span>
+        Total en el período para «{busqueda.q}»
+      </h4>
+      {filas.map(c => (
+        <div key={`${c.codigo_producto}|${c.nombre}|${c.unidad_medida}`} className="hst-coinc-row hst-coinc-linea">
+          <div className="hst-pp-nombre">
+            <b>{[c.codigo_producto, c.nombre].filter(Boolean).join(' - ')}</b>
+            <small>{c.registros} registro{c.registros !== 1 ? 's' : ''}</small>
+          </div>
+          <div className="hst-pp-ing"><b>{fmtNum(c.cantidad)} {String(c.unidad_medida ?? '').toUpperCase()}</b><small>Ingresado</small></div>
+          {verCostos && c.costo_total != null && (
+            <div className="hst-pp-costo"><b>{formatCLP(c.costo_total)}</b><small>Costo est.</small></div>
+          )}
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function Observacion({ texto }: { texto: string | null | undefined }) {
+  if (!texto) return null;
+  return (
+    <div className="hst-obs">
+      <span><NavIcon name="info" size={13} strokeWidth={2.2} />Observación</span>
+      <p>{texto}</p>
+    </div>
+  );
+}
+
+function FiltradoNota({ q, visibles, total, unidad }: { q: string; visibles: number; total: number; unidad: string }) {
+  return <p className="hst-filtrado">Mostrando solo lo que coincide con «{q}»: {visibles} de {total} {unidad}</p>;
+}
+
+const nombreLinea = (d: Record<string, unknown>) =>
+  [String(d.codigo_producto ?? '').trim(), String(d.nombre_producto ?? '').trim()].filter(Boolean).join(' - ') || 'Sin producto';
+const unidadLinea = (d: Record<string, unknown>) => String(d.unidad_medida ?? '').toUpperCase();
+const textoLinea = (d: Record<string, unknown>) => `${d.codigo_producto ?? ''} ${d.nombre_producto ?? ''} ${d.ubicacion ?? ''}`;
 
 // ─── TablaProduccion ────────────────────────────────────────────────────────
 
@@ -883,7 +1018,7 @@ function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps,
 
 // ─── TablaColacion ──────────────────────────────────────────────────────────
 
-function TablaColacion({ datos, isAdmin, onRefresh, verCostos, productos }: { datos: Record<string, unknown>[]; canEdit: boolean; isAdmin: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[] }) {
+function TablaColacion({ datos, isAdmin, onRefresh, verCostos, productos, porDia, busqueda }: { datos: Record<string, unknown>[]; canEdit: boolean; isAdmin: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[]; porDia?: PorDia; busqueda?: ResultadoBusqueda | null }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, number>>({});
@@ -956,215 +1091,108 @@ function TablaColacion({ datos, isAdmin, onRefresh, verCostos, productos }: { da
   };
 
   if (!datos.length) return <Empty msg="No hay colaciones registradas en este período." />;
+  const { terminos, estaAbierto, abrir } = vistaBusqueda(busqueda, expanded, setExpanded);
 
   return (
-    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '500px' }}>
-        <thead>
-          <tr>
-            {['Fecha', 'Responsable', 'Menú', 'Inscritos', ...(verCostos ? ['Costo total', 'Costo / plato'] : []), 'Acciones'].map(h => (
-              <th key={h} style={{ ...thSt, textAlign: h === 'Acciones' ? 'right' : 'left' }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {datos.map((c: Record<string, unknown>) => {
-            const id  = c.id as string;
-            const det = (c.detalle_colacion as Record<string, unknown>[]) ?? [];
-            const ni  = (c.n_inscritos as number) ?? 0;
-            const ct  = (c.costo_total as number) ?? 0;
-            const cpp = ni > 0 ? Math.round(ct / ni) : null;
-            const open = expanded.has(id);
-
-            return [
-              <tr key={id} onClick={() => toggle(id)}
-                style={{ borderBottom: '1px solid var(--bo)', cursor: 'pointer', transition: 'background 0.12s', background: open ? 'var(--al)' : 'transparent' }}
-                onMouseEnter={e => { if (!open) (e.currentTarget as HTMLTableRowElement).style.background = 'var(--bg)'; }}
-                onMouseLeave={e => { if (!open) (e.currentTarget as HTMLTableRowElement).style.background = 'transparent'; }}
-              >
-                <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, whiteSpace: 'nowrap' }}>
-                  {fmtFecha(c.fecha as string)}
-                </td>
-                <td style={tdSt}>
-                  <ResponsableChip nombre={c.responsable_nombre as string} />
-                </td>
-                <td style={{ ...tdSt, maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
-                  {c.menu as string}
-                </td>
-                <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums' }}>
-                  {ni === 0
-                    ? <span style={{ fontSize: '10px', color: '#9CA3AF', background: '#F3F4F6', padding: '2px 7px', borderRadius: '4px', fontWeight: 600 }}>Histórico</span>
-                    : <><strong>{ni}</strong> <span style={{ color: 'var(--ts)', fontSize: '12px' }}>personas</span></>
-                  }
-                </td>
-                {verCostos && (
-                  <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: ct > 0 ? 'var(--tx)' : 'var(--ts)' }}>
-                    {ct > 0 ? formatCLP(ct) : '—'}
-                  </td>
-                )}
-                {verCostos && (
-                  <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: 'var(--ac)', fontWeight: cpp ? 700 : 400 }}>
-                    {cpp ? formatCLP(cpp) : <span style={{ color: 'var(--ts)' }}>—</span>}
-                  </td>
-                )}
-                <td style={{ ...tdSt, textAlign: 'right', width: isAdmin ? '120px' : '48px' }}>
-                  {isAdmin ? <RowActions open={open} editing={editingId === id} onEdit={() => { setExpanded(s => new Set(s).add(id)); startEdit(id, det, ni); }} onDelete={() => deleteRecord(id)} /> : <ExpandBtn open={open} />}
-                </td>
-              </tr>,
-
-              open && (
-                <tr key={`${id}-det`}>
-                  <td colSpan={verCostos ? 7 : 5} style={{ background: 'var(--al)', padding: '0 0 2px' }}>
-                    <div style={{ padding: '16px 20px', display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
-
-                      {/* Meta */}
-                      <div style={{ minWidth: '180px' }}>
-                        <DetailLabel>Quién / cuándo</DetailLabel>
-                        <MetaRow icon="👤" label="Responsable" value={c.responsable_nombre as string} />
-                        {!!c.created_at && <MetaRow icon="🕐" label="Hora registro" value={fmtHora(c.created_at as string) ?? '—'} />}
-                        {editingId === id && isAdmin && (
-                          <div style={{ marginTop: '10px' }}>
-                            <DetailLabel>Fecha registro</DetailLabel>
-                            <input
-                              type="date"
-                              value={editFecha}
-                              onClick={e => e.stopPropagation()}
-                              onChange={e => setEditFecha(e.target.value)}
-                              style={{ width: '140px', padding: '5px 8px', fontSize: '13px', borderRadius: '5px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', fontFamily: "'Space Grotesk', sans-serif" }}
-                            />
-                          </div>
-                        )}
-                        <div style={{ marginTop: '10px' }}>
-                          <DetailLabel>Inscritos</DetailLabel>
-                          {editingId === id ? (
-                            <input
-                              type="number"
-                              min={1}
-                              step={1}
-                              value={editInscritos}
-                              onClick={e => e.stopPropagation()}
-                              onChange={e => setEditInscritos(parseInt(e.target.value, 10) || 0)}
-                              style={{ width: '110px', padding: '5px 8px', fontSize: '13px', borderRadius: '5px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', fontFamily: "'Space Grotesk', sans-serif" }}
-                            />
-                          ) : (
-                            <p style={{ fontSize: '13px', color: 'var(--tx)', margin: 0, fontWeight: 600 }}>
-                              {ni > 0 ? `${ni} personas` : 'Histórico'}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Ingredientes */}
-                      {(det.length > 0 || editingId === id) && (
-                        <div style={{ flex: 1, minWidth: '240px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                            <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Ingredientes utilizados</span>
-                            {editingId === id && (
-                              <>
-                                <button onClick={e => { e.stopPropagation(); addRow(); }} disabled={saving}
-                                  style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--al)', color: 'var(--ac)', border: '1px solid var(--ac)', cursor: 'pointer', fontWeight: 700 }}>
-                                  + A&ntilde;adir producto
-                                </button>
-                                <button onClick={e => { e.stopPropagation(); saveEditCol(id, det); }} disabled={saving}
-                                  style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#0D9373', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
-                                  {saving ? 'Guardando...' : 'Guardar'}
-                                </button>
-                                <button onClick={e => { e.stopPropagation(); cancelEdit(); }}
-                                  style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--bo)', color: 'var(--ts)', border: 'none', cursor: 'pointer' }}>
-                                  Cancelar
-                                </button>
-                              </>
-                            )}
-                          </div>
-                          {saveErr && <p style={{ color: 'var(--rd)', fontSize: '11px', margin: '0 0 6px' }}>{saveErr}</p>}
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                            {det.filter(d => !deletedIds.has(d.id as string)).map((d, i) => {
-                              const isEditing = editingId === id;
-                              const qty = isEditing ? (editValues[d.id as string] ?? (d.cantidad as number)) : (d.cantidad as number);
-                              const costoUnitarioEdit = Number(d.costo_unitario) || (Number(d.cantidad) > 0 ? Number(d.costo_total) / Number(d.cantidad) : 0);
-                              return (
-                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--sf)', borderRadius: '7px', padding: '7px 12px' }}>
-                                  <span style={{ flex: 1, fontSize: '13px', fontWeight: 500, color: 'var(--tx)' }}>{d.nombre_producto as string}</span>
-                                  {isEditing ? (
-                                    <>
-                                      <input type="number" value={qty} min={0} step="any"
-                                        onClick={e => e.stopPropagation()}
-                                        onChange={e => setEditValues(v => ({ ...v, [d.id as string]: parseFloat(e.target.value) || 0 }))}
-                                        style={{ width: '80px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }} />
-                                      <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{d.unidad_medida as string}</span>
-                                      {verCostos && (
-                                        <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>
-                                          {formatCLP(Math.round(qty * costoUnitarioEdit))}
-                                        </span>
-                                      )}
-                                      {isAdmin && (
-                                        <button
-                                          type="button"
-                                          onClick={e => { e.stopPropagation(); removeDetalle(d.id as string); }}
-                                          title="Quitar ingrediente"
-                                          style={{ border: 'none', background: 'transparent', color: '#B91C1C', cursor: 'pointer', fontSize: '16px', lineHeight: 1, fontWeight: 700, padding: '0 2px' }}
-                                        >
-                                          x
-                                        </button>
-                                      )}
-                                    </>
-                                  ) : (
-                                    <>
-                                      <span style={{ fontSize: '12px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{qty} {d.unidad_medida as string}</span>
-                                      {verCostos && (d.costo_total as number) > 0 && (
-                                        <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(d.costo_total as number)}</span>
-                                      )}
-                                    </>
-                                  )}
-                                </div>
-                              );
-                            })}
-                            {editingId === id && newRows.map(row => {
-                              const p = row.codigo_producto ? productosMap.get(row.codigo_producto) : undefined;
-                              const qty = Number(row.cantidad) || 0;
-                              const costoUnitario = Number(p?.costo_promedio) || 0;
-                              return (
-                                <div key={row.localId} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--al)', borderRadius: '7px', padding: '7px 12px', border: '1px dashed var(--bo)' }}>
-                                  <SearchablePicker
-                                    value={row.codigo_producto}
-                                    options={productoOptions}
-                                    placeholder="Buscar por nombre o código"
-                                    width="300px"
-                                    onChange={value => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, codigo_producto: value } : x))}
-                                  />
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    step="any"
-                                    value={row.cantidad}
-                                    onClick={e => e.stopPropagation()}
-                                    onChange={e => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, cantidad: parseFloat(e.target.value) || 0 } : x))}
-                                    style={{ width: '80px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }}
-                                  />
-                                  <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{String(p?.unidad_medida ?? '')}</span>
-                                  <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(Math.round(qty * costoUnitario))}</span>
-                                  <button type="button" onClick={e => { e.stopPropagation(); setNewRows(v => v.filter(x => x.localId !== row.localId)); }} style={{ border: 'none', background: 'transparent', color: 'var(--rd)', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }}>×</button>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
+    <div className="hst-list">
+      <CoincidenciasLineas busqueda={busqueda} verCostos={verCostos} />
+      {agruparPorDia(datos).map(({ fecha, items }) => {
+        const dia = porDia?.[fecha] ?? {
+          registros: items.length,
+          lineas: items.reduce((s, c) => s + ((c.detalle_colacion as unknown[] | undefined)?.length ?? 0), 0),
+          costo_total: items.reduce((s, c) => s + (Number(c.costo_total) || 0), 0),
+        };
+        return (
+          <section key={fecha} className="hst-day">
+            <DiaHeader fecha={fecha} registros={dia.registros} lineas={dia.lineas} unidad="ingredientes" costo={verCostos ? dia.costo_total : null} />
+            {items.map(c => {
+              const id  = c.id as string;
+              const det = (c.detalle_colacion as Record<string, unknown>[]) ?? [];
+              const ni  = (c.n_inscritos as number) ?? 0;
+              const ct  = (c.costo_total as number) ?? 0;
+              const cpp = ni > 0 ? Math.round(ct / ni) : null;
+              const editando = editingId === id;
+              const detVis = terminos.length && !editando ? det.filter(d => coincide(textoLinea(d), terminos)) : det;
+              const filtrado = !!terminos.length && !editando && detVis.length > 0;
+              const detMostrar = filtrado ? detVis : det;
+              const menu = String(c.menu ?? '');
+              return (
+                <MovCard
+                  key={id} id={id} fecha={c.fecha as string} createdAt={c.created_at as string}
+                  open={estaAbierto(id)} editando={editando} isAdmin={isAdmin}
+                  principal={<><ResponsableChip nombre={c.responsable_nombre as string} /><span className="hst-mov-sub" title={menu}>{menu}</span></>}
+                  etiqueta={<span className="hst-chip hst-chip-neutro">{ni > 0 ? `${ni} inscritos` : 'Histórico'}</span>}
+                  resumen={{ valor: String(det.length), label: det.length === 1 ? 'ingrediente' : 'ingredientes' }}
+                  costo={verCostos ? { valor: ct, label: 'Costo total' } : null}
+                  onToggle={() => toggle(id)} onEdit={() => { abrir(id); startEdit(id, det, ni); }} onDelete={() => deleteRecord(id)}
+                >
+                  {editando && (
+                    <EditBar
+                      conFecha={isAdmin} editFecha={editFecha} setEditFecha={setEditFecha} addLabel="Añadir producto"
+                      onAdd={addRow} onSave={() => saveEditCol(id, det)} onCancel={cancelEdit} saving={saving}
+                      extra={(
+                        <label className="hst-edit-fecha">
+                          <span>Inscritos</span>
+                          <input type="number" min={1} step={1} value={editInscritos} onChange={e => setEditInscritos(parseInt(e.target.value, 10) || 0)} />
+                        </label>
                       )}
+                    />
+                  )}
+                  {saveErr && editando && <p className="hst-err">{saveErr}</p>}
+                  {filtrado && <FiltradoNota q={busqueda?.q ?? ''} visibles={detMostrar.length} total={det.length} unidad="ingredientes" />}
+                  <div className="hst-mov-grid is-single">
+                    <div>
+                      <h4 className="hst-sec-title"><span className="hst-prod-ico"><NavIcon name="utensils" size={14} /></span>Ingredientes utilizados</h4>
+                      {menu && <p className="hst-menu"><b>Menú:</b> {menu}</p>}
+                      {verCostos && cpp != null && <p className="hst-menu"><b>Costo por plato:</b> {formatCLP(cpp)} ({ni} inscritos)</p>}
+                      {detMostrar.length === 0 && !editando && <p className="hst-muted">Sin ingredientes registrados.</p>}
+                      <div className="hst-pp-list">
+                        {detMostrar.filter(d => !deletedIds.has(d.id as string)).map(d => {
+                          const qty = editando ? (editValues[d.id as string] ?? (d.cantidad as number)) : (d.cantidad as number);
+                          const cu = Number(d.costo_unitario) || (Number(d.cantidad) > 0 ? Number(d.costo_total) / Number(d.cantidad) : 0);
+                          return (
+                            <LineaProducto
+                              key={d.id as string} nombre={nombreLinea(d)} cantidad={qty} unidad={unidadLinea(d)} editando={editando}
+                              onCantidad={v => setEditValues(x => ({ ...x, [d.id as string]: v }))}
+                              costo={verCostos ? (editando ? Math.round(qty * cu) : Number(d.costo_total) || 0) : null}
+                              onQuitar={isAdmin ? () => removeDetalle(d.id as string) : undefined}
+                            />
+                          );
+                        })}
+                        {editando && newRows.map(row => {
+                          const p = row.codigo_producto ? productosMap.get(row.codigo_producto) : undefined;
+                          const qty = Number(row.cantidad) || 0;
+                          const um = String(p?.unidad_medida ?? '').toUpperCase();
+                          return (
+                            <NuevaLinea
+                              key={row.localId}
+                              picker={<SearchablePicker value={row.codigo_producto} options={productoOptions} placeholder="Buscar por nombre o código" width="100%"
+                                onChange={value => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, codigo_producto: value } : x))} />}
+                              sub={p ? `Producto en ${um || '—'}` : 'Nuevo producto: elige el producto'}
+                              cantidad={row.cantidad} unidad={um}
+                              onCantidad={v => setNewRows(rows => rows.map(x => x.localId === row.localId ? { ...x, cantidad: v } : x))}
+                              costo={verCostos ? (p ? Math.round(qty * (Number(p.costo_promedio) || 0)) : 0) : null}
+                              onQuitar={() => setNewRows(v => v.filter(x => x.localId !== row.localId))}
+                            />
+                          );
+                        })}
+                      </div>
                     </div>
-                  </td>
-                </tr>
-              ),
-            ];
-          })}
-        </tbody>
-      </table>
+                  </div>
+                </MovCard>
+              );
+            })}
+          </section>
+        );
+      })}
+      {saveErr && !editingId && <p className="hst-err" style={{ margin: '0 0 12px' }}>{saveErr}</p>}
     </div>
   );
 }
 
 // ─── TablaMermas ─────────────────────────────────────────────────────────────
 
-function TablaFrutas({ datos, isAdmin, onRefresh, verCostos, productos }: { datos: Record<string, unknown>[]; canEdit: boolean; isAdmin: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[] }) {
+function TablaFrutas({ datos, isAdmin, onRefresh, verCostos, productos, porDia, busqueda }: { datos: Record<string, unknown>[]; canEdit: boolean; isAdmin: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[]; porDia?: PorDia; busqueda?: ResultadoBusqueda | null }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, number>>({});
@@ -1236,169 +1264,94 @@ function TablaFrutas({ datos, isAdmin, onRefresh, verCostos, productos }: { dato
   };
 
   if (!datos.length) return <Empty msg="No hay informes de frutas registrados en este período." />;
+  const { terminos, estaAbierto, abrir } = vistaBusqueda(busqueda, expanded, setExpanded);
 
   return (
-    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '500px' }}>
-        <thead>
-          <tr>
-            {['Fecha', 'Responsable', 'Frutas', 'Lineas', ...(verCostos ? ['Costo total'] : []), 'Acciones'].map(h => (
-              <th key={h} style={{ ...thSt, textAlign: h === 'Acciones' ? 'right' : 'left' }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {datos.map((f: Record<string, unknown>) => {
-            const id = f.id as string;
-            const det = (f.detalle_frutas as Record<string, unknown>[]) ?? [];
-            const ct = (f.costo_total as number) ?? det.reduce((s, d) => s + ((d.costo_total as number) ?? 0), 0);
-            const open = expanded.has(id);
-            const preview = det.slice(0, 3).map(d => d.nombre_producto as string);
-            const extra = det.length > 3 ? det.length - 3 : 0;
-
-            return [
-              <tr key={id} onClick={() => toggle(id)}
-                style={{ borderBottom: '1px solid var(--bo)', cursor: 'pointer', transition: 'background 0.12s', background: open ? 'var(--al)' : 'transparent' }}
-                onMouseEnter={e => { if (!open) (e.currentTarget as HTMLTableRowElement).style.background = 'var(--bg)'; }}
-                onMouseLeave={e => { if (!open) (e.currentTarget as HTMLTableRowElement).style.background = 'transparent'; }}
-              >
-                <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtFecha(f.fecha as string)}</td>
-                <td style={tdSt}><ResponsableChip nombre={f.responsable_nombre as string} /></td>
-                <td style={{ ...tdSt, maxWidth: '300px' }}>
-                  {det.length === 0 ? (
-                    <span style={{ color: 'var(--ts)' }}>Sin detalle</span>
-                  ) : (
-                    <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center' }}>
-                      {preview.map((n, i) => (
-                        <span key={i} style={{ fontSize: '11px', background: '#ECFDF5', color: '#065F46', padding: '2px 8px', borderRadius: '4px', fontWeight: 500, whiteSpace: 'nowrap' }}>{n}</span>
-                      ))}
-                      {extra > 0 && <span style={{ fontSize: '11px', color: 'var(--ts)' }}>+{extra} mas</span>}
-                    </div>
+    <div className="hst-list">
+      <CoincidenciasLineas busqueda={busqueda} verCostos={verCostos} />
+      {agruparPorDia(datos).map(({ fecha, items }) => {
+        const dia = porDia?.[fecha] ?? {
+          registros: items.length,
+          lineas: items.reduce((s, f) => s + ((f.detalle_frutas as unknown[] | undefined)?.length ?? 0), 0),
+          costo_total: items.reduce((s, f) => s + (Number(f.costo_total) || 0), 0),
+        };
+        return (
+          <section key={fecha} className="hst-day">
+            <DiaHeader fecha={fecha} registros={dia.registros} lineas={dia.lineas} unidad="productos" costo={verCostos ? dia.costo_total : null} />
+            {items.map(f => {
+              const id = f.id as string;
+              const det = (f.detalle_frutas as Record<string, unknown>[]) ?? [];
+              const ct = (f.costo_total as number) ?? det.reduce((s, d) => s + ((d.costo_total as number) ?? 0), 0);
+              const editando = editingId === id;
+              const detVis = terminos.length && !editando ? det.filter(d => coincide(textoLinea(d), terminos)) : det;
+              const filtrado = !!terminos.length && !editando && detVis.length > 0;
+              const detMostrar = filtrado ? detVis : det;
+              const preview = det.slice(0, 3).map(d => String(d.nombre_producto ?? '')).join(', ') + (det.length > 3 ? ` +${det.length - 3}` : '');
+              return (
+                <MovCard
+                  key={id} id={id} fecha={f.fecha as string} createdAt={f.created_at as string}
+                  open={estaAbierto(id)} editando={editando} isAdmin={isAdmin}
+                  principal={<><ResponsableChip nombre={f.responsable_nombre as string} /><span className="hst-mov-sub" title={preview}>{preview}</span></>}
+                  resumen={{ valor: String(det.length), label: det.length === 1 ? 'producto' : 'productos' }}
+                  costo={verCostos ? { valor: ct, label: 'Costo total' } : null}
+                  onToggle={() => toggle(id)} onEdit={() => { abrir(id); startEdit(id, det); }} onDelete={() => deleteRecord(id)}
+                >
+                  {editando && (
+                    <EditBar conFecha={isAdmin} editFecha={editFecha} setEditFecha={setEditFecha} addLabel="Añadir fruta"
+                      onAdd={addRow} onSave={() => saveEditFrutas(id, det)} onCancel={cancelEdit} saving={saving} />
                   )}
-                </td>
-                <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums' }}>{det.length}</td>
-                {verCostos && (
-                  <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: ct > 0 ? 'var(--ac)' : 'var(--ts)', fontWeight: ct > 0 ? 700 : 400 }}>
-                    {ct > 0 ? formatCLP(ct) : '—'}
-                  </td>
-                )}
-                <td style={{ ...tdSt, textAlign: 'right', width: isAdmin ? '120px' : '48px' }}>
-                  {isAdmin ? <RowActions open={open} editing={editingId === id} onEdit={() => { setExpanded(s => new Set(s).add(id)); startEdit(id, det); }} onDelete={() => deleteRecord(id)} /> : <ExpandBtn open={open} />}
-                </td>
-              </tr>,
-
-              open && (
-                <tr key={`${id}-det`}>
-                  <td colSpan={verCostos ? 6 : 5} style={{ background: 'var(--al)', padding: '0 0 2px' }}>
-                    <div style={{ padding: '16px 20px', display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
-                      <div style={{ minWidth: '180px' }}>
-                        <DetailLabel>Quién / cuándo</DetailLabel>
-                        <MetaRow icon="👤" label="Responsable" value={f.responsable_nombre as string} />
-                        {!!f.created_at && <MetaRow icon="🕐" label="Hora registro" value={fmtHora(f.created_at as string) ?? '—'} />}
-                        {editingId === id && isAdmin && (
-                          <div style={{ marginTop: '10px' }}>
-                            <DetailLabel>Fecha registro</DetailLabel>
-                            <input type="date" value={editFecha} onClick={e => e.stopPropagation()} onChange={e => setEditFecha(e.target.value)}
-                              style={{ width: '140px', padding: '5px 8px', fontSize: '13px', borderRadius: '5px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', fontFamily: "'Space Grotesk', sans-serif" }}
+                  {saveErr && editando && <p className="hst-err">{saveErr}</p>}
+                  {filtrado && <FiltradoNota q={busqueda?.q ?? ''} visibles={detMostrar.length} total={det.length} unidad="productos" />}
+                  <div className="hst-mov-grid is-single">
+                    <div>
+                      <h4 className="hst-sec-title"><span className="hst-prod-ico"><NavIcon name="apple" size={14} /></span>Frutas entregadas</h4>
+                      {detMostrar.length === 0 && !editando && <p className="hst-muted">Sin productos registrados.</p>}
+                      <div className="hst-pp-list">
+                        {detMostrar.filter(d => !deletedIds.has(d.id as string)).map(d => {
+                          const qty = editando ? (editValues[d.id as string] ?? (d.cantidad as number)) : (d.cantidad as number);
+                          const cu = Number(d.costo_unitario) || (Number(d.cantidad) > 0 ? Number(d.costo_total) / Number(d.cantidad) : 0);
+                          return (
+                            <LineaProducto
+                              key={d.id as string} nombre={nombreLinea(d)} cantidad={qty} unidad={unidadLinea(d)} editando={editando}
+                              onCantidad={v => setEditValues(x => ({ ...x, [d.id as string]: v }))}
+                              costo={verCostos ? (editando ? Math.round(qty * cu) : Number(d.costo_total) || 0) : null}
+                              onQuitar={isAdmin ? () => removeDetalle(d.id as string) : undefined}
                             />
-                          </div>
-                        )}
-                        {(f.observacion as string) && (
-                          <div style={{ marginTop: '10px' }}>
-                            <DetailLabel>Observación</DetailLabel>
-                            <p style={{ fontSize: '13px', color: 'var(--tx)', margin: 0, lineHeight: 1.5, maxWidth: '280px' }}>{f.observacion as string}</p>
-                          </div>
-                        )}
+                          );
+                        })}
+                        {editando && newRows.map(row => {
+                          const p = row.codigo_producto ? productosMap.get(row.codigo_producto) : undefined;
+                          const qty = Number(row.cantidad) || 0;
+                          const um = String(p?.unidad_medida ?? '').toUpperCase();
+                          return (
+                            <NuevaLinea
+                              key={row.localId}
+                              picker={<SearchablePicker value={row.codigo_producto} options={productoOptions} placeholder="Buscar por nombre o código" width="100%"
+                                onChange={value => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, codigo_producto: value } : x))} />}
+                              sub={p ? `Producto en ${um || '—'}` : 'Nueva fruta: elige el producto'}
+                              cantidad={row.cantidad} unidad={um}
+                              onCantidad={v => setNewRows(rows => rows.map(x => x.localId === row.localId ? { ...x, cantidad: v } : x))}
+                              costo={verCostos ? (p ? Math.round(qty * (Number(p.costo_promedio) || 0)) : 0) : null}
+                              onQuitar={() => setNewRows(v => v.filter(x => x.localId !== row.localId))}
+                            />
+                          );
+                        })}
                       </div>
-
-                      <div style={{ flex: 1, minWidth: '240px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                          <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Frutas entregadas</span>
-                          {editingId === id && (
-                            <>
-                              <button onClick={e => { e.stopPropagation(); addRow(); }} disabled={saving}
-                                style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--al)', color: 'var(--ac)', border: '1px solid var(--ac)', cursor: 'pointer', fontWeight: 700 }}>
-                                + A&ntilde;adir fruta
-                              </button>
-                              <button onClick={e => { e.stopPropagation(); saveEditFrutas(id, det); }} disabled={saving}
-                                style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#0D9373', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
-                                {saving ? 'Guardando...' : 'Guardar'}
-                              </button>
-                              <button onClick={e => { e.stopPropagation(); cancelEdit(); }}
-                                style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--bo)', color: 'var(--ts)', border: 'none', cursor: 'pointer' }}>
-                                Cancelar
-                              </button>
-                            </>
-                          )}
-                        </div>
-                        {saveErr && <p style={{ color: 'var(--rd)', fontSize: '11px', margin: '0 0 6px' }}>{saveErr}</p>}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                          {det.filter(d => !deletedIds.has(d.id as string)).map((d, i) => {
-                            const isEditing = editingId === id;
-                            const qty = isEditing ? (editValues[d.id as string] ?? (d.cantidad as number)) : (d.cantidad as number);
-                            const costoUnitarioEdit = Number(d.costo_unitario) || (Number(d.cantidad) > 0 ? Number(d.costo_total) / Number(d.cantidad) : 0);
-                            return (
-                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--sf)', borderRadius: '7px', padding: '7px 12px' }}>
-                                <span style={{ flex: 1, fontSize: '13px', fontWeight: 500, color: 'var(--tx)' }}>{d.nombre_producto as string}</span>
-                                {isEditing ? (
-                                  <>
-                                    <input type="number" value={qty} min={0} step="any" onClick={e => e.stopPropagation()} onChange={e => setEditValues(v => ({ ...v, [d.id as string]: parseFloat(e.target.value) || 0 }))}
-                                      style={{ width: '80px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }} />
-                                    <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{d.unidad_medida as string}</span>
-                                    {verCostos && <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(Math.round(qty * costoUnitarioEdit))}</span>}
-                                    {isAdmin && (
-                                      <button type="button" onClick={e => { e.stopPropagation(); removeDetalle(d.id as string); }} title="Quitar linea"
-                                        style={{ border: 'none', background: 'transparent', color: '#B91C1C', cursor: 'pointer', fontSize: '16px', lineHeight: 1, fontWeight: 700, padding: '0 2px' }}>
-                                        ×
-                                      </button>
-                                    )}
-                                  </>
-                                ) : (
-                                  <>
-                                    <span style={{ fontSize: '12px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{qty} {d.unidad_medida as string}</span>
-                                    {verCostos && (d.costo_total as number) > 0 && <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(d.costo_total as number)}</span>}
-                                  </>
-                                )}
-                              </div>
-                            );
-                          })}
-                          {editingId === id && newRows.map(row => {
-                            const p = row.codigo_producto ? productosMap.get(row.codigo_producto) : undefined;
-                            const qty = Number(row.cantidad) || 0;
-                            const costoUnitario = Number(p?.costo_promedio) || 0;
-                            return (
-                              <div key={row.localId} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--al)', borderRadius: '7px', padding: '7px 12px', border: '1px dashed var(--bo)' }}>
-                                <SearchablePicker
-                                  value={row.codigo_producto}
-                                  options={productoOptions}
-                                  placeholder="Buscar por nombre o código"
-                                  width="300px"
-                                  onChange={value => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, codigo_producto: value } : x))}
-                                />
-                                <input type="number" min={0} step="any" value={row.cantidad} onClick={e => e.stopPropagation()} onChange={e => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, cantidad: parseFloat(e.target.value) || 0 } : x))}
-                                  style={{ width: '80px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }}
-                                />
-                                <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{String(p?.unidad_medida ?? '')}</span>
-                                {verCostos && <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(Math.round(qty * costoUnitario))}</span>}
-                                <button type="button" onClick={e => { e.stopPropagation(); setNewRows(v => v.filter(x => x.localId !== row.localId)); }} style={{ border: 'none', background: 'transparent', color: 'var(--rd)', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }}>×</button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
+                      <Observacion texto={f.observacion as string} />
                     </div>
-                  </td>
-                </tr>
-              ),
-            ];
-          })}
-        </tbody>
-      </table>
+                  </div>
+                </MovCard>
+              );
+            })}
+          </section>
+        );
+      })}
+      {saveErr && !editingId && <p className="hst-err" style={{ margin: '0 0 12px' }}>{saveErr}</p>}
     </div>
   );
 }
 
-function TablaInventario({ datos, isAdmin, onRefresh, productos }: { datos: Record<string, unknown>[]; isAdmin: boolean; onRefresh: () => void; productos: Record<string, unknown>[] }) {
+function TablaInventario({ datos, isAdmin, onRefresh, productos, porDia, busqueda }: { datos: Record<string, unknown>[]; isAdmin: boolean; onRefresh: () => void; productos: Record<string, unknown>[]; porDia?: PorDia; busqueda?: ResultadoBusqueda | null }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, number>>({});
@@ -1536,198 +1489,106 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos }: { datos: Reco
   };
 
   if (!datos.length) return <Empty msg="No hay tomas de inventario registradas en este periodo." />;
+  const { terminos, estaAbierto, abrir } = vistaBusqueda(busqueda, expanded, setExpanded);
 
   return (
-    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '520px' }}>
-        <thead>
-          <tr>
-            {['Fecha', 'Responsable', 'Ubicaciones', 'Lineas', 'Acciones'].map(h => <th key={h} style={{ ...thSt, textAlign: h === 'Acciones' ? 'right' : 'left' }}>{h}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {datos.map((inventario: Record<string, unknown>) => {
-            const id = inventario.id as string;
-            const det = (inventario.detalle_inventario as Record<string, unknown>[]) ?? [];
-            const open = expanded.has(id);
-            const ubicaciones = Array.from(new Set(det.map(item => String(item.ubicacion ?? '')).filter(Boolean)));
-            const preview = ubicaciones.slice(0, 2);
-            const extra = ubicaciones.length > 2 ? ubicaciones.length - 2 : 0;
-            const observacion = String(inventario.observacion ?? '');
-
-            return [
-              <tr
-                key={id}
-                onClick={() => toggle(id)}
-                style={{ borderBottom: '1px solid var(--bo)', cursor: 'pointer', transition: 'background 0.12s', background: open ? 'var(--al)' : 'transparent' }}
-                onMouseEnter={e => { if (!open) (e.currentTarget as HTMLTableRowElement).style.background = 'var(--bg)'; }}
-                onMouseLeave={e => { if (!open) (e.currentTarget as HTMLTableRowElement).style.background = 'transparent'; }}
-              >
-                <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtFecha(inventario.fecha as string)}</td>
-                <td style={tdSt}><ResponsableChip nombre={inventario.responsable_nombre as string} /></td>
-                <td style={{ ...tdSt, maxWidth: '320px' }}>
-                  <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                    {preview.map(ubicacion => <Chip key={ubicacion} label={ubicacion} color="#2563EB" />)}
-                    {extra > 0 && <span style={{ fontSize: '11px', color: 'var(--ts)' }}>+{extra} mas</span>}
-                  </div>
-                </td>
-                <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums' }}>{det.length}</td>
-                <td style={{ ...tdSt, textAlign: 'right', width: isAdmin ? '120px' : '48px' }}>
-                  {isAdmin ? <RowActions open={open} editing={editingId === id} onEdit={() => { setExpanded(s => new Set(s).add(id)); startEdit(id, det); }} onDelete={() => deleteRecord(id)} /> : <ExpandBtn open={open} />}
-                </td>
-              </tr>,
-              open && (
-                <tr key={`${id}-det`}>
-                  <td colSpan={5} style={{ background: 'var(--al)', padding: '0 0 2px' }}>
-                    <div style={{ padding: '16px 20px', display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
-                      <div style={{ minWidth: '190px' }}>
-                        <DetailLabel>Quién / cuándo</DetailLabel>
-                        <MetaRow icon="👤" label="Responsable" value={String(inventario.responsable_nombre ?? '')} />
-                        {!!inventario.created_at && <MetaRow icon="🕐" label="Hora registro" value={fmtHora(inventario.created_at as string) ?? '-'} />}
-                        {editingId === id && (
-                          <div style={{ marginTop: '10px' }}>
-                            <DetailLabel>Fecha registro</DetailLabel>
-                            <input
-                              type="date"
-                              value={editFecha}
-                              onClick={e => e.stopPropagation()}
-                              onChange={e => setEditFecha(e.target.value)}
-                              style={{ width: '140px', padding: '5px 8px', fontSize: '13px', borderRadius: '5px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)' }}
+    <div className="hst-list">
+      <CoincidenciasLineas busqueda={busqueda} verCostos={false} />
+      {agruparPorDia(datos).map(({ fecha, items }) => {
+        const dia = porDia?.[fecha] ?? {
+          registros: items.length,
+          lineas: items.reduce((s, i) => s + ((i.detalle_inventario as unknown[] | undefined)?.length ?? 0), 0),
+          costo_total: null,
+        };
+        return (
+          <section key={fecha} className="hst-day">
+            <DiaHeader fecha={fecha} registros={dia.registros} lineas={dia.lineas} unidad="productos" costo={null} />
+            {items.map(inventario => {
+              const id = inventario.id as string;
+              const det = (inventario.detalle_inventario as Record<string, unknown>[]) ?? [];
+              const editando = editingId === id;
+              const ubicaciones = Array.from(new Set(det.map(item => String(item.ubicacion ?? '')).filter(Boolean)));
+              const observacion = String(inventario.observacion ?? '');
+              const detVis = terminos.length && !editando ? det.filter(d => coincide(textoLinea(d), terminos)) : det;
+              const filtrado = !!terminos.length && !editando && detVis.length > 0;
+              const detMostrar = filtrado ? detVis : det;
+              const resumenUbic = ubicaciones.slice(0, 2).join(', ') + (ubicaciones.length > 2 ? ` +${ubicaciones.length - 2}` : '');
+              return (
+                <MovCard
+                  key={id} id={id} fecha={inventario.fecha as string} createdAt={inventario.created_at as string}
+                  open={estaAbierto(id)} editando={editando} isAdmin={isAdmin}
+                  principal={<><ResponsableChip nombre={inventario.responsable_nombre as string} /><span className="hst-mov-sub" title={ubicaciones.join(', ')}>{resumenUbic}</span></>}
+                  etiqueta={<span className="hst-chip hst-chip-neutro">{ubicaciones.length} ubic.</span>}
+                  resumen={{ valor: String(det.length), label: det.length === 1 ? 'producto' : 'productos' }}
+                  costo={null}
+                  onToggle={() => toggle(id)} onEdit={() => { abrir(id); startEdit(id, det); }} onDelete={() => deleteRecord(id)}
+                >
+                  {editando && isAdmin && (
+                    <EditBar conFecha editFecha={editFecha} setEditFecha={setEditFecha} addLabel="Añadir línea"
+                      onAdd={addRow} onSave={() => saveEditInventario(id, det, observacion)} onCancel={cancelEdit} saving={saving} />
+                  )}
+                  {saveErr && editando && <p className="hst-err">{saveErr}</p>}
+                  {filtrado && <FiltradoNota q={busqueda?.q ?? ''} visibles={detMostrar.length} total={det.length} unidad="productos" />}
+                  <div className="hst-mov-grid is-single">
+                    <div>
+                      <h4 className="hst-sec-title"><span className="hst-prod-ico"><NavIcon name="package" size={14} /></span>Stock registrado</h4>
+                      {detMostrar.length === 0 && !editando && <p className="hst-muted">Sin productos registrados.</p>}
+                      <div className="hst-pp-list">
+                        {detMostrar.filter(d => !deletedIds.has(d.id as string)).map(item => {
+                          const qty = editando ? (editValues[item.id as string] ?? (item.cantidad as number)) : (item.cantidad as number);
+                          return (
+                            <LineaProducto
+                              key={String(item.id)} nombre={nombreLinea(item)} sub={String(item.ubicacion ?? '') || undefined}
+                              cantidad={qty} unidad={unidadLinea(item)} editando={editando}
+                              onCantidad={v => setEditValues(x => ({ ...x, [item.id as string]: v }))}
+                              costo={null}
+                              onQuitar={() => removeDetalle(item.id as string)}
                             />
-                          </div>
-                        )}
-                        {observacion && (
-                          <div style={{ marginTop: '10px' }}>
-                            <DetailLabel>Observacion</DetailLabel>
-                            <p style={{ fontSize: '13px', color: 'var(--tx)', margin: 0, lineHeight: 1.5, maxWidth: '280px' }}>{observacion}</p>
-                          </div>
-                        )}
-                      </div>
-
-                      <div style={{ flex: 1, minWidth: '260px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Stock registrado</span>
-                          {isAdmin && editingId === id && (
-                            <>
-                              <button
-                                onClick={e => { e.stopPropagation(); addRow(); }}
-                                disabled={saving}
-                                style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--al)', color: 'var(--ac)', border: '1px solid var(--ac)', cursor: 'pointer', fontWeight: 700 }}
-                              >
-                                + Anadir linea
-                              </button>
-                              <button
-                                onClick={e => { e.stopPropagation(); saveEditInventario(id, det, observacion); }}
-                                disabled={saving}
-                                style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#0D9373', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}
-                              >
-                                {saving ? 'Guardando...' : 'Guardar'}
-                              </button>
-                              <button
-                                onClick={e => { e.stopPropagation(); cancelEdit(); }}
-                                style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--bo)', color: 'var(--ts)', border: 'none', cursor: 'pointer' }}
-                              >
-                                Cancelar
-                              </button>
-                            </>
-                          )}
-                        </div>
-                        {saveErr && <p style={{ color: 'var(--rd)', fontSize: '11px', margin: '0 0 6px' }}>{saveErr}</p>}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          {det.filter(d => !deletedIds.has(d.id as string)).map(item => {
-                            const isEditing = editingId === id;
-                            const qty = isEditing ? (editValues[item.id as string] ?? (item.cantidad as number)) : (item.cantidad as number);
-                            return (
-                              <div key={String(item.id)} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--sf)', borderRadius: '7px', padding: '8px 12px', flexWrap: 'wrap' }}>
-                                <Chip label={String(item.ubicacion ?? '')} color="#2563EB" />
-                                <span style={{ flex: 1, fontSize: '13px', fontWeight: 500, color: 'var(--tx)' }}>{String(item.nombre_producto ?? '')}</span>
-                                {isEditing ? (
-                                  <>
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      step="any"
-                                      value={qty}
-                                      onClick={e => e.stopPropagation()}
-                                      onChange={e => setEditValues(v => ({ ...v, [item.id as string]: parseFloat(e.target.value) || 0 }))}
-                                      style={{ width: '82px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }}
-                                    />
-                                    <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{String(item.unidad_medida ?? '')}</span>
-                                    <button
-                                      type="button"
-                                      onClick={e => { e.stopPropagation(); removeDetalle(item.id as string); }}
-                                      style={{ border: 'none', background: 'transparent', color: '#B91C1C', cursor: 'pointer', fontSize: '16px', lineHeight: 1, fontWeight: 700, padding: '0 2px' }}
-                                    >
-                                      ×
-                                    </button>
-                                  </>
-                                ) : (
-                                  <span style={{ fontSize: '12px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>
-                                    {qty} {String(item.unidad_medida ?? '')}
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })}
-
-                          {editingId === id && newRows.map(row => {
-                            const producto = row.codigo_producto ? productosMap.get(row.codigo_producto) : undefined;
-                            return (
-                              <div key={row.localId} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--al)', borderRadius: '7px', padding: '8px 12px', border: '1px dashed var(--bo)', flexWrap: 'wrap' }}>
-                                <select
-                                  value={row.ubicacion}
-                                  onChange={e => setNewRows(v => v.map(item => item.localId === row.localId ? { ...item, ubicacion: e.target.value } : item))}
-                                  style={{ padding: '4px 8px', fontSize: '12px', borderRadius: '4px', border: '1px solid var(--bo)', background: 'var(--bg)', color: 'var(--tx)' }}
-                                >
-                                  <option value="CAMARA CONGELADOS">CAMARA CONGELADOS</option>
-                                  <option value="CAMARA MANTENCION">CAMARA MANTENCION</option>
-                                  <option value="BODEGA SECA">BODEGA SECA</option>
-                                  <option value="SALAD BAR">SALAD BAR</option>
-                                  <option value="DESPACHO">DESPACHO</option>
-                                  <option value="COCINA">COCINA</option>
-                                  <option value="MUEBLE DE ASEO">MUEBLE DE ASEO</option>
-                                  <option value="VITRINA">VITRINA</option>
-                                  <option value="CAMARA BRYAN">CAMARA BRYAN</option>
-                                  <option value="BODEGA PASTELERIA">BODEGA PASTELERIA</option>
+                          );
+                        })}
+                        {editando && newRows.map(row => {
+                          const producto = row.codigo_producto ? productosMap.get(row.codigo_producto) : undefined;
+                          return (
+                            <NuevaLinea
+                              key={row.localId}
+                              picker={<SearchablePicker value={row.codigo_producto} options={productoOptions} placeholder="Buscar producto" width="100%"
+                                onChange={value => setNewRows(v => v.map(item => item.localId === row.localId ? { ...item, codigo_producto: value } : item))} />}
+                              sub={(
+                                <select className="hst-ubic-select" value={row.ubicacion} aria-label="Ubicación"
+                                  onChange={e => setNewRows(v => v.map(item => item.localId === row.localId ? { ...item, ubicacion: e.target.value } : item))}>
+                                  {UBICACIONES_INVENTARIO.map(u => <option key={u} value={u}>{u}</option>)}
                                 </select>
-                                <SearchablePicker
-                                  value={row.codigo_producto}
-                                  options={productoOptions}
-                                  placeholder="Buscar producto"
-                                  width="300px"
-                                  onChange={value => setNewRows(v => v.map(item => item.localId === row.localId ? { ...item, codigo_producto: value } : item))}
-                                />
-                                <input
-                                  type="number"
-                                  min={0}
-                                  step="any"
-                                  value={row.cantidad}
-                                  onClick={e => e.stopPropagation()}
-                                  onChange={e => setNewRows(v => v.map(item => item.localId === row.localId ? { ...item, cantidad: parseFloat(e.target.value) || 0 } : item))}
-                                  style={{ width: '82px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }}
-                                />
-                                <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{String(producto?.unidad_medida ?? '')}</span>
-                                <button
-                                  type="button"
-                                  onClick={e => { e.stopPropagation(); setNewRows(v => v.filter(item => item.localId !== row.localId)); }}
-                                  style={{ border: 'none', background: 'transparent', color: 'var(--rd)', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }}
-                                >
-                                  ×
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
+                              )}
+                              cantidad={row.cantidad} unidad={String(producto?.unidad_medida ?? '').toUpperCase()}
+                              onCantidad={v => setNewRows(rows => rows.map(item => item.localId === row.localId ? { ...item, cantidad: v } : item))}
+                              costo={null}
+                              onQuitar={() => setNewRows(v => v.filter(item => item.localId !== row.localId))}
+                            />
+                          );
+                        })}
                       </div>
+                      <Observacion texto={observacion} />
                     </div>
-                  </td>
-                </tr>
-              ),
-            ];
-          })}
-        </tbody>
-      </table>
+                  </div>
+                </MovCard>
+              );
+            })}
+          </section>
+        );
+      })}
+      {saveErr && !editingId && <p className="hst-err" style={{ margin: '0 0 12px' }}>{saveErr}</p>}
     </div>
+  );
+}
+
+const UBICACIONES_INVENTARIO = ['CAMARA CONGELADOS', 'CAMARA MANTENCION', 'BODEGA SECA', 'SALAD BAR', 'DESPACHO', 'COCINA', 'MUEBLE DE ASEO', 'VITRINA', 'CAMARA BRYAN', 'BODEGA PASTELERIA'];
+
+function MotivoChip({ motivo, extra = 0 }: { motivo: string; extra?: number }) {
+  const color = MOTIVO_COLOR[motivo] ?? '#6B7280';
+  return (
+    <span className="hst-chip" style={{ background: `${color}14`, borderColor: `${color}55`, color }}>
+      {motivo}{extra > 0 ? ` +${extra}` : ''}
+    </span>
   );
 }
 
@@ -1735,7 +1596,7 @@ const MOTIVO_COLOR: Record<string, string> = {
   ...MOTIVO_MERMA_COLOR,
 };
 
-function TablaMermas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos }: { datos: Record<string, unknown>[]; canEdit: boolean; isAdmin: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[] }) {
+function TablaMermas({ datos, isAdmin, onRefresh, verCostos, productos, porDia, busqueda }: { datos: Record<string, unknown>[]; canEdit: boolean; isAdmin: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[]; porDia?: PorDia; busqueda?: ResultadoBusqueda | null }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editFecha, setEditFecha] = useState('');
@@ -1808,280 +1669,129 @@ function TablaMermas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
   };
 
   if (!datos.length) return <Empty msg="No hay mermas registradas en este período." />;
+  const { terminos, estaAbierto, abrir } = vistaBusqueda(busqueda, expanded, setExpanded);
 
   return (
-    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '480px' }}>
-        <thead>
-          <tr>
-            {['Fecha', 'Responsable', 'Qué se perdió', 'Motivos', 'Productos', ...(verCostos ? ['Pérdida'] : []), 'Acciones'].map(h => (
-              <th key={h} style={{ ...thSt, textAlign: h === 'Acciones' ? 'right' : 'left' }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {datos.map((m: Record<string, unknown>) => {
-            const id  = m.id as string;
-            const det = (m.detalle_mermas as Record<string, unknown>[]) ?? [];
-            const platos = (m.detalle_mermas_platos as Record<string, unknown>[]) ?? [];
-            const ct  = det.reduce((s, d) => s + ((d.costo_total as number) ?? 0), 0);
-            const open = expanded.has(id);
-            // Preview: first 2 products
-            const preview = det.slice(0, 2).map(d => d.nombre_producto as string);
-            const extra   = det.length > 2 ? det.length - 2 : 0;
-            // Unique motivos
-            const motivos = [...new Set(det.map(d => normalizeMotivoMerma(d.motivo)).filter((mot): mot is NonNullable<ReturnType<typeof normalizeMotivoMerma>> => Boolean(mot)))];
-
-            return [
-              <tr key={id} onClick={() => toggle(id)}
-                style={{ borderBottom: '1px solid var(--bo)', cursor: 'pointer', transition: 'background 0.12s', background: open ? '#FEF2F2' : 'transparent' }}
-                onMouseEnter={e => { if (!open) (e.currentTarget as HTMLTableRowElement).style.background = 'var(--bg)'; }}
-                onMouseLeave={e => { if (!open) (e.currentTarget as HTMLTableRowElement).style.background = 'transparent'; }}
-              >
-                <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, whiteSpace: 'nowrap' }}>
-                  {fmtFecha(m.fecha as string)}
-                </td>
-                <td style={tdSt}>
-                  <ResponsableChip nombre={m.responsable_nombre as string} />
-                </td>
-                <td style={{ ...tdSt, maxWidth: '260px' }}>
-                  {det.length === 0 ? (
-                    <span style={{ color: 'var(--ts)' }}>Sin detalle</span>
-                  ) : (
-                    <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center' }}>
-                      {preview.map((n, i) => (
-                        <span key={i} style={{ fontSize: '11px', background: '#FEE2E2', color: '#991B1B', padding: '2px 8px', borderRadius: '4px', fontWeight: 500, whiteSpace: 'nowrap' }}>{n}</span>
-                      ))}
-                      {extra > 0 && <span style={{ fontSize: '11px', color: 'var(--ts)' }}>+{extra} más</span>}
-                    </div>
+    <div className="hst-list">
+      <CoincidenciasLineas busqueda={busqueda} verCostos={verCostos} />
+      {agruparPorDia(datos).map(({ fecha, items }) => {
+        const dia = porDia?.[fecha] ?? {
+          registros: items.length,
+          lineas: items.reduce((s, m) => s + ((m.detalle_mermas as unknown[] | undefined)?.length ?? 0), 0),
+          costo_total: items.reduce((s, m) => s + ((m.detalle_mermas as Record<string, unknown>[] | undefined) ?? []).reduce((a, d) => a + (Number(d.costo_total) || 0), 0), 0),
+        };
+        return (
+          <section key={fecha} className="hst-day">
+            <DiaHeader fecha={fecha} registros={dia.registros} lineas={dia.lineas} unidad="productos" costo={verCostos ? dia.costo_total : null} />
+            {items.map(m => {
+              const id  = m.id as string;
+              const det = (m.detalle_mermas as Record<string, unknown>[]) ?? [];
+              const platos = (m.detalle_mermas_platos as Record<string, unknown>[]) ?? [];
+              const ct  = det.reduce((s, d) => s + ((d.costo_total as number) ?? 0), 0);
+              const editando = editingId === id;
+              const motivos = [...new Set(det.map(d => normalizeMotivoMerma(d.motivo)).filter((mot): mot is NonNullable<ReturnType<typeof normalizeMotivoMerma>> => Boolean(mot)))];
+              const detVis = terminos.length && !editando ? det.filter(d => coincide(textoLinea(d), terminos)) : det;
+              const platosVis = terminos.length && !editando ? platos.filter(p => coincide(String(p.nombre_plato ?? ''), terminos)) : platos;
+              const filtrado = !!terminos.length && !editando && (detVis.length > 0 || platosVis.length > 0);
+              const detMostrar = filtrado ? detVis : det;
+              const platosMostrar = filtrado ? platosVis : platos;
+              const preview = det.slice(0, 2).map(d => String(d.nombre_producto ?? '')).join(', ') + (det.length > 2 ? ` +${det.length - 2}` : '');
+              return (
+                <MovCard
+                  key={id} id={id} fecha={m.fecha as string} createdAt={m.created_at as string}
+                  open={estaAbierto(id)} editando={editando} isAdmin={isAdmin}
+                  principal={<><ResponsableChip nombre={m.responsable_nombre as string} /><span className="hst-mov-sub" title={preview}>{preview}</span></>}
+                  etiqueta={motivos.length > 0 ? <MotivoChip motivo={motivos[0]} extra={motivos.length - 1} /> : undefined}
+                  resumen={{ valor: String(det.length), label: det.length === 1 ? 'producto' : 'productos' }}
+                  costo={verCostos ? { valor: ct, label: 'Pérdida' } : null}
+                  onToggle={() => toggle(id)} onEdit={() => { abrir(id); startEdit(id, det); }} onDelete={() => deleteRecord(id)}
+                >
+                  {editando && (
+                    <EditBar conFecha={isAdmin} editFecha={editFecha} setEditFecha={setEditFecha} addLabel="Añadir producto"
+                      onAdd={addRow} onSave={() => saveEditMer(id, det)} onCancel={cancelEdit} saving={saving} />
                   )}
-                </td>
-                <td style={{ ...tdSt, maxWidth: '180px' }}>
-                  {motivos.length === 0 ? (
-                    <span style={{ color: 'var(--ts)', fontSize: '12px' }}>—</span>
-                  ) : (
-                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                      {motivos.slice(0, 2).map(mot => (
-                        <Chip key={mot} label={mot} color={MOTIVO_COLOR[mot] ?? '#6B7280'} />
-                      ))}
-                      {motivos.length > 2 && <span style={{ fontSize: '11px', color: 'var(--ts)' }}>+{motivos.length - 2}</span>}
-                    </div>
-                  )}
-                </td>
-                <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums' }}>
-                  {det.length}
-                </td>
-                {verCostos && (
-                  <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: ct > 0 ? '#DC2626' : 'var(--ts)', fontWeight: ct > 0 ? 700 : 400 }}>
-                    {ct > 0 ? formatCLP(ct) : '—'}
-                  </td>
-                )}
-                <td style={{ ...tdSt, textAlign: 'right', width: isAdmin ? '120px' : '48px' }}>
-                  {isAdmin ? <RowActions open={open} editing={editingId === id} onEdit={() => { setExpanded(s => new Set(s).add(id)); startEdit(id, det); }} onDelete={() => deleteRecord(id)} /> : <ExpandBtn open={open} />}
-                </td>
-              </tr>,
-
-              open && (
-                <tr key={`${id}-det`}>
-                  <td colSpan={verCostos ? 7 : 6} style={{ background: '#FEF2F2', padding: '0 0 2px' }}>
-                    <div style={{ padding: '16px 20px', display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
-
-                      {/* Meta */}
-                      <div style={{ minWidth: '180px' }}>
-                        <DetailLabel>Quién / cuándo</DetailLabel>
-                        <MetaRow icon="👤" label="Responsable" value={m.responsable_nombre as string} />
-                        {!!m.created_at && <MetaRow icon="🕐" label="Hora registro" value={fmtHora(m.created_at as string) ?? '—'} />}
-                        {editingId === id && isAdmin && (
-                          <div style={{ marginTop: '10px' }}>
-                            <DetailLabel>Fecha registro</DetailLabel>
-                            <input
-                              type="date"
-                              value={editFecha}
-                              onClick={e => e.stopPropagation()}
-                              onChange={e => setEditFecha(e.target.value)}
-                              style={{ width: '140px', padding: '5px 8px', fontSize: '13px', borderRadius: '5px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', fontFamily: "'Space Grotesk', sans-serif" }}
+                  {saveErr && editando && <p className="hst-err">{saveErr}</p>}
+                  {filtrado && <FiltradoNota q={busqueda?.q ?? ''} visibles={detMostrar.length + platosMostrar.length} total={det.length + platos.length} unidad="líneas" />}
+                  <div className={`hst-mov-grid${platosMostrar.length ? '' : ' is-single'}`}>
+                    <div>
+                      <h4 className="hst-sec-title"><span className="hst-prod-ico"><NavIcon name="trending" size={14} /></span>Detalle de productos</h4>
+                      {detMostrar.length === 0 && !editando && <p className="hst-muted">Sin productos registrados.</p>}
+                      <div className="hst-pp-list">
+                        {detMostrar.filter(d => !deletedIds.has(d.id as string)).map(d => {
+                          const qty = editando ? (editValues[d.id as string] ?? (d.cantidad as number)) : (d.cantidad as number);
+                          const cu = Number(d.costo_unitario) || (Number(d.cantidad) > 0 ? Number(d.costo_total) / Number(d.cantidad) : 0);
+                          const motivo = normalizeMotivoMerma(d.motivo);
+                          return (
+                            <LineaProducto
+                              key={d.id as string} nombre={nombreLinea(d)} sub={motivo ? <MotivoChip motivo={motivo} /> : undefined}
+                              cantidad={qty} unidad={unidadLinea(d)} editando={editando}
+                              onCantidad={v => setEditValues(x => ({ ...x, [d.id as string]: v }))}
+                              costo={verCostos ? (editando ? Math.round(qty * cu) : Number(d.costo_total) || 0) : null}
+                              onQuitar={isAdmin ? () => removeDetalle(d.id as string) : undefined}
                             />
-                          </div>
-                        )}
-                        {(m.observacion as string) && (
-                          <div style={{ marginTop: '10px' }}>
-                            <DetailLabel>Observación</DetailLabel>
-                            <p style={{ fontSize: '13px', color: 'var(--tx)', margin: 0, lineHeight: 1.5, maxWidth: '280px' }}>{m.observacion as string}</p>
-                          </div>
-                        )}
+                          );
+                        })}
+                        {editando && newRows.map(row => {
+                          const p = row.codigo_producto ? productosMap.get(row.codigo_producto) : undefined;
+                          const qty = Number(row.cantidad) || 0;
+                          const um = String(p?.unidad_medida ?? '').toUpperCase();
+                          return (
+                            <NuevaLinea
+                              key={row.localId}
+                              picker={<SearchablePicker value={row.codigo_producto} options={productoOptions} placeholder="Buscar por nombre o código" width="100%"
+                                onChange={value => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, codigo_producto: value } : x))} />}
+                              sub={p ? `Producto en ${um || '—'}` : 'Nuevo producto: elige el producto'}
+                              cantidad={row.cantidad} unidad={um}
+                              onCantidad={v => setNewRows(rows => rows.map(x => x.localId === row.localId ? { ...x, cantidad: v } : x))}
+                              costo={verCostos ? (p ? Math.round(qty * (Number(p.costo_promedio) || 0)) : 0) : null}
+                              onQuitar={() => setNewRows(v => v.filter(x => x.localId !== row.localId))}
+                            />
+                          );
+                        })}
                       </div>
-
-                      {platos.length > 0 && (
-                        <div style={{ flex: 1, minWidth: '300px' }}>
-                          <DetailLabel>Platos preparados</DetailLabel>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            {platos.map((plato, i) => {
-                              const insumos = (plato.detalle_mermas_platos_insumos as Record<string, unknown>[] | undefined) ?? [];
-                              const motivo = normalizeMotivoMerma(plato.motivo);
-                              const motivoColor = motivo ? (MOTIVO_COLOR[motivo] ?? '#6B7280') : '#6B7280';
-                              const observacionPlato = String(plato.observacion ?? '');
-                              return (
-                                <div key={i} style={{ background: 'var(--sf)', borderRadius: '8px', border: '1px solid #FECACA', padding: '10px 12px' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: insumos.length ? '8px' : 0, flexWrap: 'wrap' }}>
-                                    <span style={{ flex: 1, minWidth: '180px', fontSize: '13px', fontWeight: 700, color: 'var(--tx)' }}>{plato.nombre_plato as string}</span>
-                                    <span style={{ fontSize: '12px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{Number(plato.cantidad) || 0} plato(s)</span>
-                                    {motivo && (
-                                      <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '4px', background: `${motivoColor}18`, color: motivoColor, border: `1px solid ${motivoColor}40`, whiteSpace: 'nowrap' }}>
-                                        {motivo}
-                                      </span>
-                                    )}
-                                    {verCostos && Number(plato.costo_total) > 0 && (
-                                      <span style={{ fontSize: '12px', color: '#DC2626', fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(Number(plato.costo_total))}</span>
-                                    )}
-                                  </div>
-                                  {observacionPlato && (
-                                    <p style={{ margin: '0 0 8px', fontSize: '12px', color: 'var(--ts)' }}>{observacionPlato}</p>
-                                  )}
-                                  {insumos.length > 0 && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                      {insumos.map((insumo, j) => (
-                                        <div key={j} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#FEF2F2', borderRadius: '6px', padding: '6px 8px' }}>
-                                          <span style={{ flex: 1, fontSize: '12px', color: 'var(--tx)' }}>{insumo.nombre as string}</span>
-                                          <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>
-                                            {Number(insumo.cantidad_total) || 0} {String(insumo.unidad_medida ?? '')}
-                                          </span>
-                                          {verCostos && Number(insumo.costo_total) > 0 && (
-                                            <span style={{ fontSize: '11px', color: '#DC2626', fontWeight: 600, fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(Number(insumo.costo_total))}</span>
-                                          )}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Detalle */}
-                      {(det.length > 0 || canEdit) && (
-                        <div style={{ flex: 1, minWidth: '240px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                            <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Detalle de productos</span>
-                            {editingId === id && (
-                              <>
-                                <button onClick={e => { e.stopPropagation(); addRow(); }} disabled={saving}
-                                  style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--al)', color: 'var(--ac)', border: '1px solid var(--ac)', cursor: 'pointer', fontWeight: 700 }}>
-                                  + A&ntilde;adir producto
-                                </button>
-                                <button onClick={e => { e.stopPropagation(); saveEditMer(id, det); }} disabled={saving}
-                                  style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#0D9373', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
-                                  {saving ? 'Guardando...' : 'Guardar'}
-                                </button>
-                                <button onClick={e => { e.stopPropagation(); cancelEdit(); }}
-                                  style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--bo)', color: 'var(--ts)', border: 'none', cursor: 'pointer' }}>
-                                  Cancelar
-                                </button>
-                              </>
-                            )}
-                          </div>
-                          {saveErr && <p style={{ color: 'var(--rd)', fontSize: '11px', margin: '0 0 6px' }}>{saveErr}</p>}
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                            {det.filter(d => !deletedIds.has(d.id as string)).map((d, i) => {
-                              const isEditing = editingId === id;
-                              const qty = isEditing ? (editValues[d.id as string] ?? (d.cantidad as number)) : (d.cantidad as number);
-                              const motivo = normalizeMotivoMerma(d.motivo);
-                              const motivoColor = motivo ? (MOTIVO_COLOR[motivo] ?? '#6B7280') : null;
-                              const costoUnitarioEdit = Number(d.costo_unitario) || (Number(d.cantidad) > 0 ? Number(d.costo_total) / Number(d.cantidad) : 0);
-                              return (
-                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--sf)', borderRadius: '7px', padding: '7px 12px' }}>
-                                  <span style={{ flex: 1, fontSize: '13px', fontWeight: 500, color: 'var(--tx)' }}>{d.nombre_producto as string}</span>
-                                  {isEditing ? (
-                                    <>
-                                      <input type="number" value={qty} min={0} step="any"
-                                        onClick={e => e.stopPropagation()}
-                                        onChange={e => setEditValues(v => ({ ...v, [d.id as string]: parseFloat(e.target.value) || 0 }))}
-                                        style={{ width: '80px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }} />
-                                      <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{d.unidad_medida as string}</span>
-                                      {verCostos && (
-                                        <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>
-                                          {formatCLP(Math.round(qty * costoUnitarioEdit))}
-                                        </span>
-                                      )}
-                                      {isAdmin && (
-                                        <button
-                                          type="button"
-                                          onClick={e => { e.stopPropagation(); removeDetalle(d.id as string); }}
-                                          title="Quitar linea"
-                                          style={{ border: 'none', background: 'transparent', color: '#B91C1C', cursor: 'pointer', fontSize: '16px', lineHeight: 1, fontWeight: 700, padding: '0 2px' }}
-                                        >
-                                          x
-                                        </button>
-                                      )}
-                                    </>
-                                  ) : (
-                                    <>
-                                      <span style={{ fontSize: '12px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{qty} {d.unidad_medida as string}</span>
-                                      {!isEditing && motivo && motivoColor && (
-                                        <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '4px', background: `${motivoColor}18`, color: motivoColor, border: `1px solid ${motivoColor}40`, whiteSpace: 'nowrap' }}>
-                                          {motivo}
-                                        </span>
-                                      )}
-                                      {verCostos && (d.costo_total as number) > 0 && (
-                                        <span style={{ fontSize: '12px', color: '#DC2626', fontWeight: 600, fontFamily: "'Space Grotesk', sans-serif" }}>
-                                          {formatCLP(d.costo_total as number)}
-                                        </span>
-                                      )}
-                                      {isEditing && isAdmin && (
-                                        <button
-                                          type="button"
-                                          onClick={e => { e.stopPropagation(); removeDetalle(d.id as string); }}
-                                          title="Quitar linea"
-                                          style={{ border: 'none', background: 'transparent', color: '#B91C1C', cursor: 'pointer', fontSize: '16px', lineHeight: 1, fontWeight: 700, padding: '0 2px' }}
-                                        >
-                                          ×
-                                        </button>
-                                      )}
-                                    </>
-                                  )}
-                                </div>
-                              );
-                            })}
-                            {editingId === id && newRows.map(row => {
-                              const p = row.codigo_producto ? productosMap.get(row.codigo_producto) : undefined;
-                              const qty = Number(row.cantidad) || 0;
-                              const costoUnitario = Number(p?.costo_promedio) || 0;
-                              return (
-                                <div key={row.localId} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--al)', borderRadius: '7px', padding: '7px 12px', border: '1px dashed var(--bo)' }}>
-                                  <SearchablePicker
-                                    value={row.codigo_producto}
-                                    options={productoOptions}
-                                    placeholder="Buscar por nombre o código"
-                                    width="300px"
-                                    onChange={value => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, codigo_producto: value } : x))}
-                                  />
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    step="any"
-                                    value={row.cantidad}
-                                    onClick={e => e.stopPropagation()}
-                                    onChange={e => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, cantidad: parseFloat(e.target.value) || 0 } : x))}
-                                    style={{ width: '80px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }}
-                                  />
-                                  <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{String(p?.unidad_medida ?? '')}</span>
-                                  <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(Math.round(qty * costoUnitario))}</span>
-                                  <button type="button" onClick={e => { e.stopPropagation(); setNewRows(v => v.filter(x => x.localId !== row.localId)); }} style={{ border: 'none', background: 'transparent', color: 'var(--rd)', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }}>×</button>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
+                      <Observacion texto={m.observacion as string} />
                     </div>
-                  </td>
-                </tr>
-              ),
-            ];
-          })}
-        </tbody>
-      </table>
+
+                    {platosMostrar.length > 0 && (
+                      <div className="hst-platos">
+                        <h4 className="hst-sec-title"><span className="hst-prod-ico"><NavIcon name="utensils" size={14} /></span>Platos preparados</h4>
+                        {platosMostrar.map((plato, i) => {
+                          const insumos = (plato.detalle_mermas_platos_insumos as Record<string, unknown>[] | undefined) ?? [];
+                          const motivo = normalizeMotivoMerma(plato.motivo);
+                          const observacionPlato = String(plato.observacion ?? '');
+                          return (
+                            <div key={i} className="hst-plato">
+                              <div className="hst-plato-head">
+                                <b>{plato.nombre_plato as string}</b>
+                                <span>{fmtNum(Number(plato.cantidad) || 0)} plato(s)</span>
+                                {motivo && <MotivoChip motivo={motivo} />}
+                                {verCostos && Number(plato.costo_total) > 0 && <strong>{formatCLP(Number(plato.costo_total))}</strong>}
+                              </div>
+                              {observacionPlato && <p className="hst-muted" style={{ margin: '4px 0 0', fontSize: '12px' }}>{observacionPlato}</p>}
+                              {insumos.length > 0 && (
+                                <div className="hst-plato-insumos">
+                                  {insumos.map((insumo, j) => (
+                                    <div key={j}>
+                                      <span>{insumo.nombre as string}</span>
+                                      <span>{fmtNum(Number(insumo.cantidad_total) || 0)} {String(insumo.unidad_medida ?? '').toUpperCase()}</span>
+                                      {verCostos && Number(insumo.costo_total) > 0 && <b>{formatCLP(Number(insumo.costo_total))}</b>}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </MovCard>
+              );
+            })}
+          </section>
+        );
+      })}
+      {saveErr && !editingId && <p className="hst-err" style={{ margin: '0 0 12px' }}>{saveErr}</p>}
     </div>
   );
 }
@@ -2326,10 +2036,10 @@ export default function HistorialPage() {
         ) : (
           <>
             {tab === 'produccion' && <TablaProduccion datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} pps={maestros.pps} porDia={summary?.por_dia} busqueda={resultadoBusqueda} />}
-            {tab === 'colacion'   && <TablaColacion   datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} />}
-            {tab === 'frutas'     && <TablaFrutas     datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} />}
-            {tab === 'inventario' && <TablaInventario datos={datos} isAdmin={isAdmin} onRefresh={refresh} productos={maestros.productos} />}
-            {tab === 'mermas'     && <TablaMermas     datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} />}
+            {tab === 'colacion'   && <TablaColacion   datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} porDia={summary?.por_dia} busqueda={resultadoBusqueda} />}
+            {tab === 'frutas'     && <TablaFrutas     datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} porDia={summary?.por_dia} busqueda={resultadoBusqueda} />}
+            {tab === 'inventario' && <TablaInventario datos={datos} isAdmin={isAdmin} onRefresh={refresh} productos={maestros.productos} porDia={summary?.por_dia} busqueda={resultadoBusqueda} />}
+            {tab === 'mermas'     && <TablaMermas     datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} porDia={summary?.por_dia} busqueda={resultadoBusqueda} />}
             {total > 0 && <Paginacion page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />}
           </>
         )}

@@ -119,10 +119,10 @@
 .hst-mov.is-open, .hst-mov.is-open:hover { background: #FFF5EE; border: 2px solid #F7B48A; box-shadow: 0 4px 14px rgba(232, 86, 10, 0.08); }
 .hst-mov.is-open .hst-mov-head { padding: 7px 13px; }
 .hst-mov-head {
-  display: grid; grid-template-columns: 34px 92px minmax(90px, 1fr) 56px 104px 140px auto;
+  display: grid; grid-template-columns: 34px 92px minmax(90px, 1fr) 112px 104px 140px auto;
   align-items: center; gap: 12px; min-height: 56px; padding: 8px 14px; cursor: pointer;
 }
-.hst-mov-head.sin-costo { grid-template-columns: 34px 92px minmax(90px, 1fr) 56px 104px auto; }
+.hst-mov-head.sin-costo { grid-template-columns: 34px 92px minmax(90px, 1fr) 112px 104px auto; }
 .hst-mov-dia { font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; line-height: 1; text-align: center; }
 .hst-mov-fecha, .hst-mov-pp, .hst-mov-costo { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
 .hst-mov-fecha b { font-size: 12.5px; font-weight: 700; }
@@ -197,6 +197,33 @@
 .hst-merma.is-medio { background: #FFF4E5; color: #B45309; }
 .hst-merma.is-alto { background: #FEF2F2; color: #B91C1C; }
 
+/* ── Colación, Frutas, Inventario y Mermas ── */
+.hst-mov-principal { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.hst-mov-sub { font-size: 12px; color: var(--hst-tx2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.hst-mov-turno { min-width: 0; overflow: hidden; }
+.hst-mov-turno .hst-chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.hst-chip-neutro { background: #FFFFFF; border-color: #E7E2DC; color: #525252; }
+.hst-menu { margin: 0 0 8px; font-size: 13px; color: var(--tx); }
+.hst-menu b { color: var(--hst-tx2); font-weight: 600; }
+.hst-pp.hst-linea { grid-template-columns: minmax(0, 1fr) 130px 100px; }
+.hst-pp.hst-linea.is-edit { grid-template-columns: minmax(0, 1fr) 130px 100px 26px; }
+.hst-pp.hst-linea.sin-costo { grid-template-columns: minmax(0, 1fr) 130px; }
+.hst-pp.hst-linea.sin-costo.is-edit { grid-template-columns: minmax(0, 1fr) 130px 26px; }
+.hst-linea .hst-pp-nombre small .hst-chip { height: 20px; font-size: 10.5px; margin-top: 2px; }
+.hst-coinc-row.hst-coinc-linea { grid-template-columns: minmax(0, 1fr) 130px 100px; }
+.hst-coinc-row.hst-coinc-linea:not(:has(.hst-pp-costo)) { grid-template-columns: minmax(0, 1fr) 130px; }
+.hst-ubic-select { height: 26px; margin-top: 2px; padding: 0 6px; border: 1px solid var(--hst-bo); border-radius: 6px; background: var(--sf); font: inherit; font-size: 11.5px; color: var(--tx); }
+.hst-platos { align-self: start; background: #FFF7F7; border: 1px solid #FECACA; border-left: 3px solid #F87171; border-radius: 10px; padding: 12px 14px; }
+.hst-plato { padding: 8px 0; border-top: 1px solid #FDE2E2; }
+.hst-plato:first-of-type { border-top: none; }
+.hst-plato-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hst-plato-head b { flex: 1; min-width: 160px; font-size: 13.5px; }
+.hst-plato-head span { font-size: 12px; color: var(--hst-tx2); }
+.hst-plato-head strong { font-family: 'Space Grotesk', sans-serif; font-size: 13.5px; color: var(--ac); }
+.hst-plato-insumos { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
+.hst-plato-insumos div { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; font-size: 12px; background: var(--sf); border-radius: 6px; padding: 5px 8px; }
+.hst-plato-insumos b { font-family: 'Space Grotesk', sans-serif; font-weight: 600; }
+
 /* ── Responsive ── */
 @media (max-width: 1280px) {
   .hst-top { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -209,7 +236,7 @@
 }
 @media (max-width: 900px) {
   .hst-top { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .hst-mov-head { grid-template-columns: 30px 84px minmax(80px, 1fr) 50px 92px; row-gap: 8px; }
+  .hst-mov-head { grid-template-columns: 30px 84px minmax(80px, 1fr) 104px 92px; row-gap: 8px; }
   .hst-mov-costo { grid-column: 1 / 4; flex-direction: row; align-items: baseline; gap: 8px; }
   .hst-mov-acciones { grid-column: 4 / -1; }
 }
@@ -218,7 +245,9 @@
   .hst-list { padding: 4px 10px 12px; }
   .hst-mov-head { grid-template-columns: 30px minmax(0, 1fr) auto; }
   .hst-mov-resp, .hst-mov-turno, .hst-mov-pp { grid-column: span 1; }
-  .hst-pp, .hst-pp:not(:has(.hst-pp-costo)), .hst-pp.is-edit, .hst-pp.is-edit:not(:has(.hst-pp-costo)) { grid-template-columns: repeat(3, minmax(0, 1fr)) auto; }
+  .hst-pp, .hst-pp:not(:has(.hst-pp-costo)), .hst-pp.is-edit, .hst-pp.is-edit:not(:has(.hst-pp-costo)),
+  .hst-pp.hst-linea, .hst-pp.hst-linea.is-edit, .hst-pp.hst-linea.sin-costo, .hst-pp.hst-linea.sin-costo.is-edit { grid-template-columns: repeat(3, minmax(0, 1fr)) auto; }
+  .hst-mov-sub { display: none; }
   .hst-pp-nombre { grid-column: 1 / -1; }
   .hst-pp-ing, .hst-pp-total, .hst-pp-costo { align-items: flex-start; }
 }
