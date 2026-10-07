@@ -48,33 +48,43 @@ function fmtHora12(iso: string) {
   return new Date(iso).toLocaleTimeString('es-CL', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Santiago' });
 }
 const fmtNum = (n: number) => new Intl.NumberFormat('es-CL', { maximumFractionDigits: 2 }).format(Number(n) || 0);
-// Cantidad producida: "2,60 kg" o "850 g"
-function fmtProducido(total: number | null | undefined) {
-  if (total == null) return '—';
-  return total >= 1000
-    ? `${new Intl.NumberFormat('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(total / 1000)} kg`
-    : `${fmtNum(total)} g`;
+// Unidad en que se INGRESA la cantidad según el tipo de PP (sin convertir ni abreviar).
+function unidadIngreso(tipoPP: unknown, unidadProducto: unknown) {
+  const tipo = String(tipoPP ?? '').toUpperCase();
+  if (tipo === 'PORCION') return 'PP';
+  if (tipo === 'CC') return 'CC';
+  if (tipo === 'UND') return String(unidadProducto ?? '').toUpperCase() === 'PR' ? 'PR' : 'UN';
+  if (tipo === 'DIRECTO') return String(unidadProducto ?? '').toUpperCase() || 'UN';
+  return 'PP';
 }
-// Cantidad producida según el tipo de PP: UND sin gramos en unidades, CC en cc / L,
-// DIRECTO en la unidad del producto; el resto en g / kg.
+// Cantidad ingresada: "1.150 CC", "13 PP", "52 UN"
+function fmtIngresado(cantidad: number, tipoPP: unknown, unidadProducto: unknown) {
+  return `${fmtNum(cantidad)} ${unidadIngreso(tipoPP, unidadProducto)}`;
+}
+// Cantidad producida en su unidad base, sin pasar a L ni kg: "1.150 CC", "2.600 GR", "52 UN"
 function fmtProducidoPP(cantidad: number, total: number | null | undefined, tipoPP: unknown, gramosPorPP: unknown, unidadProducto: unknown) {
   const tipo = String(tipoPP ?? '').toUpperCase();
   const um = String(unidadProducto ?? '').toUpperCase();
-  const dec2 = (n: number) => new Intl.NumberFormat('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
-  if (tipo === 'UND' && !(Number(gramosPorPP) > 0)) return `${fmtNum(cantidad)} un`;
+  // PP por unidad: se produce en la unidad del producto (UN, PR...). Solo si el producto va en
+  // GR/KG/CC/LT el total queda en gramos o cc (cantidad × gramos por unidad).
+  if (tipo === 'UND' && !['GR', 'KG', 'CC', 'LT'].includes(um)) return `${fmtNum(cantidad)} ${um || 'UN'}`;
   if (total == null) return '—';
-  if (tipo === 'CC' || um === 'CC' || um === 'LT') return total >= 1000 ? `${dec2(total / 1000)} L` : `${fmtNum(total)} cc`;
-  if (tipo === 'DIRECTO' && um && um !== 'GR' && um !== 'KG') return `${fmtNum(total)} ${um.toLowerCase()}`;
-  if (tipo === 'DIRECTO' && um === 'KG') return `${fmtNum(total)} kg`;
-  return fmtProducido(total);
+  if (tipo === 'CC' || um === 'CC' || um === 'LT') return `${fmtNum(total)} CC`;
+  if (tipo === 'DIRECTO' && um && um !== 'GR') return `${fmtNum(total)} ${um}`;
+  return `${fmtNum(total)} GR`;
 }
-
-// Cálculo de la línea: "13 × 200 gr"
-function fmtCalculoPP(d: Record<string, unknown>) {
-  const q = fmtNum(d.cantidad as number);
-  const g = Number(d.gramos_por_pp) || 0;
-  if (!g) return `${q} PP`;
-  return `${q} × ${fmtNum(g)} ${String(d.tipo_pp ?? '').toUpperCase() === 'CC' ? 'cc' : 'gr'}`;
+// Cómo se registra el PP (bajo el nombre): "Porción · 1 PP = 200 GR", "Ingreso en CC"
+function fmtTipoPP(tipoPP: unknown, gramosPorPP: unknown, unidadProducto: unknown) {
+  const tipo = String(tipoPP ?? '').toUpperCase();
+  const g = Number(gramosPorPP) || 0;
+  if (tipo === 'PORCION') return g ? `Porción · 1 PP = ${fmtNum(g)} GR` : 'Porción · sin gramos definidos';
+  if (tipo === 'UND') {
+    const um = String(unidadProducto ?? '').toUpperCase();
+    return ['GR', 'KG'].includes(um) && g ? `Unidad · 1 UN = ${fmtNum(g)} GR` : `Unidad · producto en ${um || 'UN'}`;
+  }
+  if (tipo === 'CC') return 'Ingreso en CC';
+  if (tipo === 'DIRECTO') return `Directo en ${String(unidadProducto ?? '').toUpperCase() || '—'}`;
+  return tipo || '—';
 }
 
 // Solo para presentación en la tabla: deriva el primer nombre sin tocar el registro guardado.
@@ -166,6 +176,18 @@ function formatPPDisplay(item: Record<string, unknown>) {
 
 type Tab = 'produccion' | 'colacion' | 'mermas' | 'frutas' | 'inventario';
 const PAGE_SIZE = 25;
+
+type Coincidencia = { codigo_producto: string | null; nombre_pp: string; tipo_pp: string | null; gramos_por_pp: number | null; cantidad: number; total_producido: number; costo_total: number | null; registros: number };
+type ResultadoBusqueda = { q: string; coincidencias: Coincidencia[] };
+
+// Misma normalización que el buscador del servidor: todas las palabras deben estar en el texto.
+function terminosBusqueda(q: string) {
+  return normalizarTexto(q).split(/\s+/).filter(Boolean);
+}
+function coincide(texto: string, terminos: string[]) {
+  const t = normalizarTexto(texto);
+  return terminos.length > 0 && terminos.every(x => t.includes(x));
+}
 
 type PorDia = Record<string, { registros: number; lineas: number; costo_total: number | null }>;
 
@@ -471,7 +493,7 @@ function SearchablePicker({
 
 // ─── TablaProduccion ────────────────────────────────────────────────────────
 
-function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps, porDia }: { datos: Record<string, unknown>[]; canEdit: boolean; isAdmin: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[]; pps: Record<string, unknown>[]; porDia?: PorDia }) {
+function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps, porDia, busqueda }: { datos: Record<string, unknown>[]; canEdit: boolean; isAdmin: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[]; pps: Record<string, unknown>[]; porDia?: PorDia; busqueda?: ResultadoBusqueda | null }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, number>>({});
@@ -578,8 +600,40 @@ function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps,
     else dias.push({ fecha, items: [p] });
   }
 
+  // Con búsqueda activa los movimientos encontrados se muestran abiertos: `expanded` pasa a
+  // guardar los que el usuario cerró (la tabla se vuelve a montar en cada carga).
+  const terminos = busqueda ? terminosBusqueda(busqueda.q) : [];
+  const autoAbrir = terminos.length > 0;
+  const estaAbierto = (id: string) => expanded.has(id) !== autoAbrir;
+  const abrir = (id: string) => setExpanded(s => { const n = new Set(s); if (autoAbrir) n.delete(id); else n.add(id); return n; });
+  const coincidencias = busqueda?.coincidencias ?? [];
+
   return (
     <div className="hst-list">
+      {coincidencias.length > 0 && (
+        <section className="hst-coinc" aria-label="Totales de la búsqueda">
+          <h4 className="hst-sec-title">
+            <span className="hst-prod-ico"><NavIcon name="sigma" size={14} /></span>
+            Total en el período para «{busqueda?.q}»
+          </h4>
+          {coincidencias.map(c => {
+            const um = c.codigo_producto ? productosMap.get(c.codigo_producto)?.unidad_medida : undefined;
+            return (
+              <div key={`${c.codigo_producto}|${c.nombre_pp}|${c.tipo_pp}`} className="hst-coinc-row">
+                <div className="hst-pp-nombre">
+                  <b>{formatPPDisplay(c)}</b>
+                  <small>{c.registros} registro{c.registros !== 1 ? 's' : ''} · {fmtTipoPP(c.tipo_pp, c.gramos_por_pp, um)}</small>
+                </div>
+                <div className="hst-pp-ing"><b>{fmtIngresado(c.cantidad, c.tipo_pp, um)}</b><small>Ingresado</small></div>
+                <div className="hst-pp-total"><b>{fmtProducidoPP(c.cantidad, c.total_producido, c.tipo_pp, c.gramos_por_pp, um)}</b><small>Producido</small></div>
+                {verCostos && c.costo_total != null && (
+                  <div className="hst-pp-costo"><b>{formatCLP(c.costo_total)}</b><small>Costo est.</small></div>
+                )}
+              </div>
+            );
+          })}
+        </section>
+      )}
       {dias.map(({ fecha, items }) => {
         // Totales del día completo (del resumen del período); si no vienen, se calculan con lo visible.
         const dia = porDia?.[fecha] ?? {
@@ -603,8 +657,15 @@ function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps,
               const det  = (p.detalle_produccion as Record<string, unknown>[]) ?? [];
               const rend = (p.rendimiento as Record<string, unknown>[]) ?? [];
               const ct   = det.reduce((s, d) => s + ((d.costo_total as number) ?? 0), 0);
-              const open = expanded.has(id);
+              const open = estaAbierto(id);
               const editando = editingId === id;
+              // Con búsqueda: solo las líneas que coinciden (si ninguna coincide, el movimiento salió
+              // por responsable u observación y se muestra completo). Al editar se ve todo.
+              const detVisible = terminos.length && !editando ? det.filter(d => coincide(`${d.codigo_producto ?? ''} ${d.nombre_pp ?? ''}`, terminos)) : det;
+              const rendVisible = terminos.length && !editando ? rend.filter(r => coincide(String(r.verdura ?? ''), terminos)) : rend;
+              const filtrado = !!terminos.length && !editando && (detVisible.length > 0 || rendVisible.length > 0);
+              const detMostrar = filtrado ? detVisible : det;
+              const rendMostrar = filtrado ? rendVisible : rend;
               const [, mes, anio] = fmtFecha(p.fecha as string).split('/');
 
               return (
@@ -631,7 +692,7 @@ function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps,
                       {isAdmin && (
                         <>
                           <button type="button" className="hst-icon-btn" title="Editar" aria-label="Editar movimiento" disabled={editando}
-                            onClick={() => { setExpanded(s => new Set(s).add(id)); startEdit(id, det); }}>
+                            onClick={() => { abrir(id); startEdit(id, det); }}>
                             <NavIcon name="pencil" size={16} />
                           </button>
                           <button type="button" className="hst-icon-btn is-danger" title="Eliminar" aria-label="Eliminar movimiento"
@@ -664,12 +725,17 @@ function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps,
                       )}
                       {saveErr && editando && <p className="hst-err">{saveErr}</p>}
 
-                      <div className={`hst-mov-grid${rend.length ? '' : ' is-single'}`}>
+                      {filtrado && (
+                        <p className="hst-filtrado">
+                          Mostrando solo lo que coincide con «{busqueda?.q}»: {detMostrar.length} de {det.length} PP{rend.length ? ` · ${rendMostrar.length} de ${rend.length} verduras` : ''}
+                        </p>
+                      )}
+                      <div className={`hst-mov-grid${rendMostrar.length ? '' : ' is-single'}`}>
                         <div>
-                          <h4 className="hst-sec-title">Producción PP</h4>
-                          {det.length === 0 && !editando && <p className="hst-muted">Sin PP registrados.</p>}
+                          <h4 className="hst-sec-title"><span className="hst-prod-ico"><NavIcon name="cooking-pot" size={14} /></span>Producción PP</h4>
+                          {detMostrar.length === 0 && !editando && <p className="hst-muted">{filtrado ? 'Ningún PP coincide con la búsqueda.' : 'Sin PP registrados.'}</p>}
                           <div className="hst-pp-list">
-                            {det.filter(d => !deletedIds.has(d.id as string)).map(d => {
+                            {detMostrar.filter(d => !deletedIds.has(d.id as string)).map(d => {
                               const qty = editando ? (editValues[d.id as string] ?? (d.cantidad as number)) : (d.cantidad as number);
                               const costoUnitarioEdit = Number(d.costo_unitario) || (Number(d.cantidad) > 0 ? Number(d.costo_total) / Number(d.cantidad) : 0);
                               const producto = d.codigo_producto ? productosMap.get(d.codigo_producto as string) : undefined;
@@ -683,18 +749,20 @@ function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps,
                                 <div key={d.id as string} className={`hst-pp${editando ? ' is-edit' : ''}`}>
                                   <div className="hst-pp-nombre">
                                     <b title={formatPPDisplay(d)}>{formatPPDisplay(d)}</b>
-                                    <small>{fmtCalculoPP({ ...d, cantidad: qty })}</small>
+                                    <small>{fmtTipoPP(d.tipo_pp, d.gramos_por_pp, unidadProducto)}</small>
                                   </div>
-                                  {editando && (
-                                    <label className="hst-pp-cant">
-                                      <small>Cantidad</small>
-                                      <span>
+                                  <div className="hst-pp-ing">
+                                    {editando ? (
+                                      <span className="hst-pp-input">
                                         <input type="number" value={qty} min={0} step="any" aria-label={`Cantidad de ${formatPPDisplay(d)}`}
                                           onChange={e => setEditValues(v => ({ ...v, [d.id as string]: parseFloat(e.target.value) || 0 }))} />
-                                        PP
+                                        {unidadIngreso(d.tipo_pp, unidadProducto)}
                                       </span>
-                                    </label>
-                                  )}
+                                    ) : (
+                                      <b>{fmtIngresado(qty, d.tipo_pp, unidadProducto)}</b>
+                                    )}
+                                    <small>Ingresado</small>
+                                  </div>
                                   <div className="hst-pp-total">
                                     <b>{fmtProducidoPP(qty, total, d.tipo_pp, d.gramos_por_pp, unidadProducto)}</b>
                                     <small>Producido</small>
@@ -731,16 +799,16 @@ function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps,
                                       width="100%"
                                       onChange={value => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, pp_id: value } : x))}
                                     />
-                                    <small>{pp ? fmtCalculoPP({ cantidad, gramos_por_pp: gramosPorPP, tipo_pp: tipoPP }) : 'Nuevo PP: elige el producto'}</small>
+                                    <small>{pp ? fmtTipoPP(tipoPP, gramosPorPP, unidadProducto) : 'Nuevo PP: elige el producto'}</small>
                                   </div>
-                                  <label className="hst-pp-cant">
-                                    <small>Cantidad</small>
-                                    <span>
+                                  <div className="hst-pp-ing">
+                                    <span className="hst-pp-input">
                                       <input type="number" min={0} step="any" value={row.cantidad} aria-label="Cantidad del nuevo PP"
                                         onChange={e => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, cantidad: parseFloat(e.target.value) || 0 } : x))} />
-                                      PP
+                                      {pp ? unidadIngreso(tipoPP, unidadProducto) : ''}
                                     </span>
-                                  </label>
+                                    <small>Ingresado</small>
+                                  </div>
                                   <div className="hst-pp-total">
                                     <b>{pp ? fmtProducidoPP(cantidad, total, tipoPP, gramosPorPP, unidadProducto) : '—'}</b>
                                     <small>Producido</small>
@@ -765,7 +833,7 @@ function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps,
                           )}
                         </div>
 
-                        {rend.length > 0 && (
+                        {rendMostrar.length > 0 && (
                           <div className="hst-rend">
                             <h4 className="hst-sec-title"><span className="hst-leaf"><NavIcon name="leaf" size={14} /></span>Rendimiento verduras</h4>
                             <table>
@@ -773,7 +841,7 @@ function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps,
                                 <tr><th>Producto</th><th>Utilizado</th><th>Rendimiento</th><th>Merma</th></tr>
                               </thead>
                               <tbody>
-                                {rend.map(r => {
+                                {rendMostrar.map(r => {
                                   const rv = editRendValues[r.id as string] ?? { kg_utilizados: r.kg_utilizados as number, rendimiento_kg: r.rendimiento_kg as number };
                                   const m = calcMerma(rv.kg_utilizados, rv.rendimiento_kg);
                                   return (
@@ -2080,6 +2148,7 @@ export default function HistorialPage() {
   const [maestros, setMaestros] = useState<{ productos: Record<string, unknown>[]; pps: Record<string, unknown>[] }>({ productos: [], pps: [] });
   const [responsable, setResponsable] = useState('');
   const [responsables, setResponsables] = useState<string[]>([]);
+  const [resultadoBusqueda, setResultadoBusqueda] = useState<ResultadoBusqueda | null>(null);
   const busqueda = busquedas[tab] ?? '';
 
   // Cada llamada a cargar() reclama un id; si mientras espera la respuesta se dispara otra
@@ -2089,7 +2158,7 @@ export default function HistorialPage() {
 
   const cargar = useCallback(async (t: Tab, d: string, h: string, q: string, resp: string, offset: number) => {
     const reqId = ++reqIdRef.current;
-    setLoading(true); setErr(''); setDatos([]); setSummary(null);
+    setLoading(true); setErr(''); setDatos([]); setSummary(null); setResultadoBusqueda(null);
     try {
       const params = new URLSearchParams({
         tipo: t,
@@ -2108,6 +2177,7 @@ export default function HistorialPage() {
       setTotal(data.count ?? (data.items?.length ?? 0));
       setSummary(data.summary ?? null);
       setResponsables(Array.isArray(data.responsables) ? data.responsables : []);
+      setResultadoBusqueda(q.trim() ? { q: q.trim(), coincidencias: Array.isArray(data.coincidencias) ? data.coincidencias : [] } : null);
     } catch (e: unknown) {
       if (reqId !== reqIdRef.current) return;
       setErr(e instanceof Error ? e.message : 'Error cargando datos');
@@ -2255,7 +2325,7 @@ export default function HistorialPage() {
           </div>
         ) : (
           <>
-            {tab === 'produccion' && <TablaProduccion datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} pps={maestros.pps} porDia={summary?.por_dia} />}
+            {tab === 'produccion' && <TablaProduccion datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} pps={maestros.pps} porDia={summary?.por_dia} busqueda={resultadoBusqueda} />}
             {tab === 'colacion'   && <TablaColacion   datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} />}
             {tab === 'frutas'     && <TablaFrutas     datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} />}
             {tab === 'inventario' && <TablaInventario datos={datos} isAdmin={isAdmin} onRefresh={refresh} productos={maestros.productos} />}

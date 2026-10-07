@@ -140,6 +140,31 @@ function buildSummary(tipo: string, rowsUnknown: unknown[] | null | undefined, v
   return { registros, lineas: 0, truncated };
 }
 
+// Producción: suma por PP de las líneas que coinciden con la búsqueda (ej. "chupe" → todas las
+// líneas de PP CHUPE CENTOLLA del período), para el recuadro de totales del Historial.
+function coincidenciasProduccion(rows: Record<string, unknown>[], terms: string[], verCostos: boolean) {
+  const grupos = new Map<string, { codigo_producto: string | null; nombre_pp: string; tipo_pp: string | null; gramos_por_pp: number | null; cantidad: number; total_producido: number; costo_total: number | null; registros: number }>();
+  for (const row of rows) {
+    const vistos = new Set<string>();
+    for (const d of childRows(row, 'detalle_produccion')) {
+      const texto = normalizarBusqueda(`${d.codigo_producto ?? ''} ${d.nombre_pp ?? ''}`);
+      if (!terms.every(t => texto.includes(t))) continue;
+      const key = `${d.codigo_producto ?? ''}|${d.nombre_pp ?? ''}|${d.tipo_pp ?? ''}`;
+      const g = grupos.get(key) ?? {
+        codigo_producto: (d.codigo_producto as string | null) ?? null, nombre_pp: String(d.nombre_pp ?? ''),
+        tipo_pp: (d.tipo_pp as string | null) ?? null, gramos_por_pp: d.gramos_por_pp == null ? null : num(d.gramos_por_pp),
+        cantidad: 0, total_producido: 0, costo_total: verCostos ? 0 : null, registros: 0,
+      };
+      g.cantidad += num(d.cantidad);
+      g.total_producido += num(d.total_producido);
+      if (g.costo_total != null) g.costo_total += num(d.costo_total);
+      if (!vistos.has(key)) { g.registros++; vistos.add(key); }
+      grupos.set(key, g);
+    }
+  }
+  return [...grupos.values()].sort((a, b) => b.cantidad - a.cantidad);
+}
+
 function responderConBusqueda(data: unknown[] | null, busqueda: string, offset: number, limit: number, tipo: string, verCostos: boolean, baseCount?: number | null, extra: Record<string, unknown> = {}) {
   const terms = normalizarBusqueda(busqueda).split(/\s+/).filter(Boolean);
   const rows = data ?? [];
@@ -157,6 +182,7 @@ function responderConBusqueda(data: unknown[] | null, busqueda: string, offset: 
     nextOffset: offset + items.length,
     truncated: Boolean(baseCount && baseCount > SEARCH_FETCH_LIMIT),
     summary: buildSummary(tipo, filtered, verCostos, Boolean(baseCount && baseCount > SEARCH_FETCH_LIMIT)),
+    ...(tipo === 'produccion' ? { coincidencias: coincidenciasProduccion(asRecordRows(filtered), terms, verCostos) } : {}),
     ...extra,
   });
 }
