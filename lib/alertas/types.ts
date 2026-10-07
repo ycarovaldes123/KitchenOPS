@@ -26,7 +26,7 @@ export interface ReglaValidacion {
   modulo: ModuloAlerta | 'Todos';
   categoria: CategoriaAlerta;
   nivel: NivelAlerta;
-  modo: ModoRegla;         // durante el piloto siempre OBSERVAR
+  modo: ModoRegla;         // ADVERTIR = aviso al guardar; OBSERVAR = solo en la pantalla de Alertas
   activa: boolean;
 }
 

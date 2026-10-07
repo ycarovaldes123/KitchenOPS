@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import AnchoredPanel from '@/components/forms/AnchoredPanel';
 import { formatCLP } from '@/lib/calculos';
 import { useRol } from '@/components/RolProvider';
+import { useAdvertenciasGuardado } from '@/components/alertas/AdvertenciasGuardado';
 import type { Responsable, Producto } from '@/types/database';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -207,6 +208,7 @@ export default function ColacionPage() {
   const [nInscritos,    setNInscritos]    = useState('');
   const [rows,          setRows]          = useState<IngRow[]>([]);
   const [guardando,     setGuardando]     = useState(false);
+  const advertencias = useAdvertenciasGuardado('Colación');
   const [ok,            setOk]            = useState('');
   const [err,           setErr]           = useState('');
 
@@ -259,16 +261,19 @@ export default function ColacionPage() {
     if (!detalle.length) { setErr('Agrega al menos un ingrediente con cantidad válida.'); return; }
 
     const responsable = maestros?.responsables.find(r => r.id === responsableId);
+    const registro = {
+      fecha, responsable_id: responsableId,
+      responsable_nombre: responsable?.nombre ?? '',
+      menu: menu.trim(), n_inscritos: ni, detalle,
+    };
     setGuardando(true);
+    // Módulo Alertas: si el registro tiene datos inusuales, la persona decide si corrige o guarda igual
+    if (!(await advertencias.confirmar(registro))) { setGuardando(false); return; }
     try {
       const res = await fetch('/api/colacion', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fecha, responsable_id: responsableId,
-          responsable_nombre: responsable?.nombre ?? '',
-          menu: menu.trim(), n_inscritos: ni, detalle,
-        }),
+        body: JSON.stringify(registro),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Error al guardar');
@@ -321,6 +326,7 @@ export default function ColacionPage() {
 
   return (
     <>
+      {advertencias.modal}
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         @media (max-width: 1023px) { .col-grid { grid-template-columns: 1fr !important; } }

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import AnchoredPanel from '@/components/forms/AnchoredPanel';
 import { formatCLP } from '@/lib/calculos';
 import { useRol } from '@/components/RolProvider';
+import { useAdvertenciasGuardado } from '@/components/alertas/AdvertenciasGuardado';
 import type { Responsable, Producto, MotivoMerma } from '@/types/database';
 import { MOTIVO_MERMA_COLOR, MOTIVOS_MERMA_PLATO, MOTIVOS_MERMA_PRODUCTO } from '@/lib/mermas';
 
@@ -307,6 +308,7 @@ export default function MermasPage() {
   const [rows,          setRows]          = useState<MermaRow[]>([]);
   const [platoRows,     setPlatoRows]     = useState<PlatoRow[]>([]);
   const [guardando,     setGuardando]     = useState(false);
+  const advertencias = useAdvertenciasGuardado('Mermas');
   const [ok,            setOk]            = useState('');
   const [err,           setErr]           = useState('');
 
@@ -393,12 +395,15 @@ export default function MermasPage() {
     if (!detalle.length && !platos.length) { setErr('Agrega al menos un producto o plato con cantidad valida.'); return; }
 
     const responsable = maestros?.responsables.find(r => r.id === responsableId);
+    const registro = { fecha, responsable_id: responsableId, responsable_nombre: responsable?.nombre ?? '', observacion: observacion.trim(), detalle, platos };
     setGuardando(true);
+    // Módulo Alertas: si el registro tiene datos inusuales, la persona decide si corrige o guarda igual
+    if (!(await advertencias.confirmar(registro))) { setGuardando(false); return; }
     try {
       const res = await fetch('/api/mermas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fecha, responsable_id: responsableId, responsable_nombre: responsable?.nombre ?? '', observacion: observacion.trim(), detalle, platos }),
+        body: JSON.stringify(registro),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Error al guardar');
@@ -455,6 +460,7 @@ export default function MermasPage() {
 
   return (
     <>
+      {advertencias.modal}
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
 

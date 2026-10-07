@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import AnchoredPanel from '@/components/forms/AnchoredPanel';
 import { calcTotalPP, calcCostoProduccionPP, calcMerma, formatCLP, formatPct } from '@/lib/calculos';
 import { useRol } from '@/components/RolProvider';
+import { useAdvertenciasGuardado } from '@/components/alertas/AdvertenciasGuardado';
 import type { PP, Responsable, Verdura, Producto, TipoPP } from '@/types/database';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -279,6 +280,7 @@ export default function ProduccionPage() {
   const [rendRows,      setRendRows]      = useState<RendRow[]>([]);
   const [tab,           setTab]           = useState<'pp' | 'rendimiento'>('pp');
   const [guardando,     setGuardando]     = useState(false);
+  const advertencias = useAdvertenciasGuardado('Producción');
   const [ok,            setOk]            = useState('');
   const [err,           setErr]           = useState('');
 
@@ -377,16 +379,19 @@ export default function ProduccionPage() {
       return;
     }
 
+    const registro = {
+      fecha, responsable_id: responsableId,
+      responsable_nombre: responsable?.nombre ?? '',
+      turno, observacion: observacion.trim(), detalle, rendimiento,
+    };
     setGuardando(true);
+    // Módulo Alertas: si el registro tiene datos inusuales, la persona decide si corrige o guarda igual
+    if (!(await advertencias.confirmar(registro))) { setGuardando(false); return; }
     try {
       const res = await fetch('/api/produccion', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fecha, responsable_id: responsableId,
-          responsable_nombre: responsable?.nombre ?? '',
-          turno, observacion: observacion.trim(), detalle, rendimiento,
-        }),
+        body: JSON.stringify(registro),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Error al guardar');
@@ -450,6 +455,7 @@ export default function ProduccionPage() {
 
   return (
     <>
+      {advertencias.modal}
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
 

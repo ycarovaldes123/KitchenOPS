@@ -7,7 +7,7 @@ import { analizarDatos } from '@/lib/alertas/analizador';
 import { alertasDelResumen, armarCorreoResumen } from '@/lib/alertas/resumen';
 import { DESTINATARIO_PILOTO, enviarCorreo, proveedorConfigurado } from '@/lib/email';
 
-// Correo de prueba del resumen diario — PILOTO SOLO LOCAL.
+// Correo de prueba del resumen diario (pantalla de Alertas, solo administrador).
 // Requiere además ENABLE_ALERTAS_EMAIL=true. Siempre va a DESTINATARIO_PILOTO (lib/email.ts).
 // GET  → estado (proveedor configurado, destinatario)
 // POST → envía el resumen del último día con alertas

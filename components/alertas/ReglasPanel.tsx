@@ -7,14 +7,14 @@ const MODOS: { modo: ModoRegla; label: string }[] = [
   { modo: 'BLOQUEAR', label: 'Bloquear' },
 ];
 
-// Vista de demostración: durante el piloto toda regla queda en OBSERVAR.
-// Advertir/Bloquear se muestran como opciones futuras, deshabilitadas.
+// Modo de cada regla según lib/alertas/catalogo.ts (solo lectura en pantalla).
+// Bloquear queda como opción futura, deshabilitada.
 export default function ReglasPanel({ reglas }: { reglas: ReglaValidacion[] }) {
   return (
     <>
       <div className="rpp-alert is-warn" style={{ margin: '0 0 16px' }}>
-        Durante el piloto todas las reglas operan en <b>Observar</b>: generan alertas pero no advierten ni bloquean al guardar.
-        Los modos Advertir y Bloquear se habilitarán solo cuando cada regla esté validada.
+        Las reglas en <b>Advertir</b> muestran un aviso al guardar en Producción, Mermas o Colación: la persona puede corregir o guardar igual.
+        Las reglas en <b>Observar</b> (maestros, costos y cárnicos) solo aparecen en esta pantalla. Ninguna bloquea el guardado.
       </div>
       <div className="rpp-card rpp-table-wrap alr-table-scroll">
         <table className="rpp-table alr-table">
@@ -48,8 +48,8 @@ export default function ReglasPanel({ reglas }: { reglas: ReglaValidacion[] }) {
                         type="button"
                         className={r.modo === m.modo ? 'is-on' : undefined}
                         aria-pressed={r.modo === m.modo}
-                        disabled={m.modo !== 'OBSERVAR'}
-                        title={m.modo === 'OBSERVAR' ? 'Modo del piloto' : 'Disponible después del piloto'}
+                        disabled={m.modo !== r.modo}
+                        title={m.modo === 'BLOQUEAR' ? 'No disponible por ahora' : m.modo === r.modo ? 'Modo actual' : undefined}
                       >
                         {m.label}
                       </button>

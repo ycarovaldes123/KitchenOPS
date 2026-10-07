@@ -3,8 +3,11 @@
 import { useEffect } from 'react';
 import NavIcon from '@/components/layout/NavIcon';
 import { fmtFecha, fmtFechaHora } from '@/lib/alertas/metricas';
-import type { Alerta, EstadoRevision } from '@/lib/alertas/types';
+import { REGLAS } from '@/lib/alertas/catalogo';
+import type { Alerta, EstadoRevision, ModoRegla } from '@/lib/alertas/types';
 import { ESTADO_LABEL, EstadoChip, NivelChip } from './AlertasChips';
+
+const MODO_LABEL: Record<ModoRegla, string> = { OBSERVAR: 'Observar', ADVERTIR: 'Advertir al guardar', BLOQUEAR: 'Bloquear' };
 
 interface Props {
   alerta: Alerta;
@@ -83,7 +86,7 @@ export default function AlertaDrawer({ alerta, onClose, onEstado }: Props) {
               {m.motivo && (<><dt>Motivo</dt><dd>{m.motivo}</dd></>)}
               {m.observacion && (<><dt>Observación</dt><dd>“{m.observacion}”</dd></>)}
               <dt>Registro</dt><dd className="mono">{m.id}</dd>
-              <dt>Regla</dt><dd className="mono">{alerta.regla} · Observar</dd>
+              <dt>Regla</dt><dd className="mono">{alerta.regla} · {MODO_LABEL[REGLAS.find(r => r.codigo === alerta.regla)?.modo ?? 'OBSERVAR']}</dd>
             </dl>
             <ul className="alr-hist">
               {alerta.historial.map((h, i) => (

@@ -3,7 +3,7 @@
 // error queda solo en el log del servidor. Solo lee datos; no escribe en la base.
 //
 // Se activa con ENABLE_ALERTAS_EMAIL=true y un proveedor de correo configurado (lib/email.ts).
-// Destinatario fijo del piloto: DESTINATARIO_PILOTO. Solo se crea → cada registro avisa una vez.
+// Destinatario fijo: DESTINATARIO_PILOTO. Solo se crea → cada registro avisa una vez.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { cargarDatosSistema } from './datos';
@@ -12,8 +12,11 @@ import { armarCorreoRegistro, MODULOS_CORREO } from './resumen';
 import { enviarCorreo, proveedorConfigurado } from '@/lib/email';
 import type { ModuloAlerta } from './types';
 
-// La pantalla de Alertas es solo local durante el piloto: el enlace del correo abre el PC de la administradora
-const URL_MODULO = 'http://localhost:3000/alertas';
+// Enlace del correo: dominio de producción en Vercel (variable de sistema que Vercel define sola);
+// en desarrollo, el servidor local.
+const URL_MODULO = process.env.VERCEL_PROJECT_PRODUCTION_URL
+  ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}/alertas`
+  : 'http://localhost:3000/alertas';
 
 export function correoAutomaticoActivo(): boolean {
   return process.env.ENABLE_ALERTAS_EMAIL === 'true' && proveedorConfigurado() !== null;

@@ -7,7 +7,7 @@ import { analizarDatos } from '@/lib/alertas/analizador';
 import { REGLAS } from '@/lib/alertas/catalogo';
 import type { DatosModulo } from '@/lib/alertas/types';
 
-// GET /api/alertas — PILOTO SOLO LOCAL (lib/alertas/acceso.ts).
+// GET /api/alertas — pantalla de Alertas, solo administrador (lib/alertas/acceso.ts).
 // Ejecuta las reglas sobre los datos reales en modo lectura: solo SELECT, no escribe nada,
 // no bloquea ni modifica movimientos. ?refrescar=1 fuerza un nuevo análisis.
 
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
     const ahora = ahoraChile();
     const respuesta: DatosModulo = {
       alertas: r.alertas,
-      reglas: REGLAS.map(regla => ({ ...regla, modo: 'OBSERVAR' as const })),
+      reglas: REGLAS,
       volumen: r.volumen,
       hoy: ahora.fecha,
       generadoEn: ahora.iso,

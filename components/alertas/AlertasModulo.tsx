@@ -85,8 +85,8 @@ export default function AlertasModulo({ fuente }: { fuente?: FuenteAlertas }) {
       </header>
 
       <div className="alr-obs" role="status">
-        <NavIcon name="eye" size={18} />
-        <span><strong>Modo observación</strong> · no bloquea ni modifica movimientos</span>
+        <NavIcon name="shield-alert" size={18} />
+        <span><strong>Módulo activo</strong> · advierte al guardar en Producción, Mermas y Colación; no bloquea ni modifica movimientos</span>
         {datos && (
           <span className="alr-obs-meta">
             Análisis {fmtFechaHora(datos.generadoEn)} · {datos.registrosAnalizados.toLocaleString('es-CL')} registros

@@ -9,7 +9,7 @@ import './alertas.css';
 
 export const metadata = { title: 'Alertas y Validaciones · KitchenOps' };
 
-// PILOTO SOLO LOCAL (ver lib/alertas/acceso.ts). Fuera de localhost / sin flag / en producción → 404.
+// Solo administrador (ver lib/alertas/acceso.ts); con ENABLE_ALERTAS_MODULE=false → 404.
 // proxy.ts ya redirige a Inicio; esta verificación es una segunda barrera.
 export default async function AlertasPage() {
   const host = (await headers()).get('host');

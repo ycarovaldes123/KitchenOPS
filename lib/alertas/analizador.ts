@@ -91,7 +91,7 @@ function crear(p: NuevaAlerta): Alerta {
     movimiento: p.movimiento,
     fecha: p.fecha.slice(0, 10),
     estado: 'PENDIENTE',
-    historial: [{ estado: 'PENDIENTE', fecha: p.movimiento.created_at || p.fecha, usuario: 'Sistema', nota: 'Detectada en modo observación' }],
+    historial: [{ estado: 'PENDIENTE', fecha: p.movimiento.created_at || p.fecha, usuario: 'Sistema', nota: 'Detectada por el análisis' }],
     origen: p.origen ?? undefined,
   };
 }
@@ -149,7 +149,7 @@ export function analizarDatos(d: DatosSistema, desde: string = INICIO_MODULO): R
         evidencia: [
           { label: 'Dato ingresado', valor: `${fmtN(l.cantidad)} ${l.um}`, destacado: true },
           { label: 'Referencia', valor: `1 PP = ${fmtN(g)} ${l.um}` },
-          { label: 'Si eran PP', valor: `${fmtN(l.cantidad)} PP = ${fmtN(l.cantidad * g)} ${l.um}` },
+          { label: 'Te referías a esto:', valor: `${fmtN(l.cantidad * g)} ${l.um}` },
         ],
         fecha: l.fecha, movimiento: mov(l), origen: l.cab,
       }));
@@ -164,7 +164,7 @@ export function analizarDatos(d: DatosSistema, desde: string = INICIO_MODULO): R
           : `Se registraron ${fmtN(l.cantidad)} ${l.um} en una sola línea. Puede que la cantidad estuviera en ${l.um === 'KG' ? 'GR' : 'CC'}.`,
         evidencia: [
           { label: 'Dato ingresado', valor: `${fmtN(l.cantidad)} ${l.um}`, destacado: true },
-          { label: 'Alternativa probable', valor: chico ? `${fmtN(l.cantidad)} ${l.um === 'GR' ? 'KG' : 'LT'}` : `${fmtN(l.cantidad)} ${l.um === 'KG' ? 'GR' : 'CC'} = ${fmtN(l.cantidad / 1000)} ${l.um}` },
+          { label: 'Te referías a esto:', valor: chico ? `${fmtN(l.cantidad)} ${l.um === 'GR' ? 'KG' : 'LT'}` : `${fmtN(l.cantidad / 1000)} ${l.um}` },
         ],
         fecha: l.fecha, movimiento: mov(l), origen: l.cab,
       }));
@@ -272,11 +272,27 @@ export function analizarDatos(d: DatosSistema, desde: string = INICIO_MODULO): R
     for (const { l, c } of g) {
       const q = Number(l.cantidad);
       if (q < med * 5) continue;
+      // PP por porción: si la cantidad, leída como gramos, da una cantidad de PP cercana a lo habitual,
+      // lo más probable es que se ingresaron los GR directo en vez de las porciones.
+      const gr = Number(l.gramos_por_pp) || 0;
+      const enPP = gr > 0 ? q / gr : 0;
+      const posibleGR = l.tipo_pp === 'PORCION' && gr > 0 && q >= gr && enPP < med * 5;
       alertas.push(crear({
         regla: 'VAL-PRO-001', clave: l.id, modulo: 'Producción', registro: l.nombre_pp ?? '—', codigo: l.codigo_producto,
-        detalle: `${fmtN(q)} · habitual ${fmtN(med)}`, nivel: q >= med * 10 ? 'ALTA' : undefined,
-        explicacion: `Se registró ${fmtN(q / med)} veces la producción habitual de este PP (${g.length} registros).`,
-        evidencia: [{ label: 'Cantidad registrada', valor: fmtN(q), destacado: true }, { label: 'Mediana histórica', valor: fmtN(med) }, { label: 'Tipo PP', valor: l.tipo_pp ?? '—' }],
+        titulo: posibleGR ? 'Posible ingreso en GR en vez de PP' : undefined,
+        detalle: posibleGR ? `${fmtN(q)} PP · ¿eran ${fmtN(q)} GR = ${fmtN(enPP)} PP?` : `${fmtN(q)} · habitual ${fmtN(med)}`,
+        nivel: q >= med * 10 ? 'ALTA' : undefined,
+        explicacion: posibleGR
+          ? `Se ingresaron ${fmtN(q)} directo, posiblemente como GR. Este PP se registra en porciones (1 PP = ${fmtN(gr)} GR): ${fmtN(q)} GR equivalen a ${fmtN(enPP)} PP. Lo habitual es ${fmtN(med)} PP (${g.length} registros).`
+          : `Se registró ${fmtN(q / med)} veces la producción habitual de este PP (${g.length} registros).`,
+        evidencia: posibleGR
+          ? [
+              { label: 'Cantidad ingresada', valor: `${fmtN(q)} PP`, destacado: true },
+              { label: 'Equivalencia', valor: `1 PP = ${fmtN(gr)} GR` },
+              { label: 'Te referías a esto:', valor: `${fmtN(enPP)} PP` },
+              { label: 'Mediana histórica', valor: `${fmtN(med)} PP` },
+            ]
+          : [{ label: 'Cantidad registrada', valor: fmtN(q), destacado: true }, { label: 'Mediana histórica', valor: fmtN(med) }, { label: 'Tipo PP', valor: l.tipo_pp ?? '—' }],
         fecha: c.fecha, movimiento: movProd(l, c), origen: c.id,
       }));
     }
@@ -332,9 +348,28 @@ export function analizarDatos(d: DatosSistema, desde: string = INICIO_MODULO): R
     if (kg > 0 && rin > 0 && rin <= kg) pctPorVerdura.set(r.verdura, [...(pctPorVerdura.get(r.verdura) ?? []), rin / kg]);
   }
   for (const [v, arr] of pctPorVerdura) if (arr.length >= 5) pctHabitual.set(v, mediana(arr));
+  // VAL-REN-002 · verduras se registran en KG: 100 KG o más en un registro es casi seguro gramos
+  const LIMITE_KG_VERDURA = 100;
+  const movRen = (r: DatosSistema['rendimiento'][number], kg: number, rin: number): MovimientoOrigen => ({
+    id: idCorto('REN', r.id), fecha_movimiento: r.fecha, created_at: r.fecha, created_by: r.responsable_nombre ?? '—', cantidad: `${fmtN(kg)} KG → ${fmtN(rin)} KG`,
+  });
   for (const r of d.rendimiento) {
     const kg = Number(r.kg_utilizados), rin = Number(r.rendimiento_kg);
     if (!(kg > 0) || !(rin > 0)) continue;
+    if (kg >= LIMITE_KG_VERDURA || rin >= LIMITE_KG_VERDURA) {
+      alertas.push(crear({
+        regla: 'VAL-REN-002', clave: r.id, modulo: 'Producción', registro: r.verdura, titulo: 'Posible ingreso en GR en vez de KG',
+        detalle: `${fmtN(kg)} KG → ${fmtN(rin)} KG · ¿eran GR?`,
+        explicacion: `Las verduras se registran en KG. Se ingresaron ${fmtN(kg)} KG utilizados y ${fmtN(rin)} KG de rendimiento, posiblemente en gramos: equivale a ${fmtN(kg / 1000)} KG utilizados y ${fmtN(rin / 1000)} KG de rendimiento.`,
+        evidencia: [
+          { label: 'KG utilizados', valor: `${fmtN(kg)} KG`, destacado: kg >= LIMITE_KG_VERDURA },
+          { label: 'KG rendidos', valor: `${fmtN(rin)} KG`, destacado: rin >= LIMITE_KG_VERDURA },
+          { label: 'Te referías a esto:', valor: `${fmtN(kg / 1000)} KG → ${fmtN(rin / 1000)} KG` },
+        ],
+        fecha: r.fecha, movimiento: movRen(r, kg, rin), origen: r.produccion_id,
+      }));
+      continue; // mismo problema: no se suma la alerta de rendimiento porcentual
+    }
     const pct = rin / kg;
     const habitual = pctHabitual.get(r.verdura);
     if (pct <= 1 && !(habitual && pct < habitual * 0.5)) continue;
@@ -343,7 +378,7 @@ export function analizarDatos(d: DatosSistema, desde: string = INICIO_MODULO): R
       detalle: `Rinde ${fmtN(pct * 100)}% (${fmtN(rin)} de ${fmtN(kg)} KG)`, nivel: pct > 1 ? 'ALTA' : undefined,
       explicacion: pct > 1 ? 'El rendimiento es mayor que lo utilizado: probablemente se invirtieron los valores o hay un error de cantidad.' : `El rendimiento es menos de la mitad de lo habitual para ${r.verdura} (${fmtN((habitual ?? 0) * 100)}%).`,
       evidencia: [{ label: 'KG utilizados', valor: fmtN(kg) }, { label: 'KG rendidos', valor: fmtN(rin), destacado: true }, { label: 'Rendimiento', valor: `${fmtN(pct * 100)}%` }, ...(habitual ? [{ label: 'Habitual', valor: `${fmtN(habitual * 100)}%` }] : [])],
-      fecha: r.fecha, movimiento: { id: idCorto('REN', r.id), fecha_movimiento: r.fecha, created_at: r.fecha, created_by: r.responsable_nombre ?? '—', cantidad: `${fmtN(kg)} KG → ${fmtN(rin)} KG` }, origen: r.produccion_id,
+      fecha: r.fecha, movimiento: movRen(r, kg, rin), origen: r.produccion_id,
     }));
   }
 
