@@ -578,16 +578,25 @@ export default function MaestrosPage() {
               role="switch"
               aria-checked={ocultarProdInactivos}
               onClick={() => setOcultarProdInactivos(v => !v)}
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '13px', color: 'var(--tx)' }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer',
+                fontSize: '13px', fontWeight: 600, color: 'var(--tx)',
+                background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '999px', padding: '6px 14px 6px 6px',
+              }}
             >
               <span style={{
-                position: 'relative', width: '36px', height: '20px', borderRadius: '10px', flexShrink: 0,
-                background: ocultarProdInactivos ? 'var(--ac)' : '#D1D5DB', transition: 'background .15s',
+                position: 'relative', width: '56px', height: '26px', borderRadius: '13px', flexShrink: 0,
+                background: ocultarProdInactivos ? 'var(--tl)' : '#9CA3AF', transition: 'background .15s',
               }}>
                 <span style={{
-                  position: 'absolute', top: '2px', left: ocultarProdInactivos ? '18px' : '2px',
-                  width: '16px', height: '16px', borderRadius: '50%', background: '#fff',
-                  boxShadow: '0 1px 2px rgba(0,0,0,.25)', transition: 'left .15s',
+                  position: 'absolute', top: '50%', transform: 'translateY(-50%)',
+                  left: ocultarProdInactivos ? '8px' : 'auto', right: ocultarProdInactivos ? 'auto' : '7px',
+                  fontSize: '10px', fontWeight: 800, color: '#fff', letterSpacing: '.5px',
+                }}>{ocultarProdInactivos ? 'ON' : 'OFF'}</span>
+                <span style={{
+                  position: 'absolute', top: '3px', left: ocultarProdInactivos ? '33px' : '3px',
+                  width: '20px', height: '20px', borderRadius: '50%', background: '#fff',
+                  boxShadow: '0 1px 3px rgba(0,0,0,.3)', transition: 'left .15s',
                 }} />
               </span>
               Ocultar desactivados{prodInactivos > 0 ? ` (${prodInactivos})` : ''}
