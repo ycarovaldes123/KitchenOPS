@@ -48,8 +48,26 @@ function sumChildCost(rows: Record<string, unknown>[], key: string) {
   return rows.reduce((sum, row) => sum + childRows(row, key).reduce((s, d) => s + num(d.costo_total), 0), 0);
 }
 
-function buildSummary(tipo: string, rowsUnknown: unknown[] | null | undefined, verCostos: boolean, truncated = false) {
+// Totales por fecha (registros, líneas y costo) para el encabezado de cada día en el Historial.
+// Se calculan sobre el período completo, no solo sobre la página visible.
+function totalesPorDia(tipo: string, rows: Record<string, unknown>[], verCostos: boolean) {
+  const grupos = new Map<string, Record<string, unknown>[]>();
+  for (const row of rows) {
+    const fecha = String(row.fecha ?? '');
+    if (!fecha) continue;
+    grupos.set(fecha, [...(grupos.get(fecha) ?? []), row]);
+  }
+  const out: Record<string, { registros: number; lineas: number; costo_total: number | null }> = {};
+  for (const [fecha, grupo] of grupos) {
+    const r = buildSummary(tipo, grupo, verCostos, false, false) as { registros: number; lineas?: number; costo_total?: number | null };
+    out[fecha] = { registros: r.registros, lineas: r.lineas ?? 0, costo_total: r.costo_total ?? null };
+  }
+  return out;
+}
+
+function buildSummary(tipo: string, rowsUnknown: unknown[] | null | undefined, verCostos: boolean, truncated = false, conDias = true): Record<string, unknown> {
   const rows = asRecordRows(rowsUnknown);
+  if (conDias) return { ...buildSummary(tipo, rows, verCostos, truncated, false), por_dia: totalesPorDia(tipo, rows, verCostos) };
   const registros = rows.length;
 
   if (tipo === 'produccion') {
@@ -122,7 +140,7 @@ function buildSummary(tipo: string, rowsUnknown: unknown[] | null | undefined, v
   return { registros, lineas: 0, truncated };
 }
 
-function responderConBusqueda(data: unknown[] | null, busqueda: string, offset: number, limit: number, tipo: string, verCostos: boolean, baseCount?: number | null) {
+function responderConBusqueda(data: unknown[] | null, busqueda: string, offset: number, limit: number, tipo: string, verCostos: boolean, baseCount?: number | null, extra: Record<string, unknown> = {}) {
   const terms = normalizarBusqueda(busqueda).split(/\s+/).filter(Boolean);
   const rows = data ?? [];
   const filtered = terms.length
@@ -139,10 +157,11 @@ function responderConBusqueda(data: unknown[] | null, busqueda: string, offset: 
     nextOffset: offset + items.length,
     truncated: Boolean(baseCount && baseCount > SEARCH_FETCH_LIMIT),
     summary: buildSummary(tipo, filtered, verCostos, Boolean(baseCount && baseCount > SEARCH_FETCH_LIMIT)),
+    ...extra,
   });
 }
 
-function responderPaginado(data: unknown[] | null, count: number | null, offset: number, tipo: string, verCostos: boolean, summaryRows?: unknown[] | null) {
+function responderPaginado(data: unknown[] | null, count: number | null, offset: number, tipo: string, verCostos: boolean, summaryRows?: unknown[] | null, extra: Record<string, unknown> = {}) {
   const summaryTruncated = Boolean(count && count > SUMMARY_FETCH_LIMIT);
   return NextResponse.json({
     items: data ?? [],
@@ -150,10 +169,11 @@ function responderPaginado(data: unknown[] | null, count: number | null, offset:
     hasMore: offset + (data?.length ?? 0) < (count ?? 0),
     nextOffset: offset + (data?.length ?? 0),
     summary: buildSummary(tipo, summaryRows ?? data ?? [], verCostos, summaryTruncated),
+    ...extra,
   });
 }
 
-// GET /api/historial?tipo=produccion|colacion|mermas|frutas|inventario&desde=YYYY-MM-DD&hasta=YYYY-MM-DD&q=texto
+// GET /api/historial?tipo=produccion|colacion|mermas|frutas|inventario&desde=YYYY-MM-DD&hasta=YYYY-MM-DD&q=texto&responsable=NOMBRE
 export async function GET(req: NextRequest) {
   const s = await getSessionRol();
   if (!s.ok) return s.response;
@@ -166,8 +186,22 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(100, Math.max(1, Number(searchParams.get('limit') ?? '50') || 50));
   const offset = Math.max(0, Number(searchParams.get('offset') ?? '0') || 0);
   const busqueda = searchParams.get('q')?.trim() ?? '';
+  const responsable = searchParams.get('responsable')?.trim() ?? '';
 
   const verCostos = s.rol !== 'cocina';
+
+  // Responsables con registros en el período (sin aplicar el filtro de responsable), para el selector.
+  const TABLA: Record<string, string> = { produccion: 'produccion', colacion: 'colacion', mermas: 'mermas', frutas: 'frutas', inventario: 'inventarios' };
+  let responsables: string[] = [];
+  if (TABLA[tipo]) {
+    let rq = supabase.from(TABLA[tipo]).select('responsable_nombre');
+    if (desde) rq = rq.gte('fecha', desde);
+    if (hasta) rq = rq.lte('fecha', hasta);
+    const { data: rData } = await rq.limit(SUMMARY_FETCH_LIMIT);
+    responsables = [...new Set((rData ?? []).map(r => String((r as { responsable_nombre?: string | null }).responsable_nombre ?? '').trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'es'));
+  }
+  const extra = { responsables };
 
   if (tipo === 'produccion') {
     const detalleSelect = verCostos
@@ -180,10 +214,11 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false });
     if (desde) q = q.gte('fecha', desde);
     if (hasta) q = q.lte('fecha', hasta);
+    if (responsable) q = q.eq('responsable_nombre', responsable);
     if (busqueda) {
       const { data, error, count } = await q.limit(SEARCH_FETCH_LIMIT);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return responderConBusqueda(data ?? [], busqueda, offset, limit, tipo, verCostos, count);
+      return responderConBusqueda(data ?? [], busqueda, offset, limit, tipo, verCostos, count, extra);
     }
     const { data, error, count } = await q.range(offset, offset + limit - 1);
     if (error && !esRangoFuera(error)) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -194,9 +229,10 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false });
     if (desde) sq = sq.gte('fecha', desde);
     if (hasta) sq = sq.lte('fecha', hasta);
+    if (responsable) sq = sq.eq('responsable_nombre', responsable);
     const { data: summaryData, error: summaryError } = await sq.limit(SUMMARY_FETCH_LIMIT);
     if (summaryError) return NextResponse.json({ error: summaryError.message }, { status: 500 });
-    return responderPaginado(data ?? [], count, offset, tipo, verCostos, summaryData ?? []);
+    return responderPaginado(data ?? [], count, offset, tipo, verCostos, summaryData ?? [], extra);
   }
 
   if (tipo === 'colacion') {
@@ -213,10 +249,11 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false });
     if (desde) q = q.gte('fecha', desde);
     if (hasta) q = q.lte('fecha', hasta);
+    if (responsable) q = q.eq('responsable_nombre', responsable);
     if (busqueda) {
       const { data, error, count } = await q.limit(SEARCH_FETCH_LIMIT);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return responderConBusqueda(data ?? [], busqueda, offset, limit, tipo, verCostos, count);
+      return responderConBusqueda(data ?? [], busqueda, offset, limit, tipo, verCostos, count, extra);
     }
     const { data, error, count } = await q.range(offset, offset + limit - 1);
     if (error && !esRangoFuera(error)) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -227,9 +264,10 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false });
     if (desde) sq = sq.gte('fecha', desde);
     if (hasta) sq = sq.lte('fecha', hasta);
+    if (responsable) sq = sq.eq('responsable_nombre', responsable);
     const { data: summaryData, error: summaryError } = await sq.limit(SUMMARY_FETCH_LIMIT);
     if (summaryError) return NextResponse.json({ error: summaryError.message }, { status: 500 });
-    return responderPaginado(data ?? [], count, offset, tipo, verCostos, summaryData ?? []);
+    return responderPaginado(data ?? [], count, offset, tipo, verCostos, summaryData ?? [], extra);
   }
 
   if (tipo === 'mermas') {
@@ -246,6 +284,7 @@ export async function GET(req: NextRequest) {
         .order('created_at', { ascending: false });
       if (desde) q = q.gte('fecha', desde);
       if (hasta) q = q.lte('fecha', hasta);
+    if (responsable) q = q.eq('responsable_nombre', responsable);
       return q;
     };
 
@@ -258,13 +297,13 @@ export async function GET(req: NextRequest) {
         : await buildQuery(baseSelect).range(offset, offset + limit - 1);
     }
     if (result.error && !esRangoFuera(result.error)) return NextResponse.json({ error: result.error.message }, { status: 500 });
-    if (busqueda) return responderConBusqueda(result.data ?? [], busqueda, offset, limit, tipo, verCostos, result.count);
+    if (busqueda) return responderConBusqueda(result.data ?? [], busqueda, offset, limit, tipo, verCostos, result.count, extra);
     let summaryResult = await buildQuery(platosSelect).limit(SUMMARY_FETCH_LIMIT);
     if (summaryResult.error && summaryResult.error.message.includes('detalle_mermas_platos')) {
       summaryResult = await buildQuery(baseSelect).limit(SUMMARY_FETCH_LIMIT);
     }
     if (summaryResult.error) return NextResponse.json({ error: summaryResult.error.message }, { status: 500 });
-    return responderPaginado(result.data ?? [], result.count, offset, tipo, verCostos, summaryResult.data ?? []);
+    return responderPaginado(result.data ?? [], result.count, offset, tipo, verCostos, summaryResult.data ?? [], extra);
   }
 
   if (tipo === 'frutas') {
@@ -281,10 +320,11 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false });
     if (desde) q = q.gte('fecha', desde);
     if (hasta) q = q.lte('fecha', hasta);
+    if (responsable) q = q.eq('responsable_nombre', responsable);
     if (busqueda) {
       const { data, error, count } = await q.limit(SEARCH_FETCH_LIMIT);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return responderConBusqueda(data ?? [], busqueda, offset, limit, tipo, verCostos, count);
+      return responderConBusqueda(data ?? [], busqueda, offset, limit, tipo, verCostos, count, extra);
     }
     const { data, error, count } = await q.range(offset, offset + limit - 1);
     if (error && !esRangoFuera(error)) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -295,9 +335,10 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false });
     if (desde) sq = sq.gte('fecha', desde);
     if (hasta) sq = sq.lte('fecha', hasta);
+    if (responsable) sq = sq.eq('responsable_nombre', responsable);
     const { data: summaryData, error: summaryError } = await sq.limit(SUMMARY_FETCH_LIMIT);
     if (summaryError) return NextResponse.json({ error: summaryError.message }, { status: 500 });
-    return responderPaginado(data ?? [], count, offset, tipo, verCostos, summaryData ?? []);
+    return responderPaginado(data ?? [], count, offset, tipo, verCostos, summaryData ?? [], extra);
   }
 
   if (tipo === 'inventario') {
@@ -309,10 +350,11 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false });
     if (desde) q = q.gte('fecha', desde);
     if (hasta) q = q.lte('fecha', hasta);
+    if (responsable) q = q.eq('responsable_nombre', responsable);
     if (busqueda) {
       const { data, error, count } = await q.limit(SEARCH_FETCH_LIMIT);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return responderConBusqueda(data ?? [], busqueda, offset, limit, tipo, verCostos, count);
+      return responderConBusqueda(data ?? [], busqueda, offset, limit, tipo, verCostos, count, extra);
     }
     const { data, error, count } = await q.range(offset, offset + limit - 1);
     if (error && !esRangoFuera(error)) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -323,9 +365,10 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false });
     if (desde) sq = sq.gte('fecha', desde);
     if (hasta) sq = sq.lte('fecha', hasta);
+    if (responsable) sq = sq.eq('responsable_nombre', responsable);
     const { data: summaryData, error: summaryError } = await sq.limit(SUMMARY_FETCH_LIMIT);
     if (summaryError) return NextResponse.json({ error: summaryError.message }, { status: 500 });
-    return responderPaginado(data ?? [], count, offset, tipo, verCostos, summaryData ?? []);
+    return responderPaginado(data ?? [], count, offset, tipo, verCostos, summaryData ?? [], extra);
   }
 
   return NextResponse.json({ error: 'Tipo invalido' }, { status: 400 });

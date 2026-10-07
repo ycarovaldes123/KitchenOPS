@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { calcCostoProduccionPP, calcTotalPP, formatCLP, formatPct, calcMerma } from '@/lib/calculos';
 import { useRol } from '@/components/RolProvider';
+import NavIcon from '@/components/layout/NavIcon';
 import { MOTIVO_MERMA_COLOR, normalizeMotivoMerma } from '@/lib/mermas';
+import './historial.css';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -29,6 +31,52 @@ function fmtHora(iso: string) {
   return d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Santiago' });
 }
 
+const MESES_CORTOS = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
+const DIAS_SEMANA = ['DOMINGO', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO'];
+const MESES_LARGOS = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+
+// "LUNES 06 DE OCTUBRE DE 2026" (la fecha es operacional, sin hora: se arma en UTC para no correr el día)
+function fmtFechaLarga(fecha: string) {
+  const [y, m, d] = fecha.split('-').map(Number);
+  if (!y || !m || !d) return fecha;
+  const dia = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return `${DIAS_SEMANA[dia]} ${String(d).padStart(2, '0')} DE ${MESES_LARGOS[m - 1]} DE ${y}`;
+}
+// "10:40 p. m."
+function fmtHora12(iso: string) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleTimeString('es-CL', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Santiago' });
+}
+const fmtNum = (n: number) => new Intl.NumberFormat('es-CL', { maximumFractionDigits: 2 }).format(Number(n) || 0);
+// Cantidad producida: "2,60 kg" o "850 g"
+function fmtProducido(total: number | null | undefined) {
+  if (total == null) return '—';
+  return total >= 1000
+    ? `${new Intl.NumberFormat('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(total / 1000)} kg`
+    : `${fmtNum(total)} g`;
+}
+// Cantidad producida según el tipo de PP: UND sin gramos en unidades, CC en cc / L,
+// DIRECTO en la unidad del producto; el resto en g / kg.
+function fmtProducidoPP(cantidad: number, total: number | null | undefined, tipoPP: unknown, gramosPorPP: unknown, unidadProducto: unknown) {
+  const tipo = String(tipoPP ?? '').toUpperCase();
+  const um = String(unidadProducto ?? '').toUpperCase();
+  const dec2 = (n: number) => new Intl.NumberFormat('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+  if (tipo === 'UND' && !(Number(gramosPorPP) > 0)) return `${fmtNum(cantidad)} un`;
+  if (total == null) return '—';
+  if (tipo === 'CC' || um === 'CC' || um === 'LT') return total >= 1000 ? `${dec2(total / 1000)} L` : `${fmtNum(total)} cc`;
+  if (tipo === 'DIRECTO' && um && um !== 'GR' && um !== 'KG') return `${fmtNum(total)} ${um.toLowerCase()}`;
+  if (tipo === 'DIRECTO' && um === 'KG') return `${fmtNum(total)} kg`;
+  return fmtProducido(total);
+}
+
+// Cálculo de la línea: "13 × 200 gr"
+function fmtCalculoPP(d: Record<string, unknown>) {
+  const q = fmtNum(d.cantidad as number);
+  const g = Number(d.gramos_por_pp) || 0;
+  if (!g) return `${q} PP`;
+  return `${q} × ${fmtNum(g)} ${String(d.tipo_pp ?? '').toUpperCase() === 'CC' ? 'cc' : 'gr'}`;
+}
+
 // Solo para presentación en la tabla: deriva el primer nombre sin tocar el registro guardado.
 function primerNombre(nombre: string | null | undefined) {
   const limpio = String(nombre ?? '').trim();
@@ -36,13 +84,39 @@ function primerNombre(nombre: string | null | undefined) {
   return limpio.split(/\s+/)[0];
 }
 
-// Color visual del nombre del responsable en las tablas del Historial. No altera datos ni registros:
-// rosado para el grupo indicado, azul por defecto para el resto (Joel, Camilo, etc.).
-// La comparación es insensible a mayúsculas/minúsculas y acentos.
+// Color fijo del responsable en el Historial (solo presentación, no altera registros).
+// Rosado y azul por nombre; el resto en neutro. Insensible a mayúsculas y acentos.
 const RESPONSABLES_ROSADO = new Set(['pamela', 'paulina', 'luisa', 'javiera']);
-function colorResponsable(nombre: string | null | undefined) {
+const RESPONSABLES_AZUL = new Set(['joaquin', 'joaqui', 'joel', 'camilo']);
+type EstiloChip = { bg: string; border: string; color: string };
+const CHIP_ROSADO: EstiloChip = { bg: '#FDF2F8', border: '#F9A8D4', color: '#DB2777' };
+const CHIP_AZUL: EstiloChip = { bg: '#EFF6FF', border: '#93C5FD', color: '#2563EB' };
+const CHIP_NEUTRO: EstiloChip = { bg: '#F5F3F0', border: '#E7E2DC', color: '#525252' };
+function estiloResponsable(nombre: string | null | undefined): EstiloChip {
   const tokens = normalizarTexto(String(nombre ?? '')).split(/\s+/).filter(Boolean);
-  return tokens.some(t => RESPONSABLES_ROSADO.has(t)) ? '#EC4899' : '#2563EB';
+  if (tokens.some(t => RESPONSABLES_ROSADO.has(t))) return CHIP_ROSADO;
+  if (tokens.some(t => RESPONSABLES_AZUL.has(t))) return CHIP_AZUL;
+  return CHIP_NEUTRO;
+}
+
+function ResponsableChip({ nombre }: { nombre: string | null | undefined }) {
+  const e = estiloResponsable(nombre);
+  return (
+    <span className="hst-chip" title={String(nombre ?? '')} style={{ background: e.bg, borderColor: e.border, color: e.color }}>
+      {primerNombre(nombre).toUpperCase()}
+    </span>
+  );
+}
+
+function TurnoChip({ turno }: { turno: string | null | undefined }) {
+  const am = String(turno ?? '').toUpperCase() === 'AM';
+  return (
+    <span className="hst-chip" style={am
+      ? { background: '#ECFDF5', borderColor: '#A7F3D0', color: '#047857' }
+      : { background: '#EFF6FF', borderColor: '#BFDBFE', color: '#1D4ED8' }}>
+      {turno || '—'}
+    </span>
+  );
 }
 
 // Ventana de páginas para la paginación numerada: 1 … (p-1) p (p+1) … N
@@ -81,24 +155,6 @@ function calcCostoProduccion(
   );
 }
 
-function formatTotalProduccion(
-  cantidad: number,
-  tipoPP: string | null | undefined,
-  gramosPorPP: number | null | undefined,
-  unidadProducto: string | null | undefined,
-) {
-  const total = calcTotalPP(
-    cantidad,
-    { tipo_pp: tipoPP, gramos_por_pp: gramosPorPP },
-    unidadProducto
-  );
-  const tipo = String(tipoPP ?? '').toUpperCase();
-  const um = String(unidadProducto ?? '').toUpperCase();
-  if (tipo === 'CC' || um === 'CC') return `${total} cc`;
-  if (tipo === 'DIRECTO' && um && um !== 'GR' && um !== 'KG') return `${total} ${um.toLowerCase()}`;
-  return total >= 1000 ? `${(total / 1000).toFixed(2)} kg` : `${total} g`;
-}
-
 function formatPPDisplay(item: Record<string, unknown>) {
   const codigo = String(item.codigo_producto ?? '').trim();
   const nombre = String(item.nombre_pp ?? item.nombre ?? '').trim();
@@ -111,7 +167,10 @@ function formatPPDisplay(item: Record<string, unknown>) {
 type Tab = 'produccion' | 'colacion' | 'mermas' | 'frutas' | 'inventario';
 const PAGE_SIZE = 25;
 
+type PorDia = Record<string, { registros: number; lineas: number; costo_total: number | null }>;
+
 type HistorialSummary = {
+  por_dia?: PorDia;
   registros?: number;
   lineas?: number;
   inscritos?: number;
@@ -151,6 +210,33 @@ function ExpandBtn({ open }: { open: boolean }) {
   );
 }
 
+// Acciones de fila para el administrador: editar (abre el detalle en modo edición) y eliminar el movimiento.
+function RowActions({ open, editing, onEdit, onDelete }: { open: boolean; editing: boolean; onEdit: () => void; onDelete: () => void }) {
+  const btn: React.CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px',
+    borderRadius: '7px', border: '1px solid var(--bo)', background: 'var(--sf)', cursor: 'pointer', padding: 0,
+  };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
+      <button
+        type="button" title="Editar movimiento" aria-label="Editar movimiento" disabled={editing}
+        onClick={e => { e.stopPropagation(); onEdit(); }}
+        style={{ ...btn, color: editing ? 'var(--ts)' : 'var(--ac)', opacity: editing ? 0.5 : 1, cursor: editing ? 'default' : 'pointer' }}
+      >
+        <NavIcon name="pencil" size={15} />
+      </button>
+      <button
+        type="button" title="Eliminar movimiento" aria-label="Eliminar movimiento"
+        onClick={e => { e.stopPropagation(); onDelete(); }}
+        style={{ ...btn, color: 'var(--rd)', borderColor: '#FCA5A5', background: '#FEF2F2' }}
+      >
+        <NavIcon name="trash" size={15} />
+      </button>
+      <ExpandBtn open={open} />
+    </div>
+  );
+}
+
 function DetailLabel({ children }: { children: React.ReactNode }) {
   return (
     <p style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px' }}>
@@ -171,50 +257,56 @@ function MetaRow({ icon, label, value }: { icon: string; label: string; value: s
 
 // KPI compactos que van arriba, junto al filtro de fechas. Reutiliza el `summary` que ya
 // calcula /api/historial (mismos números que mostraba el panel inferior anterior).
+type KpiItem = { label: string; value: string; desc: string; tono: 'naranja' | 'azul' | 'verde' | 'neutro'; icon: string };
+
 function KpiRow({ tab, summary, verCostos }: { tab: Tab; summary: HistorialSummary | null; verCostos: boolean }) {
   const s = summary;
   const numberFmt = (value: number | null | undefined) => value == null ? '—' : new Intl.NumberFormat('es-CL', { maximumFractionDigits: 2 }).format(value);
   const clp = (value: number | null | undefined) => value != null ? formatCLP(value) : '—';
-  const items: Array<{ label: string; value: string }> = [];
-
-  if (verCostos) items.push({ label: 'Costo total', value: clp(s?.costo_total) });
+  const items: KpiItem[] = [];
+  const costo = (desc: string) => { if (verCostos) items.push({ label: 'Costo total', value: clp(s?.costo_total), desc, tono: 'naranja', icon: 'coins' }); };
+  const promedio = (label: string, value: number | null | undefined, desc: string) => { if (verCostos) items.push({ label, value: clp(value), desc, tono: 'azul', icon: 'chart-line' }); };
 
   if (tab === 'produccion') {
-    if (verCostos) items.push({ label: 'Promedio / informe', value: clp(s?.promedio_registro) });
-    items.push({ label: 'PP registrados', value: numberFmt(s?.lineas) });
-    items.push({ label: 'Informes', value: numberFmt(s?.registros) });
+    costo('Costo de todas las producciones');
+    promedio('Promedio / informe', s?.promedio_registro, 'Costo promedio por registro');
+    items.push({ label: 'PP registrados', value: numberFmt(s?.lineas), desc: 'Total de PP producidos', tono: 'verde', icon: 'cooking-pot' });
+    items.push({ label: 'Informes', value: numberFmt(s?.registros), desc: 'Registros en el período', tono: 'neutro', icon: 'clipboard' });
   } else if (tab === 'colacion') {
-    if (verCostos) items.push({ label: 'Promedio / plato', value: clp(s?.promedio_plato) });
-    items.push({ label: 'Inscritos', value: numberFmt(s?.inscritos) });
-    items.push({ label: 'Colaciones', value: numberFmt(s?.registros) });
+    costo('Costo de todas las colaciones');
+    promedio('Promedio / plato', s?.promedio_plato, 'Costo promedio por inscrito');
+    items.push({ label: 'Inscritos', value: numberFmt(s?.inscritos), desc: 'Total de inscritos', tono: 'verde', icon: 'utensils' });
+    items.push({ label: 'Colaciones', value: numberFmt(s?.registros), desc: 'Registros en el período', tono: 'neutro', icon: 'clipboard' });
   } else if (tab === 'frutas') {
-    if (verCostos) items.push({ label: 'Promedio / registro', value: clp(s?.promedio_registro) });
-    items.push({ label: 'Productos', value: numberFmt(s?.lineas) });
-    items.push({ label: 'Registros', value: numberFmt(s?.registros) });
+    costo('Costo de todas las entregas');
+    promedio('Promedio / registro', s?.promedio_registro, 'Costo promedio por registro');
+    items.push({ label: 'Productos', value: numberFmt(s?.lineas), desc: 'Líneas de frutas entregadas', tono: 'verde', icon: 'apple' });
+    items.push({ label: 'Registros', value: numberFmt(s?.registros), desc: 'Registros en el período', tono: 'neutro', icon: 'clipboard' });
   } else if (tab === 'mermas') {
-    if (verCostos) items.push({ label: 'Promedio / merma', value: clp(s?.promedio_registro) });
-    items.push({ label: 'Productos', value: numberFmt(s?.productos) });
-    items.push({ label: 'Registros', value: numberFmt(s?.registros) });
+    costo('Costo de todas las mermas');
+    promedio('Promedio / merma', s?.promedio_registro, 'Costo promedio por registro');
+    items.push({ label: 'Productos', value: numberFmt(s?.productos), desc: 'Productos mermados', tono: 'verde', icon: 'trending' });
+    items.push({ label: 'Registros', value: numberFmt(s?.registros), desc: 'Registros en el período', tono: 'neutro', icon: 'clipboard' });
   } else if (tab === 'inventario') {
-    items.push({ label: 'Productos contados', value: numberFmt(s?.productos) });
-    items.push({ label: 'Cantidad total', value: numberFmt(s?.cantidad_total) });
-    items.push({ label: 'Promedio / toma', value: numberFmt(s?.promedio_productos) });
-    items.push({ label: 'Tomas', value: numberFmt(s?.registros) });
+    items.push({ label: 'Productos contados', value: numberFmt(s?.productos), desc: 'Líneas de conteo', tono: 'naranja', icon: 'package' });
+    items.push({ label: 'Cantidad total', value: numberFmt(s?.cantidad_total), desc: 'Suma de cantidades contadas', tono: 'azul', icon: 'sigma' });
+    items.push({ label: 'Promedio / toma', value: numberFmt(s?.promedio_productos), desc: 'Productos por toma', tono: 'verde', icon: 'chart-line' });
+    items.push({ label: 'Tomas', value: numberFmt(s?.registros), desc: 'Registros en el período', tono: 'neutro', icon: 'clipboard' });
   }
 
   return (
-    <div className="hist-kpi-row">
+    <>
       {items.slice(0, 4).map(item => (
-        <div key={item.label} style={{
-          border: '1px solid var(--ac)', borderRadius: '10px',
-          background: 'var(--ac)',
-          padding: '9px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: '60px',
-        }}>
-          <p style={{ margin: '0 0 2px', fontSize: '13px', fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</p>
-          <p style={{ margin: 0, fontFamily: "'Space Grotesk', sans-serif", fontSize: '22px', fontWeight: 800, color: '#fff', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.value}</p>
+        <div key={item.label} className={`hst-kpi is-${item.tono}`}>
+          <div className="hst-kpi-top">
+            <span className="hst-kpi-label">{item.label}</span>
+            <span className="hst-kpi-icon"><NavIcon name={item.icon} size={42} strokeWidth={2} /></span>
+          </div>
+          <b className="hst-kpi-valor">{item.value}</b>
+          <span className="hst-kpi-desc">{item.desc}</span>
         </div>
       ))}
-    </div>
+    </>
   );
 }
 
@@ -379,7 +471,7 @@ function SearchablePicker({
 
 // ─── TablaProduccion ────────────────────────────────────────────────────────
 
-function TablaProduccion({ datos, canEdit, isAdmin, onRefresh, verCostos, productos, pps }: { datos: Record<string, unknown>[]; canEdit: boolean; isAdmin: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[]; pps: Record<string, unknown>[] }) {
+function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps, porDia }: { datos: Record<string, unknown>[]; canEdit: boolean; isAdmin: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[]; pps: Record<string, unknown>[]; porDia?: PorDia }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, number>>({});
@@ -477,193 +569,149 @@ function TablaProduccion({ datos, canEdit, isAdmin, onRefresh, verCostos, produc
 
   if (!datos.length) return <Empty msg="No hay informes de producción en este período." />;
 
+  // Agrupa los informes de la página por fecha (ya vienen ordenados por fecha desc).
+  const dias: { fecha: string; items: Record<string, unknown>[] }[] = [];
+  for (const p of datos) {
+    const fecha = String(p.fecha ?? '');
+    const ultimo = dias[dias.length - 1];
+    if (ultimo && ultimo.fecha === fecha) ultimo.items.push(p);
+    else dias.push({ fecha, items: [p] });
+  }
+
   return (
-    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '560px' }}>
-        <thead>
-          <tr>
-            {['Fecha', 'Responsable', 'Turno', 'Qué se produjo', 'PP', ...(verCostos ? ['Costo est.'] : []), 'Acciones'].map(h => (
-              <th key={h} style={{ ...thSt, textAlign: h === 'Acciones' ? 'right' : 'left' }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {datos.map((p: Record<string, unknown>) => {
-            const id   = p.id as string;
-            const det  = (p.detalle_produccion as Record<string, unknown>[]) ?? [];
-            const rend = (p.rendimiento as Record<string, unknown>[]) ?? [];
-            const ct   = det.reduce((s, d) => s + ((d.costo_total as number) ?? 0), 0);
-            const open = expanded.has(id);
-            // Preview: first 2 PP codes and names
-            const preview = det.slice(0, 2).map(d => formatPPDisplay(d));
-            const extra   = det.length > 2 ? det.length - 2 : 0;
+    <div className="hst-list">
+      {dias.map(({ fecha, items }) => {
+        // Totales del día completo (del resumen del período); si no vienen, se calculan con lo visible.
+        const dia = porDia?.[fecha] ?? {
+          registros: items.length,
+          lineas: items.reduce((s, p) => s + ((p.detalle_produccion as unknown[] | undefined)?.length ?? 0), 0),
+          costo_total: items.reduce((s, p) => s + ((p.detalle_produccion as Record<string, unknown>[] | undefined) ?? []).reduce((a, d) => a + (Number(d.costo_total) || 0), 0), 0),
+        };
+        return (
+          <section key={fecha} className="hst-day">
+            <header className="hst-day-head">
+              <span className="hst-day-title">{fmtFechaLarga(fecha)}</span>
+              <span className="hst-day-meta">
+                {dia.registros} registro{dia.registros !== 1 ? 's' : ''}
+                <i aria-hidden>|</i>{dia.lineas} PP
+                {verCostos && dia.costo_total != null && <><i aria-hidden>|</i><b>{formatCLP(dia.costo_total)}</b></>}
+              </span>
+            </header>
 
-            return [
-              <tr key={id} onClick={() => toggle(id)}
-                style={{ borderBottom: '1px solid var(--bo)', cursor: 'pointer', transition: 'background 0.12s', background: open ? 'var(--al)' : 'transparent' }}
-                onMouseEnter={e => { if (!open) (e.currentTarget as HTMLTableRowElement).style.background = 'var(--bg)'; }}
-                onMouseLeave={e => { if (!open) (e.currentTarget as HTMLTableRowElement).style.background = 'transparent'; }}
-              >
-                <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, whiteSpace: 'nowrap' }}>
-                  {fmtFecha(p.fecha as string)}
-                </td>
-                <td style={tdSt}>
-                  <Chip label={primerNombre(p.responsable_nombre as string)} color={colorResponsable(p.responsable_nombre as string)} />
-                </td>
-                <td style={tdSt}>
-                  <Chip label={p.turno as string} color={p.turno === 'AM' ? '#0D9373' : '#2563EB'} />
-                </td>
-                <td style={{ ...tdSt, maxWidth: '280px' }}>
-                  {det.length === 0 ? (
-                    <span style={{ color: 'var(--ts)' }}>Sin detalle</span>
-                  ) : (
-                    <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center' }}>
-                      {preview.map((n, i) => (
-                        <span key={i} title={n} style={{ fontSize: '11px', background: 'var(--bo)', color: 'var(--tx)', padding: '2px 8px', borderRadius: '4px', fontWeight: 500, whiteSpace: 'nowrap', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{n}</span>
-                      ))}
-                      {extra > 0 && <span style={{ fontSize: '11px', color: 'var(--ts)' }}>+{extra} más</span>}
-                    </div>
-                  )}
-                </td>
-                <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums' }}>
-                  {det.length}
-                </td>
-                {verCostos && (
-                  <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: ct > 0 ? 'var(--ac)' : 'var(--ts)', fontWeight: ct > 0 ? 600 : 400 }}>
-                    {ct > 0 ? formatCLP(ct) : '—'}
-                  </td>
-                )}
-                <td style={{ ...tdSt, textAlign: 'right', width: '48px' }}>
-                  <ExpandBtn open={open} />
-                </td>
-              </tr>,
+            {items.map(p => {
+              const id   = p.id as string;
+              const det  = (p.detalle_produccion as Record<string, unknown>[]) ?? [];
+              const rend = (p.rendimiento as Record<string, unknown>[]) ?? [];
+              const ct   = det.reduce((s, d) => s + ((d.costo_total as number) ?? 0), 0);
+              const open = expanded.has(id);
+              const editando = editingId === id;
+              const [, mes, anio] = fmtFecha(p.fecha as string).split('/');
 
-              open && (
-                <tr key={`${id}-det`}>
-                  <td colSpan={verCostos ? 7 : 6} style={{ background: 'var(--al)', padding: '0 0 2px' }}>
-                    <div style={{ padding: '16px 20px', display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
+              return (
+                <article key={id} className={`hst-mov${open ? ' is-open' : ''}`}>
+                  <div className={`hst-mov-head${verCostos ? '' : ' sin-costo'}`} onClick={() => toggle(id)}>
+                    <span className="hst-mov-dia">{fmtFecha(p.fecha as string).slice(0, 2)}</span>
+                    <span className="hst-mov-fecha">
+                      <b>{MESES_CORTOS[Number(mes) - 1]} {anio}</b>
+                      {!!p.created_at && <small>{fmtHora12(p.created_at as string)}</small>}
+                    </span>
+                    <span className="hst-mov-resp"><ResponsableChip nombre={p.responsable_nombre as string} /></span>
+                    <span className="hst-mov-turno"><TurnoChip turno={p.turno as string} /></span>
+                    <span className="hst-mov-pp">
+                      <b>{det.length} PP</b>
+                      <small>{det.length === 1 ? 'registrado' : 'registrados'}</small>
+                    </span>
+                    {verCostos && (
+                      <span className="hst-mov-costo">
+                        <small>Costo total</small>
+                        <b>{ct > 0 ? formatCLP(ct) : '—'}</b>
+                      </span>
+                    )}
+                    <span className="hst-mov-acciones" onClick={e => e.stopPropagation()}>
+                      {isAdmin && (
+                        <>
+                          <button type="button" className="hst-icon-btn" title="Editar" aria-label="Editar movimiento" disabled={editando}
+                            onClick={() => { setExpanded(s => new Set(s).add(id)); startEdit(id, det); }}>
+                            <NavIcon name="pencil" size={16} />
+                          </button>
+                          <button type="button" className="hst-icon-btn is-danger" title="Eliminar" aria-label="Eliminar movimiento"
+                            onClick={() => deleteRecord(id)}>
+                            <NavIcon name="trash" size={16} />
+                          </button>
+                        </>
+                      )}
+                      <button type="button" className={`hst-icon-btn${open ? ' is-open' : ''}`} title={open ? 'Contraer' : 'Expandir'} aria-label={open ? 'Contraer' : 'Expandir'} aria-expanded={open}
+                        onClick={() => toggle(id)}>
+                        <NavIcon name={open ? 'chevron-up' : 'chevron-down'} size={17} />
+                      </button>
+                    </span>
+                  </div>
 
-                      {/* Meta secundaria */}
-                      <div style={{ minWidth: '180px' }}>
-                        <DetailLabel>Quién / cuándo</DetailLabel>
-                        <MetaRow icon="👤" label="Responsable" value={p.responsable_nombre as string} />
-                        {!!p.created_at && <MetaRow icon="🕐" label="Hora registro" value={fmtHora(p.created_at as string) ?? '—'} />}
-                        {editingId === id && isAdmin && (
-                          <div style={{ marginTop: '10px' }}>
-                            <DetailLabel>Fecha registro</DetailLabel>
-                            <input
-                              type="date"
-                              value={editFecha}
-                              onClick={e => e.stopPropagation()}
-                              onChange={e => setEditFecha(e.target.value)}
-                              style={{ width: '140px', padding: '5px 8px', fontSize: '13px', borderRadius: '5px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', fontFamily: "'Space Grotesk', sans-serif" }}
-                            />
-                          </div>
-                        )}
-                        {(p.observacion as string) && (
-                          <div style={{ marginTop: '10px' }}>
-                            <DetailLabel>Observación</DetailLabel>
-                            <p style={{ fontSize: '13px', color: 'var(--tx)', margin: 0, lineHeight: 1.5, maxWidth: '300px' }}>{p.observacion as string}</p>
-                          </div>
-                        )}
-                      </div>
+                  {open && (
+                    <div className="hst-mov-body">
+                      {editando && (
+                        <div className="hst-edit-bar">
+                          {isAdmin && (
+                            <label className="hst-edit-fecha">
+                              <span>Fecha registro</span>
+                              <input type="date" value={editFecha} onChange={e => setEditFecha(e.target.value)} />
+                            </label>
+                          )}
+                          <button type="button" className="hst-btn-sec" onClick={addRow} disabled={saving}>+ Añadir PP</button>
+                          <button type="button" className="hst-btn-ok" onClick={() => saveEditProd(id, det, rend)} disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</button>
+                          <button type="button" className="hst-btn-sec" onClick={cancelEdit}>Cancelar</button>
+                        </div>
+                      )}
+                      {saveErr && editando && <p className="hst-err">{saveErr}</p>}
 
-                      {/* PP detalle */}
-                      {det.length > 0 && (
-                        <div style={{ flex: 1, minWidth: '240px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                            {canEdit && editingId !== id && (
-                              <button onClick={e => { e.stopPropagation(); startEdit(id, det); }}
-                                style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--ac)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
-                                Editar PP y verduras
-                              </button>
-                            )}
-                            {editingId === id && (
-                              <>
-                                <button onClick={e => { e.stopPropagation(); addRow(); }} disabled={saving}
-                                  style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--al)', color: 'var(--ac)', border: '1px solid var(--ac)', cursor: 'pointer', fontWeight: 700 }}>
-                                  + A&ntilde;adir PP
-                                </button>
-                                <button onClick={e => { e.stopPropagation(); saveEditProd(id, det, rend); }} disabled={saving}
-                                  style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#0D9373', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
-                                  {saving ? 'Guardando...' : 'Guardar'}
-                                </button>
-                                <button onClick={e => { e.stopPropagation(); cancelEdit(); }}
-                                  style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--bo)', color: 'var(--ts)', border: 'none', cursor: 'pointer' }}>
-                                  Cancelar
-                                </button>
-                              </>
-                            )}
-                            {canEdit && editingId !== id && (
-                              <button onClick={e => { e.stopPropagation(); deleteRecord(id); }}
-                                style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5', cursor: 'pointer', fontWeight: 700 }}>
-                                BORRAR
-                              </button>
-                            )}
-                          </div>
-                          {saveErr && <p style={{ color: 'var(--rd)', fontSize: '11px', margin: '0 0 6px' }}>{saveErr}</p>}
-                          <DetailLabel>Producción PP</DetailLabel>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                            {det.filter(d => !deletedIds.has(d.id as string)).map((d, i) => {
-                              const isEditing = editingId === id;
-                              const qty = isEditing ? (editValues[d.id as string] ?? (d.cantidad as number)) : (d.cantidad as number);
+                      <div className={`hst-mov-grid${rend.length ? '' : ' is-single'}`}>
+                        <div>
+                          <h4 className="hst-sec-title">Producción PP</h4>
+                          {det.length === 0 && !editando && <p className="hst-muted">Sin PP registrados.</p>}
+                          <div className="hst-pp-list">
+                            {det.filter(d => !deletedIds.has(d.id as string)).map(d => {
+                              const qty = editando ? (editValues[d.id as string] ?? (d.cantidad as number)) : (d.cantidad as number);
                               const costoUnitarioEdit = Number(d.costo_unitario) || (Number(d.cantidad) > 0 ? Number(d.costo_total) / Number(d.cantidad) : 0);
                               const producto = d.codigo_producto ? productosMap.get(d.codigo_producto as string) : undefined;
                               const unidadProducto = producto?.unidad_medida as string | null | undefined;
                               const costoEdit = d.codigo_producto
-                                ? calcCostoProduccion(
-                                    qty,
-                                    d.tipo_pp as string | null | undefined,
-                                    d.gramos_por_pp as number | null | undefined,
-                                    unidadProducto,
-                                    costoUnitarioEdit
-                                  )
+                                ? calcCostoProduccion(qty, d.tipo_pp as string | null | undefined, d.gramos_por_pp as number | null | undefined, unidadProducto, costoUnitarioEdit)
                                 : Math.round(qty * costoUnitarioEdit);
-                              const total = calcTotalPP(
-                                qty,
-                                {
-                                  tipo_pp: d.tipo_pp as string | null | undefined,
-                                  gramos_por_pp: d.gramos_por_pp as number | null | undefined,
-                                },
-                                unidadProducto
-                              );
-                              const totalStr = total == null ? '—' : total >= 1000 ? `${(total / 1000).toFixed(2)} kg` : `${total} g`;
-                              const costo = d.costo_total as number;
+                              const total = calcTotalPP(qty, { tipo_pp: d.tipo_pp as string | null | undefined, gramos_por_pp: d.gramos_por_pp as number | null | undefined }, unidadProducto);
+                              const costo = editando ? costoEdit : (d.costo_total as number);
                               return (
-                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--sf)', borderRadius: '7px', padding: '7px 12px' }}>
-                                  <span title={formatPPDisplay(d)} style={{ flex: 1, minWidth: 0, fontSize: '13px', fontWeight: 500, color: 'var(--tx)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatPPDisplay(d)}</span>
-                                  {isEditing ? (
-                                    <>
-                                      <input type="number" value={qty} min={0} step="any"
-                                        onClick={e => e.stopPropagation()}
-                                        onChange={e => setEditValues(v => ({ ...v, [d.id as string]: parseFloat(e.target.value) || 0 }))}
-                                        style={{ width: '80px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }} />
-                                      <span style={{ fontSize: '12px', color: 'var(--ts)' }}>PP</span>
-                                      {verCostos && (
-                                        <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>
-                                          {formatCLP(costoEdit)}
-                                        </span>
-                                      )}
-                                    </>
-                                  ) : (
-                                    <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{d.cantidad as number} × {(d.gramos_por_pp as number | null) ?? '—'}</span>
+                                <div key={d.id as string} className={`hst-pp${editando ? ' is-edit' : ''}`}>
+                                  <div className="hst-pp-nombre">
+                                    <b title={formatPPDisplay(d)}>{formatPPDisplay(d)}</b>
+                                    <small>{fmtCalculoPP({ ...d, cantidad: qty })}</small>
+                                  </div>
+                                  {editando && (
+                                    <label className="hst-pp-cant">
+                                      <small>Cantidad</small>
+                                      <span>
+                                        <input type="number" value={qty} min={0} step="any" aria-label={`Cantidad de ${formatPPDisplay(d)}`}
+                                          onChange={e => setEditValues(v => ({ ...v, [d.id as string]: parseFloat(e.target.value) || 0 }))} />
+                                        PP
+                                      </span>
+                                    </label>
                                   )}
-                                  <span style={{ fontSize: '12px', color: 'var(--tl)', fontWeight: 600, fontFamily: "'Space Grotesk', sans-serif" }}>{totalStr}</span>
-                                  {verCostos && costo > 0 && <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(costo)}</span>}
-                                  {isEditing && isAdmin && (
-                                    <button
-                                      type="button"
-                                      onClick={e => { e.stopPropagation(); removeDetalle(d.id as string); }}
-                                      title="Quitar linea"
-                                      style={{ border: 'none', background: 'transparent', color: '#B91C1C', cursor: 'pointer', fontSize: '16px', lineHeight: 1, fontWeight: 700, padding: '0 2px' }}
-                                    >
-                                      ×
-                                    </button>
+                                  <div className="hst-pp-total">
+                                    <b>{fmtProducidoPP(qty, total, d.tipo_pp, d.gramos_por_pp, unidadProducto)}</b>
+                                    <small>Producido</small>
+                                  </div>
+                                  {verCostos && (
+                                    <div className="hst-pp-costo">
+                                      <b>{costo > 0 ? formatCLP(costo) : '—'}</b>
+                                      <small>Costo est.</small>
+                                    </div>
+                                  )}
+                                  {editando && isAdmin && (
+                                    <button type="button" className="hst-quitar" title="Quitar línea" aria-label="Quitar línea" onClick={() => removeDetalle(d.id as string)}>×</button>
                                   )}
                                 </div>
                               );
                             })}
-                            {editingId === id && newRows.map(row => {
+                            {editando && newRows.map(row => {
                               const pp = row.pp_id ? ppsMap.get(row.pp_id) : undefined;
                               const producto = pp?.codigo_producto ? productosMap.get(pp.codigo_producto as string) : undefined;
                               const costoUnitario = Number(producto?.costo_promedio) || 0;
@@ -671,124 +719,103 @@ function TablaProduccion({ datos, canEdit, isAdmin, onRefresh, verCostos, produc
                               const tipoPP = pp?.tipo_pp as string | null | undefined;
                               const gramosPorPP = Number(pp?.gramos_por_pp) || null;
                               const unidadProducto = producto?.unidad_medida as string | null | undefined;
-                              const totalProduccionStr = pp
-                                ? formatTotalProduccion(cantidad, tipoPP, gramosPorPP, unidadProducto)
-                                : `${cantidad} g`;
-                              const costoProduccion = calcCostoProduccion(cantidad, tipoPP, gramosPorPP, unidadProducto, costoUnitario);
+                              const total = pp ? calcTotalPP(cantidad, { tipo_pp: tipoPP, gramos_por_pp: gramosPorPP }, unidadProducto) : null;
+                              const costoProduccion = pp ? calcCostoProduccion(cantidad, tipoPP, gramosPorPP, unidadProducto, costoUnitario) : 0;
                               return (
-                                <div key={row.localId} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--al)', borderRadius: '7px', padding: '7px 12px', border: '1px dashed var(--bo)' }}>
-                                  <SearchablePicker
-                                    value={row.pp_id}
-                                    options={ppOptions}
-                                    placeholder="Buscar PP o código"
-                                    width="300px"
-                                    onChange={value => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, pp_id: value } : x))}
-                                  />
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    step="any"
-                                    value={row.cantidad}
-                                    onClick={e => e.stopPropagation()}
-                                    onChange={e => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, cantidad: parseFloat(e.target.value) || 0 } : x))}
-                                    style={{ width: '80px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }}
+                                <div key={row.localId} className="hst-pp is-edit is-new">
+                                  <div className="hst-pp-nombre">
+                                    <SearchablePicker
+                                      value={row.pp_id}
+                                      options={ppOptions}
+                                      placeholder="Buscar PP o código"
+                                      width="100%"
+                                      onChange={value => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, pp_id: value } : x))}
                                     />
-                                  <span style={{ fontSize: '12px', color: 'var(--ts)' }}>PP</span>
-                                  <span style={{ fontSize: '12px', color: 'var(--tl)', fontWeight: 600, fontFamily: "'Space Grotesk', sans-serif" }}>{totalProduccionStr}</span>
-                                  <span style={{ fontSize: '11px', color: 'var(--ts)', fontFamily: "'Space Grotesk', sans-serif" }}>{formatCLP(costoProduccion)}</span>
-                                  <button
-                                    type="button"
-                                    onClick={e => { e.stopPropagation(); setNewRows(v => v.filter(x => x.localId !== row.localId)); }}
-                                    style={{ border: 'none', background: 'transparent', color: 'var(--rd)', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }}
-                                  >
-                                    ×
-                                  </button>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Rendimiento */}
-                      {rend.length > 0 && (
-                        <div style={{ minWidth: '200px' }}>
-                          <DetailLabel>Rendimiento verduras</DetailLabel>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                            {rend.map((r, i) => {
-                              const m   = calcMerma(r.kg_utilizados as number, r.rendimiento_kg as number);
-                              const col = m.estado === 'alto' ? 'var(--rd)' : m.estado === 'medio' ? 'var(--am)' : 'var(--tl)';
-                              const isEditing = editingId === id;
-                              const rv = editRendValues[r.id as string] ?? {
-                                kg_utilizados: r.kg_utilizados as number,
-                                rendimiento_kg: r.rendimiento_kg as number,
-                              };
-                              return (
-                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--sf)', borderRadius: '7px', padding: '7px 12px' }}>
-                                  <span style={{ flex: 1, fontSize: '13px', fontWeight: 500, color: 'var(--tx)' }}>{r.verdura as string}</span>
-                                  {isEditing ? (
-                                    <>
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        step="any"
-                                        value={rv.kg_utilizados}
-                                        onClick={e => e.stopPropagation()}
-                                        onChange={e => setEditRendValues(v => ({
-                                          ...v,
-                                          [r.id as string]: {
-                                            kg_utilizados: parseFloat(e.target.value) || 0,
-                                            rendimiento_kg: v[r.id as string]?.rendimiento_kg ?? rv.rendimiento_kg,
-                                          },
-                                        }))}
-                                        style={{ width: '82px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }}
-                                      />
-                                      <span style={{ fontSize: '12px', color: 'var(--ts)' }}>kg</span>
-                                      <span style={{ fontSize: '12px', color: 'var(--ts)' }}>→</span>
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        step="any"
-                                        value={rv.rendimiento_kg}
-                                        onClick={e => e.stopPropagation()}
-                                        onChange={e => setEditRendValues(v => ({
-                                          ...v,
-                                          [r.id as string]: {
-                                            kg_utilizados: v[r.id as string]?.kg_utilizados ?? rv.kg_utilizados,
-                                            rendimiento_kg: parseFloat(e.target.value) || 0,
-                                          },
-                                        }))}
-                                        style={{ width: '82px', padding: '3px 6px', fontSize: '13px', borderRadius: '4px', border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--tx)', textAlign: 'right' }}
-                                      />
-                                      <span style={{ fontSize: '12px', color: 'var(--ts)' }}>kg</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <span style={{ fontSize: '11px', color: 'var(--ts)' }}>{r.kg_utilizados as number} kg → {r.rendimiento_kg as number} kg</span>
-                                      <span style={{ fontSize: '12px', fontWeight: 700, color: col, fontFamily: "'Space Grotesk', sans-serif" }}>{formatPct(m.mermaPct)} merma</span>
-                                    </>
+                                    <small>{pp ? fmtCalculoPP({ cantidad, gramos_por_pp: gramosPorPP, tipo_pp: tipoPP }) : 'Nuevo PP: elige el producto'}</small>
+                                  </div>
+                                  <label className="hst-pp-cant">
+                                    <small>Cantidad</small>
+                                    <span>
+                                      <input type="number" min={0} step="any" value={row.cantidad} aria-label="Cantidad del nuevo PP"
+                                        onChange={e => setNewRows(v => v.map(x => x.localId === row.localId ? { ...x, cantidad: parseFloat(e.target.value) || 0 } : x))} />
+                                      PP
+                                    </span>
+                                  </label>
+                                  <div className="hst-pp-total">
+                                    <b>{pp ? fmtProducidoPP(cantidad, total, tipoPP, gramosPorPP, unidadProducto) : '—'}</b>
+                                    <small>Producido</small>
+                                  </div>
+                                  {verCostos && (
+                                    <div className="hst-pp-costo">
+                                      <b>{costoProduccion > 0 ? formatCLP(costoProduccion) : '—'}</b>
+                                      <small>Costo est.</small>
+                                    </div>
                                   )}
+                                  <button type="button" className="hst-quitar" title="Quitar línea" aria-label="Quitar línea" onClick={() => setNewRows(v => v.filter(x => x.localId !== row.localId))}>×</button>
                                 </div>
                               );
                             })}
                           </div>
+
+                          {!!p.observacion && (
+                            <div className="hst-obs">
+                              <span><NavIcon name="info" size={13} strokeWidth={2.2} />Observación</span>
+                              <p>{p.observacion as string}</p>
+                            </div>
+                          )}
                         </div>
-                      )}
+
+                        {rend.length > 0 && (
+                          <div className="hst-rend">
+                            <h4 className="hst-sec-title"><span className="hst-leaf"><NavIcon name="leaf" size={14} /></span>Rendimiento verduras</h4>
+                            <table>
+                              <thead>
+                                <tr><th>Producto</th><th>Utilizado</th><th>Rendimiento</th><th>Merma</th></tr>
+                              </thead>
+                              <tbody>
+                                {rend.map(r => {
+                                  const rv = editRendValues[r.id as string] ?? { kg_utilizados: r.kg_utilizados as number, rendimiento_kg: r.rendimiento_kg as number };
+                                  const m = calcMerma(rv.kg_utilizados, rv.rendimiento_kg);
+                                  return (
+                                    <tr key={r.id as string}>
+                                      <td>{r.verdura as string}</td>
+                                      <td>
+                                        {editando ? (
+                                          <input type="number" min={0} step="any" value={rv.kg_utilizados}
+                                            onChange={e => setEditRendValues(v => ({ ...v, [r.id as string]: { kg_utilizados: parseFloat(e.target.value) || 0, rendimiento_kg: v[r.id as string]?.rendimiento_kg ?? rv.rendimiento_kg } }))} />
+                                        ) : `${fmtNum(r.kg_utilizados as number)} kg`}
+                                      </td>
+                                      <td>
+                                        {editando ? (
+                                          <input type="number" min={0} step="any" value={rv.rendimiento_kg}
+                                            onChange={e => setEditRendValues(v => ({ ...v, [r.id as string]: { kg_utilizados: v[r.id as string]?.kg_utilizados ?? rv.kg_utilizados, rendimiento_kg: parseFloat(e.target.value) || 0 } }))} />
+                                        ) : `${fmtNum(r.rendimiento_kg as number)} kg`}
+                                      </td>
+                                      <td><span className={`hst-merma is-${m.estado}`}>{formatPct(m.mermaPct)}</span></td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </td>
-                </tr>
-              ),
-            ];
-          })}
-        </tbody>
-      </table>
+                  )}
+                </article>
+              );
+            })}
+          </section>
+        );
+      })}
+      {saveErr && !editingId && <p className="hst-err" style={{ margin: '0 0 12px' }}>{saveErr}</p>}
     </div>
   );
 }
 
 // ─── TablaColacion ──────────────────────────────────────────────────────────
 
-function TablaColacion({ datos, canEdit, isAdmin, onRefresh, verCostos, productos }: { datos: Record<string, unknown>[]; canEdit: boolean; isAdmin: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[] }) {
+function TablaColacion({ datos, isAdmin, onRefresh, verCostos, productos }: { datos: Record<string, unknown>[]; canEdit: boolean; isAdmin: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[] }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, number>>({});
@@ -891,7 +918,7 @@ function TablaColacion({ datos, canEdit, isAdmin, onRefresh, verCostos, producto
                   {fmtFecha(c.fecha as string)}
                 </td>
                 <td style={tdSt}>
-                  <Chip label={primerNombre(c.responsable_nombre as string)} color="#2563EB" />
+                  <ResponsableChip nombre={c.responsable_nombre as string} />
                 </td>
                 <td style={{ ...tdSt, maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
                   {c.menu as string}
@@ -912,20 +939,8 @@ function TablaColacion({ datos, canEdit, isAdmin, onRefresh, verCostos, producto
                     {cpp ? formatCLP(cpp) : <span style={{ color: 'var(--ts)' }}>—</span>}
                   </td>
                 )}
-                <td style={{ ...tdSt, textAlign: 'right', width: canEdit ? '116px' : '48px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
-                    {canEdit && (
-                      <button
-                        type="button"
-                        onClick={e => { e.stopPropagation(); deleteRecord(id); }}
-                        title="Borrar colacion"
-                        style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '4px', background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5', cursor: 'pointer', fontWeight: 700 }}
-                      >
-                        Borrar
-                      </button>
-                    )}
-                    <ExpandBtn open={open} />
-                  </div>
+                <td style={{ ...tdSt, textAlign: 'right', width: isAdmin ? '120px' : '48px' }}>
+                  {isAdmin ? <RowActions open={open} editing={editingId === id} onEdit={() => { setExpanded(s => new Set(s).add(id)); startEdit(id, det, ni); }} onDelete={() => deleteRecord(id)} /> : <ExpandBtn open={open} />}
                 </td>
               </tr>,
 
@@ -972,16 +987,10 @@ function TablaColacion({ datos, canEdit, isAdmin, onRefresh, verCostos, producto
                       </div>
 
                       {/* Ingredientes */}
-                      {det.length > 0 && (
+                      {(det.length > 0 || editingId === id) && (
                         <div style={{ flex: 1, minWidth: '240px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                             <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Ingredientes utilizados</span>
-                            {canEdit && editingId !== id && (
-                              <button onClick={e => { e.stopPropagation(); startEdit(id, det, ni); }}
-                                style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--ac)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
-                                Editar
-                              </button>
-                            )}
                             {editingId === id && (
                               <>
                                 <button onClick={e => { e.stopPropagation(); addRow(); }} disabled={saving}
@@ -997,12 +1006,6 @@ function TablaColacion({ datos, canEdit, isAdmin, onRefresh, verCostos, producto
                                   Cancelar
                                 </button>
                               </>
-                            )}
-                            {canEdit && editingId !== id && (
-                              <button onClick={e => { e.stopPropagation(); deleteRecord(id); }}
-                                style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5', cursor: 'pointer', fontWeight: 700 }}>
-                                BORRAR
-                              </button>
                             )}
                           </div>
                           {saveErr && <p style={{ color: 'var(--rd)', fontSize: '11px', margin: '0 0 6px' }}>{saveErr}</p>}
@@ -1093,7 +1096,7 @@ function TablaColacion({ datos, canEdit, isAdmin, onRefresh, verCostos, producto
 
 // ─── TablaMermas ─────────────────────────────────────────────────────────────
 
-function TablaFrutas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos }: { datos: Record<string, unknown>[]; canEdit: boolean; isAdmin: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[] }) {
+function TablaFrutas({ datos, isAdmin, onRefresh, verCostos, productos }: { datos: Record<string, unknown>[]; canEdit: boolean; isAdmin: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[] }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, number>>({});
@@ -1192,7 +1195,7 @@ function TablaFrutas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
                 onMouseLeave={e => { if (!open) (e.currentTarget as HTMLTableRowElement).style.background = 'transparent'; }}
               >
                 <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtFecha(f.fecha as string)}</td>
-                <td style={tdSt}><Chip label={primerNombre(f.responsable_nombre as string)} color="#2563EB" /></td>
+                <td style={tdSt}><ResponsableChip nombre={f.responsable_nombre as string} /></td>
                 <td style={{ ...tdSt, maxWidth: '300px' }}>
                   {det.length === 0 ? (
                     <span style={{ color: 'var(--ts)' }}>Sin detalle</span>
@@ -1211,7 +1214,9 @@ function TablaFrutas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
                     {ct > 0 ? formatCLP(ct) : '—'}
                   </td>
                 )}
-                <td style={{ ...tdSt, textAlign: 'right', width: '48px' }}><ExpandBtn open={open} /></td>
+                <td style={{ ...tdSt, textAlign: 'right', width: isAdmin ? '120px' : '48px' }}>
+                  {isAdmin ? <RowActions open={open} editing={editingId === id} onEdit={() => { setExpanded(s => new Set(s).add(id)); startEdit(id, det); }} onDelete={() => deleteRecord(id)} /> : <ExpandBtn open={open} />}
+                </td>
               </tr>,
 
               open && (
@@ -1241,12 +1246,6 @@ function TablaFrutas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
                       <div style={{ flex: 1, minWidth: '240px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                           <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Frutas entregadas</span>
-                          {canEdit && editingId !== id && (
-                            <button onClick={e => { e.stopPropagation(); startEdit(id, det); }}
-                              style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--ac)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
-                              Editar
-                            </button>
-                          )}
                           {editingId === id && (
                             <>
                               <button onClick={e => { e.stopPropagation(); addRow(); }} disabled={saving}
@@ -1262,12 +1261,6 @@ function TablaFrutas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
                                 Cancelar
                               </button>
                             </>
-                          )}
-                          {canEdit && editingId !== id && (
-                            <button onClick={e => { e.stopPropagation(); deleteRecord(id); }}
-                              style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5', cursor: 'pointer', fontWeight: 700 }}>
-                              BORRAR
-                            </button>
                           )}
                         </div>
                         {saveErr && <p style={{ color: 'var(--rd)', fontSize: '11px', margin: '0 0 6px' }}>{saveErr}</p>}
@@ -1503,7 +1496,7 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos }: { datos: Reco
                 onMouseLeave={e => { if (!open) (e.currentTarget as HTMLTableRowElement).style.background = 'transparent'; }}
               >
                 <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtFecha(inventario.fecha as string)}</td>
-                <td style={tdSt}><Chip label={primerNombre(inventario.responsable_nombre as string)} color="#2563EB" /></td>
+                <td style={tdSt}><ResponsableChip nombre={inventario.responsable_nombre as string} /></td>
                 <td style={{ ...tdSt, maxWidth: '320px' }}>
                   <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
                     {preview.map(ubicacion => <Chip key={ubicacion} label={ubicacion} color="#2563EB" />)}
@@ -1511,7 +1504,9 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos }: { datos: Reco
                   </div>
                 </td>
                 <td style={{ ...tdSt, fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums' }}>{det.length}</td>
-                <td style={{ ...tdSt, textAlign: 'right', width: '48px' }}><ExpandBtn open={open} /></td>
+                <td style={{ ...tdSt, textAlign: 'right', width: isAdmin ? '120px' : '48px' }}>
+                  {isAdmin ? <RowActions open={open} editing={editingId === id} onEdit={() => { setExpanded(s => new Set(s).add(id)); startEdit(id, det); }} onDelete={() => deleteRecord(id)} /> : <ExpandBtn open={open} />}
+                </td>
               </tr>,
               open && (
                 <tr key={`${id}-det`}>
@@ -1544,14 +1539,6 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos }: { datos: Reco
                       <div style={{ flex: 1, minWidth: '260px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
                           <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Stock registrado</span>
-                          {isAdmin && editingId !== id && (
-                            <button
-                              onClick={e => { e.stopPropagation(); startEdit(id, det); }}
-                              style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--ac)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}
-                            >
-                              Editar
-                            </button>
-                          )}
                           {isAdmin && editingId === id && (
                             <>
                               <button
@@ -1575,14 +1562,6 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos }: { datos: Reco
                                 Cancelar
                               </button>
                             </>
-                          )}
-                          {isAdmin && editingId !== id && (
-                            <button
-                              onClick={e => { e.stopPropagation(); deleteRecord(id); }}
-                              style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5', cursor: 'pointer', fontWeight: 700 }}
-                            >
-                              BORRAR
-                            </button>
                           )}
                         </div>
                         {saveErr && <p style={{ color: 'var(--rd)', fontSize: '11px', margin: '0 0 6px' }}>{saveErr}</p>}
@@ -1795,7 +1774,7 @@ function TablaMermas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
                   {fmtFecha(m.fecha as string)}
                 </td>
                 <td style={tdSt}>
-                  <Chip label={primerNombre(m.responsable_nombre as string)} color={colorResponsable(m.responsable_nombre as string)} />
+                  <ResponsableChip nombre={m.responsable_nombre as string} />
                 </td>
                 <td style={{ ...tdSt, maxWidth: '260px' }}>
                   {det.length === 0 ? (
@@ -1829,8 +1808,8 @@ function TablaMermas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
                     {ct > 0 ? formatCLP(ct) : '—'}
                   </td>
                 )}
-                <td style={{ ...tdSt, textAlign: 'right', width: '48px' }}>
-                  <ExpandBtn open={open} />
+                <td style={{ ...tdSt, textAlign: 'right', width: isAdmin ? '120px' : '48px' }}>
+                  {isAdmin ? <RowActions open={open} editing={editingId === id} onEdit={() => { setExpanded(s => new Set(s).add(id)); startEdit(id, det); }} onDelete={() => deleteRecord(id)} /> : <ExpandBtn open={open} />}
                 </td>
               </tr>,
 
@@ -1917,12 +1896,6 @@ function TablaMermas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
                         <div style={{ flex: 1, minWidth: '240px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                             <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Detalle de productos</span>
-                            {canEdit && editingId !== id && (
-                              <button onClick={e => { e.stopPropagation(); startEdit(id, det); }}
-                                style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--ac)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
-                                Editar
-                              </button>
-                            )}
                             {editingId === id && (
                               <>
                                 <button onClick={e => { e.stopPropagation(); addRow(); }} disabled={saving}
@@ -1938,12 +1911,6 @@ function TablaMermas({ datos, canEdit, isAdmin, onRefresh, verCostos, productos 
                                   Cancelar
                                 </button>
                               </>
-                            )}
-                            {canEdit && editingId !== id && (
-                              <button onClick={e => { e.stopPropagation(); deleteRecord(id); }}
-                                style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5', cursor: 'pointer', fontWeight: 700 }}>
-                                BORRAR
-                              </button>
                             )}
                           </div>
                           {saveErr && <p style={{ color: 'var(--rd)', fontSize: '11px', margin: '0 0 6px' }}>{saveErr}</p>}
@@ -2073,23 +2040,11 @@ function PeriodShortcuts({ desde, hasta, onSelect }: { desde: string; hasta: str
     { label: 'Año',     d: restarMeses(12),h: hoy },
   ];
   return (
-    <div className="tab-row">
+    <div className="hst-atajos">
       {shorts.map(s => {
         const activo = desde === s.d && hasta === s.h;
         return (
-          <button
-            key={s.label}
-            type="button"
-            onClick={() => onSelect(s.d, s.h)}
-            aria-pressed={activo}
-            style={{
-              padding: '3px 7px', borderRadius: '14px', fontSize: '10.5px', fontWeight: 600,
-              cursor: 'pointer', minHeight: '24px', whiteSpace: 'nowrap', transition: 'border-color 0.15s, background 0.15s',
-              border: `1px solid var(--ac)`,
-              background: activo ? 'var(--ac)' : 'var(--bg)',
-              color: activo ? '#fff' : 'var(--ac)',
-            }}
-          >
+          <button key={s.label} type="button" onClick={() => onSelect(s.d, s.h)} aria-pressed={activo} className={activo ? 'is-on' : undefined}>
             {s.label}
           </button>
         );
@@ -2123,6 +2078,8 @@ export default function HistorialPage() {
   const [page, setPage] = useState(1);
   const [summary, setSummary] = useState<HistorialSummary | null>(null);
   const [maestros, setMaestros] = useState<{ productos: Record<string, unknown>[]; pps: Record<string, unknown>[] }>({ productos: [], pps: [] });
+  const [responsable, setResponsable] = useState('');
+  const [responsables, setResponsables] = useState<string[]>([]);
   const busqueda = busquedas[tab] ?? '';
 
   // Cada llamada a cargar() reclama un id; si mientras espera la respuesta se dispara otra
@@ -2130,7 +2087,7 @@ export default function HistorialPage() {
   // la respuesta que llega tarde se descarta en vez de sobrescribir la tabla con un rango viejo.
   const reqIdRef = useRef(0);
 
-  const cargar = useCallback(async (t: Tab, d: string, h: string, q: string, offset: number) => {
+  const cargar = useCallback(async (t: Tab, d: string, h: string, q: string, resp: string, offset: number) => {
     const reqId = ++reqIdRef.current;
     setLoading(true); setErr(''); setDatos([]); setSummary(null);
     try {
@@ -2142,6 +2099,7 @@ export default function HistorialPage() {
         offset: String(offset),
       });
       if (q.trim()) params.set('q', q.trim());
+      if (resp) params.set('responsable', resp);
       const res = await fetch(`/api/historial?${params.toString()}`);
       const data = await res.json();
       if (reqId !== reqIdRef.current) return; // llegó una consulta más nueva: esta respuesta ya no aplica
@@ -2149,6 +2107,7 @@ export default function HistorialPage() {
       setDatos(data.items ?? []);
       setTotal(data.count ?? (data.items?.length ?? 0));
       setSummary(data.summary ?? null);
+      setResponsables(Array.isArray(data.responsables) ? data.responsables : []);
     } catch (e: unknown) {
       if (reqId !== reqIdRef.current) return;
       setErr(e instanceof Error ? e.message : 'Error cargando datos');
@@ -2178,14 +2137,14 @@ export default function HistorialPage() {
     // Debounce fijo: al ajustar el rango se tocan dos campos (desde y hasta) casi seguidos;
     // con 250 ms se agrupan en una sola consulta en vez de lanzar dos fetch solapados.
     const timer = window.setTimeout(() => {
-      void cargar(tab, desde, hasta, busqueda, (page - 1) * PAGE_SIZE);
+      void cargar(tab, desde, hasta, busqueda, responsable, (page - 1) * PAGE_SIZE);
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [tab, desde, hasta, busqueda, page, cargar]);
+  }, [tab, desde, hasta, busqueda, responsable, page, cargar]);
 
   const refresh = useCallback(
-    () => cargar(tab, desde, hasta, busqueda, (page - 1) * PAGE_SIZE),
-    [cargar, tab, desde, hasta, busqueda, page],
+    () => cargar(tab, desde, hasta, busqueda, responsable, (page - 1) * PAGE_SIZE),
+    [cargar, tab, desde, hasta, busqueda, responsable, page],
   );
 
   // Todo cambio de pestaña / rango / búsqueda vuelve a la página 1, en el mismo evento que
@@ -2195,7 +2154,9 @@ export default function HistorialPage() {
   const cambiarHasta = (v: string) => { setPage(1); setHasta(v); };
   const aplicarAtajo = (d: string, h: string) => { setPage(1); setDesde(d); setHasta(h); };
   const cambiarBusqueda = (v: string) => { setPage(1); setBusquedas(prev => ({ ...prev, [tab]: v })); };
-  const limpiarBusqueda = () => { setPage(1); setBusquedas(prev => ({ ...prev, [tab]: '' })); };
+  const cambiarResponsable = (v: string) => { setPage(1); setResponsable(v); };
+  const limpiarFiltros = () => { setPage(1); setBusquedas(prev => ({ ...prev, [tab]: '' })); setResponsable(''); };
+  const hayFiltros = !!busqueda.trim() || !!responsable;
 
   const TAB_CFG: { id: Tab; label: string }[] = [
     { id: 'produccion', label: 'Producción' },
@@ -2206,55 +2167,37 @@ export default function HistorialPage() {
   ];
 
   return (
-    <div className="page" style={{ maxWidth: 1560 }}>
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .hist-toolbar {
-          display: grid;
-          grid-template-columns: minmax(330px, 400px) 1fr;
-          gap: 14px;
-          align-items: stretch;
-          margin-bottom: 14px;
-        }
-        .hist-filter-card {
-          background: var(--sf);
-          border: 1px solid var(--bo);
-          border-radius: 12px;
-          padding: 11px 12px;
-          display: flex;
-          flex-direction: column;
-          gap: 9px;
-          justify-content: center;
-        }
-        .hist-kpi-row {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          grid-auto-rows: 1fr;
-          gap: 10px;
-        }
-        .hist-tabs { display: flex; overflow-x: auto; }
-        @media (max-width: 1100px) {
-          .hist-toolbar { grid-template-columns: 1fr; }
-          .hist-kpi-row { grid-template-columns: repeat(2, 1fr); }
-        }
-      `}</style>
+    <div className="page hst" style={{ maxWidth: 1560 }}>
+      <style>{'@keyframes spin { to { transform: rotate(360deg); } }'}</style>
 
-      <div style={{ marginBottom: '14px' }}>
-        <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '20px', fontWeight: 800, margin: '0 0 2px' }}>Historial</h1>
-        <p style={{ color: 'var(--ts)', fontSize: '13px', margin: 0 }}>Registros por período — haz clic en una fila para ver el detalle</p>
+      {/* Encabezado */}
+      <div className="hst-head">
+        <div className="hst-head-title">
+          <span className="hst-head-icon"><NavIcon name="clock" size={22} strokeWidth={1.9} /></span>
+          <div>
+            <h1>Historial</h1>
+            <p>Registros por período — haz clic en una fila para ver el detalle</p>
+          </div>
+        </div>
+        {puede('export', 'ver') && (
+          <a href="/export" className="hst-btn-sec hst-btn-lg">
+            <NavIcon name="file-down" size={17} /> Exportar
+          </a>
+        )}
       </div>
 
-      {/* Filtro de fechas + KPI */}
-      <div className="hist-toolbar">
-        <div className="hist-filter-card">
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: '1 1 165px', minWidth: 0 }}>
-              <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Desde</span>
-              <input type="date" value={desde} onChange={e => cambiarDesde(e.target.value)} aria-label="Fecha desde" className="field-input" style={{ width: '100%', padding: '5px 10px', fontSize: '12.5px', minHeight: '30px' }} />
+      {/* Período + KPI */}
+      <div className="hst-top">
+        <div className="hst-periodo">
+          <span className="hst-kpi-label">Período</span>
+          <div className="hst-fechas">
+            <label>
+              <span>Desde</span>
+              <input type="date" value={desde} onChange={e => cambiarDesde(e.target.value)} aria-label="Fecha desde" />
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: '1 1 165px', minWidth: 0 }}>
-              <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Hasta</span>
-              <input type="date" value={hasta} onChange={e => cambiarHasta(e.target.value)} aria-label="Fecha hasta" className="field-input" style={{ width: '100%', padding: '5px 10px', fontSize: '12.5px', minHeight: '30px' }} />
+            <label>
+              <span>Hasta</span>
+              <input type="date" value={hasta} onChange={e => cambiarHasta(e.target.value)} aria-label="Fecha hasta" />
             </label>
           </div>
           <PeriodShortcuts desde={desde} hasta={hasta} onSelect={aplicarAtajo} />
@@ -2263,48 +2206,39 @@ export default function HistorialPage() {
       </div>
 
       {/* Card con tabs */}
-      <div style={{ background: 'var(--sf)', borderRadius: '14px', border: '1px solid var(--bo)', overflow: 'hidden' }}>
-        {/* Tabs */}
-        <div className="hist-tabs" style={{ borderBottom: '1px solid var(--bo)', background: 'var(--bg)' }}>
+      <div className="hst-card">
+        <div className="hst-tabs" role="tablist">
           {TAB_CFG.map(({ id, label }) => {
             const activa = tab === id;
             return (
-              <button key={id} type="button" onClick={() => cambiarTab(id)} aria-current={activa ? 'page' : undefined} style={{
-                padding: '13px 20px', background: activa ? 'var(--sf)' : 'none', border: 'none', cursor: 'pointer',
-                fontSize: '13px', fontWeight: activa ? 700 : 500,
-                color: activa ? 'var(--ac)' : 'var(--ts)',
-                borderBottom: `2px solid ${activa ? 'var(--ac)' : 'transparent'}`,
-                marginBottom: '-1px', fontFamily: 'DM Sans, sans-serif', transition: 'color 0.15s', whiteSpace: 'nowrap',
-              }}>{label}</button>
+              <button key={id} type="button" role="tab" aria-selected={activa} onClick={() => cambiarTab(id)} className={activa ? 'is-on' : undefined}>
+                {label}
+              </button>
             );
           })}
         </div>
 
-        {/* Buscador + limpiar filtros */}
-        <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--bo)', background: 'var(--bg)', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <input
-            type="search"
-            value={busqueda}
-            onChange={e => cambiarBusqueda(e.target.value)}
-            placeholder="Buscar producciones, productos o responsable"
-            aria-label="Buscar producciones, productos o responsable"
-            className="field-input"
-            style={{ padding: '6px 12px', fontSize: '13px', minHeight: '34px', flex: '1 1 260px' }}
-          />
-          <button
-            type="button"
-            onClick={limpiarBusqueda}
-            disabled={!busqueda.trim()}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: '6px',
-              height: '34px', padding: '0 13px', borderRadius: '8px',
-              border: '1px solid var(--ac)', background: 'var(--bg)', color: 'var(--ac)',
-              fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
-              cursor: busqueda.trim() ? 'pointer' : 'default', opacity: busqueda.trim() ? 1 : 0.45,
-            }}
-          >
-            <span aria-hidden style={{ fontSize: '13px', lineHeight: 1 }}>⟲</span>
-            Limpiar filtros
+        {/* Filtros: buscador general + responsable + limpiar */}
+        <div className="hst-filtros">
+          <label className="hst-search">
+            <NavIcon name="search" size={17} />
+            <input
+              type="search"
+              value={busqueda}
+              onChange={e => cambiarBusqueda(e.target.value)}
+              placeholder="Buscar producciones, productos o responsable..."
+              aria-label="Buscar producciones, productos o responsable"
+            />
+          </label>
+          <label className="hst-select">
+            <span>Responsable</span>
+            <select value={responsable} onChange={e => cambiarResponsable(e.target.value)}>
+              <option value="">Todos</option>
+              {[...new Set([...responsables, ...(responsable ? [responsable] : [])])].map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </label>
+          <button type="button" className="hst-btn-sec" onClick={limpiarFiltros} disabled={!hayFiltros}>
+            <NavIcon name="rotate-ccw" size={15} /> Limpiar filtros
           </button>
         </div>
 
@@ -2321,7 +2255,7 @@ export default function HistorialPage() {
           </div>
         ) : (
           <>
-            {tab === 'produccion' && <TablaProduccion datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} pps={maestros.pps} />}
+            {tab === 'produccion' && <TablaProduccion datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} pps={maestros.pps} porDia={summary?.por_dia} />}
             {tab === 'colacion'   && <TablaColacion   datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} />}
             {tab === 'frutas'     && <TablaFrutas     datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} />}
             {tab === 'inventario' && <TablaInventario datos={datos} isAdmin={isAdmin} onRefresh={refresh} productos={maestros.productos} />}
