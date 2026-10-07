@@ -220,30 +220,36 @@ export async function DELETE(req: NextRequest) {
   if (!s.ok) return s.response;
 
   const body = await req.json().catch(() => ({}));
-  const id = typeof body.id === 'string' ? body.id : '';
-  if (!id) return NextResponse.json({ error: 'Datos invalidos' }, { status: 400 });
+  // Acepta { id } o { ids: [...] }: un conteo/movimiento completo se borra en una sola llamada.
+  const ids: string[] = Array.isArray(body.ids)
+    ? [...new Set((body.ids as unknown[]).filter((v): v is string => typeof v === 'string' && v !== ''))]
+    : typeof body.id === 'string' && body.id ? [body.id] : [];
+  if (!ids.length) return NextResponse.json({ error: 'Datos invalidos' }, { status: 400 });
 
   const supabase = await createClient();
-  const { data: movimiento, error: fetchError } = await supabase.from('carnicos_movimientos').select('*').eq('id', id).single();
+  const { data: movimientos, error: fetchError } = await supabase.from('carnicos_movimientos').select('*').in('id', ids);
   if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
-  if (movimiento?.origen === 'venta_toteat') {
+  if ((movimientos ?? []).some(m => m.origen === 'venta_toteat')) {
     return NextResponse.json({ error: 'Las salidas por venta se revierten desde la pestaña Ventas, no se borran directamente.' }, { status: 400 });
   }
 
-  const { data: borrado, error } = await supabase.from('carnicos_movimientos').delete().eq('id', id).select('id');
+  const { data: borrado, error } = await supabase.from('carnicos_movimientos').delete().in('id', ids).select('id');
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!borrado || borrado.length === 0) {
     return NextResponse.json({ error: 'No se pudo eliminar: la fila no existe o falta permiso de DELETE (revisa la politica RLS de carnicos_movimientos en Supabase).' }, { status: 403 });
   }
 
-  await auditLog(supabase, {
+  // Una fila de auditoria por producto, en un solo insert
+  const borrados = new Set(borrado.map(r => r.id as string));
+  const { error: auditError } = await supabase.from('audit_log').insert((movimientos ?? []).filter(m => borrados.has(m.id)).map(m => ({
     usuario_email: s.email,
     rol_usuario: s.rol,
     accion: 'eliminar_movimiento_carnico',
     tabla: 'carnicos_movimientos',
-    registro_id: id,
-    datos_anteriores: movimiento,
-  });
+    registro_id: m.id,
+    datos_anteriores: m,
+  })));
+  if (auditError) console.error('[audit] error registrando:', auditError.message);
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, eliminados: borrado.length });
 }

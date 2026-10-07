@@ -309,7 +309,7 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
   }
 
   // Elimina el movimiento (o conteo de inventario) completo directamente desde la lista,
-  // borrando todas sus filas por id. Requiere confirmacion explicita (mismo criterio que el drawer).
+  // borrando todas sus filas por id en una sola llamada. Requiere confirmacion explicita (mismo criterio que el drawer).
   async function eliminarGrupoConfirmado() {
     if (!confirmarEliminar) return;
     setEliminando(true);
@@ -318,15 +318,14 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
       const url = confirmarEliminar.variante === 'movimiento'
         ? '/api/control-carnicos/movimientos'
         : '/api/control-carnicos/inventarios';
-      for (const it of confirmarEliminar.grupo.items) {
-        const res = await fetch(url, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: it.id }),
-        });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(json.error ?? 'Error eliminando');
-      }
+      // Una sola llamada con todos los productos del grupo (antes era una por producto).
+      const res = await fetch(url, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: confirmarEliminar.grupo.items.map(it => it.id) }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error ?? 'Error eliminando');
       // Si el drawer estaba abierto sobre este mismo grupo, se cierra.
       if (drawer && drawer.key === confirmarEliminar.grupo.key) setDrawer(null);
       setConfirmarEliminar(null);

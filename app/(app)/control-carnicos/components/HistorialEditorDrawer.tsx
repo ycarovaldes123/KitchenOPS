@@ -194,9 +194,9 @@ export default function HistorialEditorDrawer({
       }
 
       // 2) Elimina productos marcados para borrar.
-      for (const id of eliminados) {
+      if (eliminados.size) {
         const url = grupo.variante === 'movimiento' ? '/api/control-carnicos/movimientos' : '/api/control-carnicos/inventarios';
-        const res = await fetch(url, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+        const res = await fetch(url, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [...eliminados] }) });
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(json.error ?? 'Error eliminando producto');
       }
@@ -247,11 +247,9 @@ export default function HistorialEditorDrawer({
     setError('');
     try {
       const url = grupo.variante === 'movimiento' ? '/api/control-carnicos/movimientos' : '/api/control-carnicos/inventarios';
-      for (const it of grupo.items) {
-        const res = await fetch(url, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: it.id }) });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(json.error ?? 'Error eliminando movimiento');
-      }
+      const res = await fetch(url, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: grupo.items.map(it => it.id) }) });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error ?? 'Error eliminando movimiento');
       setExito('Movimiento eliminado correctamente');
       onSaved();
       setTimeout(() => onClose(), 700);
