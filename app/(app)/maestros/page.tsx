@@ -95,6 +95,7 @@ export default function MaestrosPage() {
   const [recetaModal, setRecetaModal] = useState<false | 'new' | { edit: PPReceta } | { copy: PPReceta }>(false);
   const [mostrarInactivas, setMostrarInactivas] = useState(false);
   const [soloDuplicadas, setSoloDuplicadas] = useState(false);
+  const [ocultarProdInactivos, setOcultarProdInactivos] = useState(true);
   const [recetaAccion, setRecetaAccion] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const recetasBodyRef = useRef<HTMLTableSectionElement>(null);
@@ -401,9 +402,11 @@ export default function MaestrosPage() {
     (!ppTipoFiltro || pp.tipo_pp === ppTipoFiltro)
   );
   const filteredProd = productos.filter(p =>
-    p.nombre.toLowerCase().includes(search.toLowerCase()) ||
-    p.codigo.toLowerCase().includes(search.toLowerCase())
+    (!ocultarProdInactivos || p.activo !== false) &&
+    (p.nombre.toLowerCase().includes(search.toLowerCase()) ||
+     p.codigo.toLowerCase().includes(search.toLowerCase()))
   );
+  const prodInactivos = productos.filter(p => p.activo === false).length;
   const filteredResp = responsables.filter(r =>
     r.nombre.toLowerCase().includes(search.toLowerCase())
   );
@@ -562,12 +565,35 @@ export default function MaestrosPage() {
 
       {/* Search */}
       {tab !== 'recetas' && (
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Buscar..."
-          style={{ ...inputStyle, maxWidth: '280px', marginBottom: '16px' }}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', marginBottom: '16px' }}>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar..."
+            style={{ ...inputStyle, maxWidth: '280px' }}
+          />
+          {tab === 'productos' && (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={ocultarProdInactivos}
+              onClick={() => setOcultarProdInactivos(v => !v)}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '13px', color: 'var(--tx)' }}
+            >
+              <span style={{
+                position: 'relative', width: '36px', height: '20px', borderRadius: '10px', flexShrink: 0,
+                background: ocultarProdInactivos ? 'var(--ac)' : '#D1D5DB', transition: 'background .15s',
+              }}>
+                <span style={{
+                  position: 'absolute', top: '2px', left: ocultarProdInactivos ? '18px' : '2px',
+                  width: '16px', height: '16px', borderRadius: '50%', background: '#fff',
+                  boxShadow: '0 1px 2px rgba(0,0,0,.25)', transition: 'left .15s',
+                }} />
+              </span>
+              Ocultar desactivados{prodInactivos > 0 ? ` (${prodInactivos})` : ''}
+            </button>
+          )}
+        </div>
       )}
 
       {loading ? (
