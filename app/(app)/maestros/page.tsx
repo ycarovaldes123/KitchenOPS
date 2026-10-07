@@ -2,9 +2,10 @@
 
 import { useEffect, useState, useRef, useSyncExternalStore } from 'react';
 import { useRol } from '@/components/RolProvider';
-import type { Producto, PP, Responsable, TipoPP } from '@/types/database';
+import type { Producto, PP, TipoPP } from '@/types/database';
 import RecetaPPEditorModal from '@/components/maestros/RecetaPPEditorModal';
 import RecetaPPFicha, { RecetaEstadoChip } from '@/components/maestros/RecetaPPFicha';
+import PersonalTab from '@/components/maestros/PersonalTab';
 import NavIcon from '@/components/layout/NavIcon';
 import type { PPReceta } from '@/components/maestros/types';
 import { formatCostoUnitario, formatCantidad } from '@/lib/costo-receta-pp';
@@ -46,7 +47,6 @@ export default function MaestrosPage() {
   const [tab, setTab]           = useState<Tab>('pp');
   const [productos, setProductos] = useState<Producto[]>([]);
   const [pps, setPPs]           = useState<PP[]>([]);
-  const [responsables, setResp] = useState<Responsable[]>([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
   const [ppTipoFiltro, setPPTipoFiltro] = useState<TipoPP | ''>('');
@@ -114,14 +114,12 @@ export default function MaestrosPage() {
 
   async function load() {
     setLoading(true);
-    const [rPP, rProd, rResp] = await Promise.all([
+    const [rPP, rProd] = await Promise.all([
       fetch('/api/maestros/pp', { cache: 'no-store' }).then(r => r.json()),
       fetch('/api/maestros/productos', { cache: 'no-store' }).then(r => r.json()),
-      fetch('/api/maestros', { cache: 'no-store' }).then(r => r.json()).then(d => d.responsables),
     ]);
     setPPs(Array.isArray(rPP) ? rPP : []);
     setProductos(Array.isArray(rProd) ? rProd : []);
-    setResp(Array.isArray(rResp) ? rResp : []);
     setLoading(false);
   }
 
@@ -411,9 +409,6 @@ export default function MaestrosPage() {
      (p.codigo_defontana ?? '').includes(search.trim()))
   );
   const prodInactivos = productos.filter(p => p.activo === false).length;
-  const filteredResp = responsables.filter(r =>
-    r.nombre.toLowerCase().includes(search.toLowerCase())
-  );
   const filteredProdSearch = productos.filter(p =>
     p.nombre.toLowerCase().includes(prodSearch.toLowerCase()) ||
     p.codigo.toLowerCase().includes(prodSearch.toLowerCase())
@@ -568,7 +563,7 @@ export default function MaestrosPage() {
       })()}
 
       {/* Search */}
-      {tab !== 'recetas' && (
+      {tab !== 'recetas' && tab !== 'personal' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', marginBottom: '16px' }}>
           <input
             value={search}
@@ -896,7 +891,7 @@ export default function MaestrosPage() {
             <TableCard>
               <thead>
                 <tr>
-                  {['Código', 'Cód. Defontana', 'Nombre', 'Unidad', 'Costo promedio', ''].map(h => <Th key={h}>{h}</Th>)}
+                  {['Cód. Defontana', 'Código', 'Nombre', 'Unidad', 'Costo promedio', ''].map(h => <Th key={h}>{h}</Th>)}
                 </tr>
               </thead>
               <tbody>
@@ -907,12 +902,12 @@ export default function MaestrosPage() {
                   const sinCosto = p.costo_promedio === 0 || p.costo_promedio == null;
                   return (
                     <tr key={p.codigo} style={{ opacity: p.activo ? 1 : 0.45 }}>
-                      <Td><code style={{ fontSize: '12px', background: 'var(--bg)', padding: '2px 6px', borderRadius: '4px' }}>{p.codigo}</code></Td>
                       <Td>
                         {p.codigo_defontana
                           ? <code style={{ fontSize: '12px', background: '#EFF6FF', color: '#1D4ED8', padding: '2px 6px', borderRadius: '4px' }}>{p.codigo_defontana}</code>
                           : <span style={{ fontSize: '12px', color: 'var(--ts)' }}>—</span>}
                       </Td>
+                      <Td><code style={{ fontSize: '12px', background: 'var(--bg)', padding: '2px 6px', borderRadius: '4px' }}>{p.codigo}</code></Td>
                       <Td style={{ fontWeight: 500, fontSize: '13px' }}>{p.nombre}</Td>
                       <Td><Badge color="#6366F1">{p.unidad_medida}</Badge></Td>
                       <Td>
@@ -939,29 +934,7 @@ export default function MaestrosPage() {
           )}
 
           {/* ── Tab Personal ── */}
-          {tab === 'personal' && (
-            <TableCard>
-              <thead>
-                <tr>
-                  {['Nombre', 'Rol', 'Iniciales', 'Estado'].map(h => <Th key={h}>{h}</Th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredResp.map(r => (
-                  <tr key={r.id}>
-                    <Td style={{ fontWeight: 500, fontSize: '13px' }}>{r.nombre}</Td>
-                    <Td><Badge color={rolBadge[r.rol] ?? '#6B7280'}>{r.rol}</Badge></Td>
-                    <Td>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: r.color_hex ?? '#6B7280', color: '#fff', fontSize: '11px', fontWeight: 700 }}>
-                        {r.iniciales}
-                      </span>
-                    </Td>
-                    <Td><Badge color={r.activo ? 'var(--tl)' : '#9CA3AF'}>{r.activo ? 'Activo' : 'Inactivo'}</Badge></Td>
-                  </tr>
-                ))}
-              </tbody>
-            </TableCard>
-          )}
+          {tab === 'personal' && <PersonalTab canEdit={isAdmin} />}
         </>
       )}
 
@@ -1289,7 +1262,4 @@ const emptyCell: React.CSSProperties = {
 };
 const tipoBadge: Record<TipoPP, string> = {
   PORCION: 'var(--ac)', UND: '#6366F1', CC: '#0D9373', DIRECTO: '#D97706',
-};
-const rolBadge: Record<string, string> = {
-  admin: '#8B5CF6', finanzas: '#3B82F6', jefatura: 'var(--ac)', economo: '#0EA5E9', cocina: '#D97706',
 };
