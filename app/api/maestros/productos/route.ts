@@ -10,7 +10,7 @@ export async function GET() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('productos')
-    .select('codigo,nombre,unidad_medida,costo_promedio,activo,updated_at')
+    .select('codigo,nombre,unidad_medida,costo_promedio,codigo_defontana,activo,updated_at')
     .order('nombre');
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);

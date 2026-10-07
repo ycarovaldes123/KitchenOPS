@@ -3,6 +3,7 @@ import ExcelJS from 'exceljs';
 import { requireRol } from '@/lib/auth-server';
 import { createClient } from '@/utils/supabase/server';
 import { fetchToteatSales } from '@/lib/toteat';
+import { mapaCodigosDefontana } from '@/lib/codigos-defontana';
 
 type IngredienteRow = {
   id: string;
@@ -84,6 +85,7 @@ async function calcular(desde: string, hasta: string) {
     plato: string;
     ventas: number;
     codigo_producto: string | null;
+    codigo_defontana: string | null;
     producto: string;
     cantidad_por_plato: number;
     unidad_medida: string | null;
@@ -91,6 +93,7 @@ async function calcular(desde: string, hasta: string) {
   }[] = [];
   const consolidadoMap = new Map<string, {
     codigo_producto: string | null;
+    codigo_defontana: string | null;
     producto: string;
     unidad_medida: string | null;
     total_consumido: number;
@@ -125,6 +128,7 @@ async function calcular(desde: string, hasta: string) {
         plato: plato.nombre,
         ventas: formatNumber(venta.ventas),
         codigo_producto: ing.codigo_producto,
+        codigo_defontana: null,
         producto: ing.nombre,
         cantidad_por_plato: formatNumber(cantidadPorPlato),
         unidad_medida: ing.unidad_medida,
@@ -135,6 +139,7 @@ async function calcular(desde: string, hasta: string) {
       const key = `${ing.codigo_producto ?? ''}||${ing.nombre}||${ing.unidad_medida ?? ''}`;
       const current = consolidadoMap.get(key) ?? {
         codigo_producto: ing.codigo_producto,
+        codigo_defontana: null,
         producto: ing.nombre,
         unidad_medida: ing.unidad_medida,
         total_consumido: 0,
@@ -142,6 +147,11 @@ async function calcular(desde: string, hasta: string) {
       current.total_consumido += total;
       consolidadoMap.set(key, current);
     }
+  }
+
+  const defontana = await mapaCodigosDefontana(supabase, detalle.map(r => r.codigo_producto));
+  for (const row of [...detalle, ...consolidadoMap.values()]) {
+    row.codigo_defontana = row.codigo_producto ? defontana.get(row.codigo_producto) ?? null : null;
   }
 
   return {
@@ -165,6 +175,7 @@ async function buildWorkbook(data: Awaited<ReturnType<typeof calcular>>) {
     { header: 'Plato', key: 'plato', width: 36 },
     { header: 'Ventas', key: 'ventas', width: 12 },
     { header: 'Código producto', key: 'codigo_producto', width: 18 },
+    { header: 'Código Defontana', key: 'codigo_defontana', width: 18 },
     { header: 'Producto', key: 'producto', width: 36 },
     { header: 'Cantidad por plato', key: 'cantidad_por_plato', width: 18 },
     { header: 'Total por venta', key: 'total_por_venta', width: 18 },
@@ -176,10 +187,10 @@ async function buildWorkbook(data: Awaited<ReturnType<typeof calcular>>) {
   ws.getCell(start, 1).value = 'Consolidado final por producto';
   ws.getCell(start, 1).font = { bold: true };
   const header = ws.getRow(start + 1);
-  header.values = ['Código producto', 'Producto', 'Unidad', 'Total consumido'];
+  header.values = ['Código producto', 'Código Defontana', 'Producto', 'Unidad', 'Total consumido'];
   header.font = { bold: true };
   for (const row of data.consolidado) {
-    ws.addRow([row.codigo_producto, row.producto, row.unidad_medida, row.total_consumido]);
+    ws.addRow([row.codigo_producto, row.codigo_defontana ?? '', row.producto, row.unidad_medida, row.total_consumido]);
   }
 
   const valStart = ws.rowCount + 3;

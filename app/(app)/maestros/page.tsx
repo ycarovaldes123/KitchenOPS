@@ -67,6 +67,7 @@ export default function MaestrosPage() {
   const [prodEditName, setProdEditName]   = useState('');
   const [prodEditCost, setProdEditCost]   = useState('');
   const [prodEditUnidad, setProdEditUnidad] = useState('');
+  const [prodEditDefontana, setProdEditDefontana] = useState('');
   const [prodEditSaving, setProdEditSaving] = useState(false);
   const [prodEditError, setProdEditError] = useState('');
 
@@ -307,6 +308,7 @@ export default function MaestrosPage() {
     setProdEditName(p.nombre);
     setProdEditCost(String(p.costo_promedio ?? 0));
     setProdEditUnidad((p.unidad_medida ?? '').toUpperCase());
+    setProdEditDefontana(p.codigo_defontana ?? '');
     setProdEditError('');
   }
 
@@ -326,8 +328,8 @@ export default function MaestrosPage() {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(isAdmin
-        ? { codigo, nombre, unidad_medida: prodEditUnidad, costo_promedio: costo }
-        : { nombre, unidad_medida: prodEditUnidad, costo_promedio: costo }),
+        ? { codigo, nombre, unidad_medida: prodEditUnidad, costo_promedio: costo, codigo_defontana: prodEditDefontana.trim() }
+        : { nombre, unidad_medida: prodEditUnidad, costo_promedio: costo, codigo_defontana: prodEditDefontana.trim() }),
     });
     const data = await r.json();
     if (!r.ok) {
@@ -338,7 +340,8 @@ export default function MaestrosPage() {
     const codigoAnterior = prodEditModal.codigo;
     const actualizado: Producto = {
       codigo: data.codigo, nombre: data.nombre, unidad_medida: data.unidad_medida,
-      costo_promedio: data.costo_promedio, activo: data.activo, updated_at: data.updated_at,
+      costo_promedio: data.costo_promedio, codigo_defontana: data.codigo_defontana ?? null,
+      activo: data.activo, updated_at: data.updated_at,
     };
     setProductos(prev => prev.map(p => p.codigo === codigoAnterior ? actualizado : p));
     setProdEditModal(null);
@@ -404,7 +407,8 @@ export default function MaestrosPage() {
   const filteredProd = productos.filter(p =>
     (!ocultarProdInactivos || p.activo !== false) &&
     (p.nombre.toLowerCase().includes(search.toLowerCase()) ||
-     p.codigo.toLowerCase().includes(search.toLowerCase()))
+     p.codigo.toLowerCase().includes(search.toLowerCase()) ||
+     (p.codigo_defontana ?? '').includes(search.trim()))
   );
   const prodInactivos = productos.filter(p => p.activo === false).length;
   const filteredResp = responsables.filter(r =>
@@ -892,18 +896,23 @@ export default function MaestrosPage() {
             <TableCard>
               <thead>
                 <tr>
-                  {['Código', 'Nombre', 'Unidad', 'Costo promedio', ''].map(h => <Th key={h}>{h}</Th>)}
+                  {['Código', 'Cód. Defontana', 'Nombre', 'Unidad', 'Costo promedio', ''].map(h => <Th key={h}>{h}</Th>)}
                 </tr>
               </thead>
               <tbody>
                 {filteredProd.length === 0 && (
-                  <tr><td colSpan={5} style={emptyCell}>Sin resultados. Usa &quot;+ Nuevo producto&quot; o importa desde Softland.</td></tr>
+                  <tr><td colSpan={6} style={emptyCell}>Sin resultados. Usa &quot;+ Nuevo producto&quot; o importa desde Softland.</td></tr>
                 )}
                 {filteredProd.map(p => {
                   const sinCosto = p.costo_promedio === 0 || p.costo_promedio == null;
                   return (
                     <tr key={p.codigo} style={{ opacity: p.activo ? 1 : 0.45 }}>
                       <Td><code style={{ fontSize: '12px', background: 'var(--bg)', padding: '2px 6px', borderRadius: '4px' }}>{p.codigo}</code></Td>
+                      <Td>
+                        {p.codigo_defontana
+                          ? <code style={{ fontSize: '12px', background: '#EFF6FF', color: '#1D4ED8', padding: '2px 6px', borderRadius: '4px' }}>{p.codigo_defontana}</code>
+                          : <span style={{ fontSize: '12px', color: 'var(--ts)' }}>—</span>}
+                      </Td>
                       <Td style={{ fontWeight: 500, fontSize: '13px' }}>{p.nombre}</Td>
                       <Td><Badge color="#6366F1">{p.unidad_medida}</Badge></Td>
                       <Td>
@@ -1093,6 +1102,15 @@ export default function MaestrosPage() {
               color: !isAdmin ? 'var(--ts)' : inputStyle.color,
               cursor: !isAdmin ? 'not-allowed' : 'text',
             }}
+          />
+
+          <label style={labelStyle}>Codigo Defontana</label>
+          <input
+            value={prodEditDefontana}
+            onChange={e => setProdEditDefontana(e.target.value.replace(/\D/g, ''))}
+            placeholder="Vacío si aún no existe en Defontana"
+            inputMode="numeric"
+            style={{ ...inputStyle, marginBottom: '12px' }}
           />
 
           <label style={labelStyle}>Nombre</label>

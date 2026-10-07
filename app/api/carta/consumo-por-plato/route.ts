@@ -3,6 +3,7 @@ import ExcelJS from 'exceljs';
 import { requireRol } from '@/lib/auth-server';
 import { createClient } from '@/utils/supabase/server';
 import { fetchToteatSales } from '@/lib/toteat';
+import { mapaCodigosDefontana } from '@/lib/codigos-defontana';
 
 type IngredienteRow = {
   codigo_producto: string | null;
@@ -28,6 +29,7 @@ interface ConsumoPorPlatoRow {
   plato: string;
   producto: string;
   id_producto: string | null;
+  id_defontana: string | null;
   cantidad: number;
   venta: number;
   total_consumido: number;
@@ -107,12 +109,16 @@ async function calcularConsumoPorPlato(desde: string, hasta: string) {
         plato: plato.nombre,
         producto: ing.nombre,
         id_producto: ing.codigo_producto,
+        id_defontana: null,
         cantidad: formatNumber(cantidad),
         venta: formatNumber(venta),
         total_consumido: formatNumber(cantidad * venta),
       });
     }
   }
+
+  const defontana = await mapaCodigosDefontana(supabase, filas.map(f => f.id_producto));
+  for (const fila of filas) fila.id_defontana = fila.id_producto ? defontana.get(fila.id_producto) ?? null : null;
 
   filas.sort((a, b) => a.plato.localeCompare(b.plato, 'es') || a.producto.localeCompare(b.producto, 'es'));
 
@@ -130,19 +136,21 @@ function buildWorkbook(filas: ConsumoPorPlatoRow[]) {
     { header: 'PLATO', key: 'plato', width: 38 },
     { header: 'PRODUCTOS', key: 'producto', width: 34 },
     { header: 'ID PRODUCTO', key: 'id_producto', width: 14 },
+    { header: 'ID DEFONTANA', key: 'id_defontana', width: 14 },
     { header: 'CANTIDAD', key: 'cantidad', width: 12 },
     { header: 'VENTA', key: 'venta', width: 10 },
     { header: 'TOTAL CONSUMIDO', key: 'total_consumido', width: 18 },
   ];
 
   ws.getRow(1).font = { bold: true };
-  ws.autoFilter = { from: 'A1', to: 'I1' };
+  ws.autoFilter = { from: 'A1', to: 'J1' };
   ws.views = [{ state: 'frozen', ySplit: 1 }];
 
   // Códigos alfanuméricos / con ceros iniciales deben tratarse como texto.
   ws.getColumn('id').numFmt = '@';
   ws.getColumn('id_toteat').numFmt = '@';
   ws.getColumn('id_producto').numFmt = '@';
+  ws.getColumn('id_defontana').numFmt = '@';
 
   for (const fila of filas) {
     ws.addRow({
@@ -152,6 +160,7 @@ function buildWorkbook(filas: ConsumoPorPlatoRow[]) {
       plato: fila.plato,
       producto: fila.producto,
       id_producto: fila.id_producto ?? '',
+      id_defontana: fila.id_defontana ?? '',
       cantidad: fila.cantidad,
       venta: fila.venta,
       total_consumido: fila.total_consumido,

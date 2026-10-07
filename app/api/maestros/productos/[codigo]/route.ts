@@ -97,13 +97,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     updates.unidad_medida = unidad;
   }
   if (body.costo_promedio !== undefined) updates.costo_promedio = body.costo_promedio;
+  if (body.codigo_defontana !== undefined) {
+    const codDef = String(body.codigo_defontana ?? '').trim();
+    if (codDef && !/^\d+$/.test(codDef)) {
+      return NextResponse.json({ error: 'El codigo Defontana debe contener solo numeros' }, { status: 400 });
+    }
+    if (codDef) {
+      const { data: otro } = await supabase.from('productos').select('codigo,nombre').eq('codigo_defontana', codDef).neq('codigo', codigo).maybeSingle();
+      if (otro) return NextResponse.json({ error: `El codigo Defontana ${codDef} ya esta asignado a ${otro.codigo} ${otro.nombre}` }, { status: 409 });
+    }
+    updates.codigo_defontana = codDef || null;
+  }
   if (body.activo        !== undefined) updates.activo        = body.activo;
   updates.updated_at = new Date().toISOString();
 
   if (cambioCodigo) {
     const { data: actual, error: fetchErr } = await supabase
       .from('productos')
-      .select('codigo,nombre,unidad_medida,costo_promedio,activo')
+      .select('codigo,nombre,unidad_medida,costo_promedio,codigo_defontana,activo')
       .eq('codigo', codigo)
       .maybeSingle();
     if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
@@ -154,7 +165,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     return NextResponse.json({ ...inserted, pp_recalculadas: ppResult.recalculadas, pp_errores: ppResult.errores.slice(0, 10) });
   }
 
-  const { data: anterior } = await supabase.from('productos').select('unidad_medida,costo_promedio').eq('codigo', codigo).maybeSingle();
+  const { data: anterior } = await supabase.from('productos').select('unidad_medida,costo_promedio,codigo_defontana').eq('codigo', codigo).maybeSingle();
 
   const { data, error } = await supabase.from('productos').update(updates).eq('codigo', codigo).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

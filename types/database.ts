@@ -44,6 +44,7 @@ export interface Producto {
   nombre:         string;
   unidad_medida:  string;   // KG | GR | LT | UN | CC | PR
   costo_promedio: number;   // CLP; puede tener decimales para PP por GR/CC
+  codigo_defontana?: string | null; // homologacion Softland → Defontana; null = aun no creado en Defontana
   activo:         boolean;
   updated_at:     string;
 }
