@@ -11,8 +11,8 @@ const ROJO_FONDO = 'FFFEE2E2';
 // Encabezados y columna Producto: "Aguamarina, Enfasis 5, oscuro 25%" con fuente blanca.
 const AGUAMARINA_OSCURO = 'FF31869B';
 const BLANCO = 'FFFFFFFF';
-// Fuente completa (nombre + tamano) para que Excel respete la negrita en todas las versiones.
-const FUENTE_BASE = { name: 'Calibri', size: 11 } as const;
+// Fuente de todo el reporte: Aptos Narrow 12 (nombre + tamano completos en cada celda).
+const FUENTE_BASE = { name: 'Aptos Narrow', size: 12 } as const;
 
 // Formatos de celda (NO texto): los numeros siguen siendo numeros y las formulas recalculan.
 export const FMT_MILLARES_1 = '#,##0.0';
@@ -175,6 +175,16 @@ export function construirReporteWorkbook(filas: ResumenFila[], verCostos: boolea
   for (let n = 1; n <= ultimaFila; n++) {
     const row = ws.getRow(n);
     for (let c = 1; c <= totalColumnas; c++) row.getCell(c).border = THIN_BORDER;
+  }
+
+  // Aptos Narrow en todo el Excel (incluye fila de total y celdas vacias como Observaciones),
+  // conservando negrita y color de cada celda.
+  for (let n = 1; n <= ultimaFila + 1; n++) {
+    const row = ws.getRow(n);
+    for (let c = 1; c <= totalColumnas; c++) {
+      const cell = row.getCell(c);
+      cell.font = { ...cell.font, ...FUENTE_BASE };
+    }
   }
 
   return wb;
