@@ -11,6 +11,8 @@ const ROJO_FONDO = 'FFFEE2E2';
 // Encabezados y columna Producto: "Aguamarina, Enfasis 5, oscuro 25%" con fuente blanca.
 const AGUAMARINA_OSCURO = 'FF31869B';
 const BLANCO = 'FFFFFFFF';
+// Fuente completa (nombre + tamano) para que Excel respete la negrita en todas las versiones.
+const FUENTE_BASE = { name: 'Calibri', size: 11 } as const;
 
 // Formatos de celda (NO texto): los numeros siguen siendo numeros y las formulas recalculan.
 export const FMT_MILLARES_1 = '#,##0.0';
@@ -96,8 +98,8 @@ export function construirReporteWorkbook(filas: ResumenFila[], verCostos: boolea
     for (const key of COLS_MILLARES) row.getCell(key).numFmt = FMT_ESTILO_MILLARES_1;
     row.getCell('diferencia').numFmt = FMT_MILLARES_1;
     // Diferencia y Diferencia $ en negrita (el color lo pone el condicional / el estado).
-    row.getCell('diferencia').font = { bold: true };
-    if (verCostos) row.getCell('diferencia_valor').font = { bold: true };
+    row.getCell('diferencia').font = { ...FUENTE_BASE, bold: true };
+    if (verCostos) row.getCell('diferencia_valor').font = { ...FUENTE_BASE, bold: true };
     if (verCostos) {
       row.getCell('costo_unitario').numFmt = FMT_CONTABILIDAD_1;
       row.getCell('diferencia_valor').numFmt = FMT_CONTABILIDAD_1;
@@ -105,12 +107,12 @@ export function construirReporteWorkbook(filas: ResumenFila[], verCostos: boolea
 
     const estadoCell = row.getCell('estado');
     if (f.estado === 'ok') {
-      estadoCell.font = { bold: true, color: { argb: VERDE_TX } };
+      estadoCell.font = { ...FUENTE_BASE, bold: true, color: { argb: VERDE_TX } };
       estadoCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: VERDE_FONDO } };
     } else if (f.estado === 'alerta') {
-      estadoCell.font = { bold: true, color: { argb: ROJO_TX } };
+      estadoCell.font = { ...FUENTE_BASE, bold: true, color: { argb: ROJO_TX } };
       estadoCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ROJO_FONDO } };
-      if (verCostos) row.getCell('diferencia_valor').font = { bold: true, color: { argb: ROJO_TX } };
+      if (verCostos) row.getCell('diferencia_valor').font = { ...FUENTE_BASE, bold: true, color: { argb: ROJO_TX } };
     }
   });
 
@@ -149,7 +151,7 @@ export function construirReporteWorkbook(filas: ResumenFila[], verCostos: boolea
     const cell = ws.getCell(`${colValor}${ultimaFila + 1}`);
     cell.value = { formula: `SUBTOTAL(9,${colValor}2:${colValor}${ultimaFila})`, result: total };
     cell.numFmt = FMT_CONTABILIDAD_1;
-    cell.font = { bold: true };
+    cell.font = { ...FUENTE_BASE, bold: true };
     cell.border = THIN_BORDER;
   }
 
@@ -158,14 +160,14 @@ export function construirReporteWorkbook(filas: ResumenFila[], verCostos: boolea
   headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
   for (let c = 1; c <= totalColumnas; c++) {
     const cell = headerRow.getCell(c);
-    cell.font = { bold: true, color: { argb: BLANCO } };
+    cell.font = { ...FUENTE_BASE, bold: true, color: { argb: BLANCO } };
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AGUAMARINA_OSCURO } };
   }
 
   // Columna A (Producto): mismo color y fuente que los encabezados.
   for (let n = 2; n <= ultimaFila; n++) {
     const cell = ws.getCell(`A${n}`);
-    cell.font = { bold: true, color: { argb: BLANCO } };
+    cell.font = { ...FUENTE_BASE, bold: true, color: { argb: BLANCO } };
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AGUAMARINA_OSCURO } };
   }
 
