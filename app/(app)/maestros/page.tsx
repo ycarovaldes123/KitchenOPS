@@ -97,6 +97,7 @@ export default function MaestrosPage() {
   const [mostrarInactivas, setMostrarInactivas] = useState(false);
   const [soloDuplicadas, setSoloDuplicadas] = useState(false);
   const [ocultarProdInactivos, setOcultarProdInactivos] = useState(true);
+  const [prodFamilia, setProdFamilia] = useState('');
   const [recetaAccion, setRecetaAccion] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const recetasBodyRef = useRef<HTMLTableSectionElement>(null);
@@ -402,8 +403,20 @@ export default function MaestrosPage() {
     pp.nombre.toLowerCase().includes(search.toLowerCase()) &&
     (!ppTipoFiltro || pp.tipo_pp === ppTipoFiltro)
   );
+  // Familia = primeros 4 dígitos del código Softland (ej. 0101, 0502)
+  const familiaDe = (codigo: string) => codigo.slice(0, 4);
+  const familiasProd = Object.entries(
+    productos
+      .filter(p => !ocultarProdInactivos || p.activo !== false)
+      .reduce<Record<string, number>>((acc, p) => {
+        const fam = familiaDe(p.codigo);
+        acc[fam] = (acc[fam] ?? 0) + 1;
+        return acc;
+      }, {})
+  ).sort(([a], [b]) => a.localeCompare(b));
   const filteredProd = productos.filter(p =>
     (!ocultarProdInactivos || p.activo !== false) &&
+    (!prodFamilia || familiaDe(p.codigo) === prodFamilia) &&
     (p.nombre.toLowerCase().includes(search.toLowerCase()) ||
      p.codigo.toLowerCase().includes(search.toLowerCase()) ||
      (p.codigo_defontana ?? '').includes(search.trim()))
@@ -571,6 +584,21 @@ export default function MaestrosPage() {
             placeholder="Buscar..."
             style={{ ...inputStyle, maxWidth: '280px' }}
           />
+          {tab === 'productos' && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: 'var(--tx)' }}>
+              Familia
+              <select
+                value={prodFamilia}
+                onChange={e => setProdFamilia(e.target.value)}
+                style={{ ...inputStyle, width: 'auto', minWidth: '150px', cursor: 'pointer' }}
+              >
+                <option value="">Todas</option>
+                {familiasProd.map(([fam, n]) => (
+                  <option key={fam} value={fam}>{fam} ({n})</option>
+                ))}
+              </select>
+            </label>
+          )}
           {tab === 'productos' && (
             <button
               type="button"
@@ -896,7 +924,7 @@ export default function MaestrosPage() {
               </thead>
               <tbody>
                 {filteredProd.length === 0 && (
-                  <tr><td colSpan={6} style={emptyCell}>Sin resultados. Usa &quot;+ Nuevo producto&quot; o importa desde Softland.</td></tr>
+                  <tr><td colSpan={6} style={emptyCell}>{prodFamilia ? `Sin productos en la familia ${prodFamilia}${search ? ` para “${search}”` : ''}.` : <>Sin resultados. Usa &quot;+ Nuevo producto&quot; o importa desde Softland.</>}</td></tr>
                 )}
                 {filteredProd.map(p => {
                   const sinCosto = p.costo_promedio === 0 || p.costo_promedio == null;
