@@ -8,9 +8,14 @@ const VERDE_TX = 'FF166534';
 const VERDE_FONDO = 'FFDCFCE7';
 const ROJO_TX = 'FFB91C1C';
 const ROJO_FONDO = 'FFFEE2E2';
+// Encabezados y columna Producto: "Aguamarina, Enfasis 5, oscuro 25%" con fuente blanca.
+const AGUAMARINA_OSCURO = 'FF31869B';
+const BLANCO = 'FFFFFFFF';
 
 // Formatos de celda (NO texto): los numeros siguen siendo numeros y las formulas recalculan.
 export const FMT_MILLARES_1 = '#,##0.0';
+// Estilo "Millares" de Excel (alineado, guion en ceros) con 1 decimal, para columnas B a I.
+export const FMT_ESTILO_MILLARES_1 = '_-* #,##0.0_-;-* #,##0.0_-;_-* "-"??_-;_-@_-';
 export const FMT_CONTABILIDAD_1 = '_-"$" * #,##0.0_-;-"$" * #,##0.0_-;_-"$" * "-"??_-;_-@_-';
 
 const THIN_BORDER: Partial<ExcelJS.Borders> = {
@@ -28,6 +33,8 @@ export function construirReporteWorkbook(filas: ResumenFila[], verCostos: boolea
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('REPORTE', {
     pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 },
+    // Fila de encabezados inmovilizada y zoom 115%.
+    views: [{ state: 'frozen', ySplit: 1, zoomScale: 115, zoomScaleNormal: 115 }],
   });
 
   ws.columns = [
@@ -40,12 +47,13 @@ export function construirReporteWorkbook(filas: ResumenFila[], verCostos: boolea
     { header: 'Colacion', key: 'colacion', width: 10 },            // G
     { header: 'Calculo', key: 'calculo', width: 12 },              // H  (formula)
     { header: 'Inv. Final', key: 'inv_final', width: 10 },         // I
-    { header: 'Diferencia', key: 'diferencia', width: 13 },        // J  (formula, contabilidad)
+    { header: 'Diferencia', key: 'diferencia', width: 13 },        // J  (formula, numero)
     ...(verCostos ? [
       { header: 'Costo Unit.', key: 'costo_unitario', width: 13 }, // K
       { header: 'Diferencia $', key: 'diferencia_valor', width: 15 }, // L (formula, contabilidad)
     ] : []),
     { header: 'Estado', key: 'estado', width: 16 },                // K / M
+    { header: 'Observaciones', key: 'observaciones', width: 44.71 }, // L / N (318 px)
   ];
 
   const COLS_MILLARES = ['inv_inicial', 'ingresos', 'ventas', 'produccion', 'mermas', 'colacion', 'calculo', 'inv_final'];
@@ -85,8 +93,8 @@ export function construirReporteWorkbook(filas: ResumenFila[], verCostos: boolea
       }
     }
 
-    for (const key of COLS_MILLARES) row.getCell(key).numFmt = FMT_MILLARES_1;
-    row.getCell('diferencia').numFmt = FMT_CONTABILIDAD_1;
+    for (const key of COLS_MILLARES) row.getCell(key).numFmt = FMT_ESTILO_MILLARES_1;
+    row.getCell('diferencia').numFmt = FMT_MILLARES_1;
     if (verCostos) {
       row.getCell('costo_unitario').numFmt = FMT_CONTABILIDAD_1;
       row.getCell('diferencia_valor').numFmt = FMT_CONTABILIDAD_1;
@@ -99,21 +107,62 @@ export function construirReporteWorkbook(filas: ResumenFila[], verCostos: boolea
     } else if (f.estado === 'alerta') {
       estadoCell.font = { bold: true, color: { argb: ROJO_TX } };
       estadoCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ROJO_FONDO } };
-      row.getCell('diferencia').font = { color: { argb: ROJO_TX } };
       if (verCostos) row.getCell('diferencia_valor').font = { color: { argb: ROJO_TX } };
     }
   });
 
-  const headerRow = ws.getRow(1);
-  headerRow.font = { bold: true };
-  headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
-  headerRow.eachCell({ includeEmpty: true }, cell => {
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE5E7EB' } };
-  });
+  const ultimaFila = filas.length + 1;
+  const totalColumnas = ws.columns.length;
 
-  ws.eachRow(row => {
-    row.eachCell({ includeEmpty: true }, cell => { cell.border = THIN_BORDER; });
-  });
+  // Diferencia: con condicional, si el Estado de la fila es ALERTA queda igual que el Estado
+  // (fondo rojo + fuente roja). Es formato condicional, asi que sigue al Estado si se edita.
+  if (filas.length) {
+    const colDif = L('diferencia');
+    ws.addConditionalFormatting({
+      ref: `${colDif}2:${colDif}${ultimaFila}`,
+      rules: [{
+        type: 'expression', priority: 1,
+        formulae: [`$${L('estado')}2="${ESTADO_LABEL.alerta}"`],
+        style: {
+          font: { color: { argb: ROJO_TX } },
+          fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: ROJO_FONDO } },
+        },
+      }],
+    });
+  }
+
+  // Total de Diferencia $ al final de la columna (SUBTOTALES respeta los filtros).
+  if (verCostos && filas.length) {
+    const colValor = L('diferencia_valor');
+    const total = filas.reduce((acc, f) => acc + (f.diferencia_valor ?? 0), 0);
+    const cell = ws.getCell(`${colValor}${ultimaFila + 1}`);
+    cell.value = { formula: `SUBTOTAL(9,${colValor}2:${colValor}${ultimaFila})`, result: total };
+    cell.numFmt = FMT_CONTABILIDAD_1;
+    cell.font = { bold: true };
+    cell.border = THIN_BORDER;
+  }
+
+  // Encabezados: aguamarina oscuro, fuente blanca en negrita.
+  const headerRow = ws.getRow(1);
+  headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+  for (let c = 1; c <= totalColumnas; c++) {
+    const cell = headerRow.getCell(c);
+    cell.font = { bold: true, color: { argb: BLANCO } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AGUAMARINA_OSCURO } };
+  }
+
+  // Columna A (Producto): mismo color y fuente que los encabezados.
+  for (let n = 2; n <= ultimaFila; n++) {
+    const cell = ws.getCell(`A${n}`);
+    cell.font = { bold: true, color: { argb: BLANCO } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AGUAMARINA_OSCURO } };
+  }
+
+  // Bordes en toda la tabla, incluida la columna Observaciones (vacia).
+  for (let n = 1; n <= ultimaFila; n++) {
+    const row = ws.getRow(n);
+    for (let c = 1; c <= totalColumnas; c++) row.getCell(c).border = THIN_BORDER;
+  }
 
   return wb;
 }
