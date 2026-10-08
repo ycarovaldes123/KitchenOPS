@@ -4,6 +4,7 @@ import { requireRol } from '@/lib/auth-server';
 import { createClient } from '@/utils/supabase/server';
 import { fetchToteatSales } from '@/lib/toteat';
 import { mapaCodigosDefontana } from '@/lib/codigos-defontana';
+import { ingredientesVigentes, versionReceta } from '@/lib/carta-vigencias';
 
 type IngredienteRow = {
   id: string;
@@ -71,11 +72,13 @@ async function calcular(desde: string, hasta: string) {
     validaciones.codigosDuplicados.push({ codigo_toteat: code, platos: platos.map(p => p.nombre) });
   }
 
-  const ventasPorCodigo = new Map<string, { codigo_toteat: string | null; plato: string; ventas: number }>();
+  // Se agrupa tambien por version de receta: si el rango cruza un cambio de receta, cada
+  // tramo descuenta los ingredientes vigentes en su fecha (lib/carta-vigencias.ts).
+  const ventasPorCodigo = new Map<string, { codigo_toteat: string | null; plato: string; ventas: number; fecha: string }>();
   for (const item of ventasResult.items) {
     const code = normalizeCode(item.product_code);
-    const key = code || `SIN_CODIGO||${item.product_name}`;
-    const current = ventasPorCodigo.get(key) ?? { codigo_toteat: code || null, plato: item.product_name, ventas: 0 };
+    const key = code ? `${code}||${versionReceta(code, item.fecha)}` : `SIN_CODIGO||${item.product_name}`;
+    const current = ventasPorCodigo.get(key) ?? { codigo_toteat: code || null, plato: item.product_name, ventas: 0, fecha: item.fecha };
     current.ventas += Number(item.quantity) || 0;
     ventasPorCodigo.set(key, current);
   }
@@ -103,13 +106,13 @@ async function calcular(desde: string, hasta: string) {
     const code = normalizeCode(venta.codigo_toteat);
     const matches = code ? codigoMap.get(code) : null;
     if (!code || !matches?.length) {
-      validaciones.ventasSinReceta.push(venta);
+      validaciones.ventasSinReceta.push({ codigo_toteat: venta.codigo_toteat, plato: venta.plato, ventas: venta.ventas });
       continue;
     }
     if (duplicados.has(code)) continue;
 
     const plato = matches[0];
-    const ingredientes = plato.carta_ingredientes ?? [];
+    const ingredientes = ingredientesVigentes(code, venta.fecha, plato.carta_ingredientes ?? []);
     if (!ingredientes.length) {
       validaciones.recetasIncompletas.push({ codigo_toteat: code, plato: plato.nombre, motivo: 'Sin ingredientes cargados' });
       continue;

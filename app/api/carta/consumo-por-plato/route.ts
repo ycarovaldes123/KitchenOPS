@@ -4,6 +4,7 @@ import { requireRol } from '@/lib/auth-server';
 import { createClient } from '@/utils/supabase/server';
 import { fetchToteatSales } from '@/lib/toteat';
 import { mapaCodigosDefontana } from '@/lib/codigos-defontana';
+import { ingredientesVigentes, versionReceta } from '@/lib/carta-vigencias';
 
 type IngredienteRow = {
   codigo_producto: string | null;
@@ -80,22 +81,26 @@ async function calcularConsumoPorPlato(desde: string, hasta: string) {
     if (platos.length > 1) duplicados.add(code);
   }
 
-  const ventasPorCodigo = new Map<string, number>();
+  // Agrupado por codigo + version de receta (lib/carta-vigencias.ts).
+  const ventasPorCodigo = new Map<string, { code: string; fecha: string; venta: number }>();
   for (const item of ventasResult.items) {
     const code = normalizeCode(item.product_code);
     if (!code) continue;
-    ventasPorCodigo.set(code, (ventasPorCodigo.get(code) ?? 0) + (Number(item.quantity) || 0));
+    const key = `${code}||${versionReceta(code, item.fecha)}`;
+    const current = ventasPorCodigo.get(key) ?? { code, fecha: item.fecha, venta: 0 };
+    current.venta += Number(item.quantity) || 0;
+    ventasPorCodigo.set(key, current);
   }
 
   const filas: ConsumoPorPlatoRow[] = [];
 
-  for (const [code, venta] of ventasPorCodigo.entries()) {
+  for (const { code, fecha, venta } of ventasPorCodigo.values()) {
     if (duplicados.has(code)) continue;
     const matches = codigoMap.get(code);
     if (!matches?.length) continue;
 
     const plato = matches[0];
-    const ingredientes = plato.carta_ingredientes ?? [];
+    const ingredientes = ingredientesVigentes(code, fecha, plato.carta_ingredientes ?? []);
     if (!ingredientes.length) continue;
 
     for (const ing of ingredientes) {
