@@ -115,7 +115,7 @@ export function construirReporteWorkbook(filas: ResumenFila[], verCostos: boolea
   const totalColumnas = ws.columns.length;
 
   // Diferencia: con condicional, si el Estado de la fila es ALERTA queda igual que el Estado
-  // (fondo rojo + fuente roja). Es formato condicional, asi que sigue al Estado si se edita.
+  // (fondo rojo + fuente roja); si es 0,0 y OK, verde. Es formato condicional, asi que sigue al Estado si se edita.
   if (filas.length) {
     const colDif = L('diferencia');
     ws.addConditionalFormatting({
@@ -126,6 +126,14 @@ export function construirReporteWorkbook(filas: ResumenFila[], verCostos: boolea
         style: {
           font: { color: { argb: ROJO_TX } },
           fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: ROJO_FONDO } },
+        },
+      }, {
+        // Diferencia 0,0 con Estado OK: verde como el Estado (fondo + fuente).
+        type: 'expression', priority: 2,
+        formulae: [`AND(ROUND(${colDif}2,1)=0,$${L('estado')}2="${ESTADO_LABEL.ok}")`],
+        style: {
+          font: { color: { argb: VERDE_TX } },
+          fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: VERDE_FONDO } },
         },
       }],
     });
