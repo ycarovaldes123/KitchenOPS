@@ -21,6 +21,12 @@ const PRODUCTO_HEADERS_NORMALIZADOS = PRODUCTO_HEADERS.map(norm);
 const PRODUCTO_ALIASES: Record<string, string> = {
   [norm('PP SALMON TROZO GR (250')]: norm('PP SALMON TROZO GR (250)'),
   [norm('PP SALMON CEVICHE GR')]: norm('PP SALMON CEVICHE (GR)'),
+  // Renombrados 2026-10-08: planillas de conteo con el nombre anterior siguen importando
+  [norm('ESCALOPA DE VACUNO (UND) 120gr c/u')]: norm('ESCALOPA DE VACUNO (UND) 150GR c/u'),
+  [norm('ESCALOPA DE VACUNO DE ASIENTO (150 GR) (UND)')]: norm('ESCALOPA DE VACUNO (UND) 150GR c/u'),
+  [norm('PUNTA PALETA')]: norm('PUNTA PALETA (KG)'),
+  [norm('PP BASTONES DE POLLO GRS (120 GR)')]: norm('PP BASTONES DE POLLO GRS (200 GR)'),
+  [norm('PP SORRENTINOS DE SALMON AHUMADO PORC')]: norm('PP SORRENTINOS'),
 };
 
 type ProductoCarnicoDb = {
