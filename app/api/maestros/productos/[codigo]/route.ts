@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol } from '@/lib/auth-server';
 import { auditLog } from '@/lib/audit';
+import { normalizarNombreProducto } from '@/lib/nombre-producto';
 import { recalcularCostosPP, recetasAfectadasPorProductos } from '@/lib/recalcular-pp';
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
@@ -86,7 +87,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
       return NextResponse.json({ error: 'El nombre es requerido' }, { status: 400 });
     }
 
-    updates.nombre = nombre.toUpperCase();
+    updates.nombre = normalizarNombreProducto(nombre);
   }
   if (body.unidad_medida !== undefined) {
     const raw = String(body.unidad_medida ?? '').trim().toUpperCase();

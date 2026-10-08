@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { recalcularCostosPP } from '@/lib/recalcular-pp';
 import { requireRol } from '@/lib/auth-server';
 import { auditLog } from '@/lib/audit';
+import { normalizarNombreProducto } from '@/lib/nombre-producto';
 
 // POST /api/maestros/actualizar-costos
 // Body: multipart/form-data with field "file" (xlsx)
@@ -92,7 +93,7 @@ export async function POST(req: NextRequest) {
     const { error } = await supabase
       .from('productos')
       .update({
-        nombre: nombre.trim().toUpperCase(),
+        nombre: normalizarNombreProducto(nombre),
         unidad_medida,
         costo_promedio: costo,
         updated_at: new Date().toISOString(),
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
     const { error } = await supabase.from('productos').insert(
       paraInsertar.map(f => ({
         codigo:         f.codigo,
-        nombre:         f.nombre,
+        nombre:         normalizarNombreProducto(f.nombre),
         unidad_medida:  f.unidad_medida,
         costo_promedio: f.costo,
         activo:         true,

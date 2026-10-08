@@ -1,6 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { recalcularCostosPP } from './recalcular-pp';
 import { normalizarUM } from './costo-receta-pp';
+import { normalizarNombreProducto } from './nombre-producto';
 
 export const UNIDADES_RENDIMIENTO = ['GR', 'KG', 'CC', 'LT', 'PR', 'UN'];
 
@@ -112,7 +113,7 @@ export async function recalcularRecetaYProducto(supabase: SupabaseClient, receta
       const { data: rec } = await supabase.from('pp_recetas').select('costo_unitario_calculado').eq('id', recetaId).single();
       const { error } = await supabase.from('productos').insert({
         codigo:         input.codigo_pp,
-        nombre:         input.nombre,
+        nombre:         normalizarNombreProducto(input.nombre),
         unidad_medida:  input.unidad_rendimiento,
         costo_promedio: Number(rec?.costo_unitario_calculado) || 0,
         activo:         true,

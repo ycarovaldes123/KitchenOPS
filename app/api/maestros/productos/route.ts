@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol } from '@/lib/auth-server';
 import { auditLog } from '@/lib/audit';
+import { normalizarNombreProducto } from '@/lib/nombre-producto';
 
 export async function GET() {
   const s = await requireRol(['admin', 'finanzas']);
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await supabase
     .from('productos')
-    .insert({ codigo: codigo.trim(), nombre: nombre.trim().toUpperCase(), unidad_medida, costo_promedio: costo_promedio ?? 0 })
+    .insert({ codigo: codigo.trim(), nombre: normalizarNombreProducto(nombre), unidad_medida, costo_promedio: costo_promedio ?? 0 })
     .select()
     .single();
 

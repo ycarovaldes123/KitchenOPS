@@ -3,6 +3,7 @@ import { createClient } from '@/utils/supabase/server';
 import * as XLSX from 'xlsx';
 import { requireRol } from '@/lib/auth-server';
 import { auditLog } from '@/lib/audit';
+import { normalizarNombreProducto } from '@/lib/nombre-producto';
 
 // POST /api/maestros/importar-recetas-pp
 // Body: multipart/form-data with field "file" (xlsx)
@@ -297,7 +298,7 @@ export async function POST(req: NextRequest) {
       if (receta.codigo_pp) {
         const { error: prodUpsertErr } = await supabase.from('productos').upsert({
           codigo:         receta.codigo_pp,
-          nombre:         receta.nombre,
+          nombre:         normalizarNombreProducto(receta.nombre),
           unidad_medida:  costoPP.unidad,
           costo_promedio: costoPP.costo,
           activo:         true,
