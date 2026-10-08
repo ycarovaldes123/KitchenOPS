@@ -98,7 +98,6 @@ export default function MaestrosPage() {
   const [soloDuplicadas, setSoloDuplicadas] = useState(false);
   const [ocultarProdInactivos, setOcultarProdInactivos] = useState(true);
   const [prodFamilia, setProdFamilia] = useState('');
-  const [famDropdown, setFamDropdown] = useState(false);
   const [recetaAccion, setRecetaAccion] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const recetasBodyRef = useRef<HTMLTableSectionElement>(null);
@@ -404,17 +403,6 @@ export default function MaestrosPage() {
     pp.nombre.toLowerCase().includes(search.toLowerCase()) &&
     (!ppTipoFiltro || pp.tipo_pp === ppTipoFiltro)
   );
-  // Familia = primeros 4 dígitos del código Softland (ej. 0101, 0502)
-  const familiaDe = (codigo: string) => codigo.slice(0, 4);
-  const familiasProd = Object.entries(
-    productos
-      .filter(p => !ocultarProdInactivos || p.activo !== false)
-      .reduce<Record<string, number>>((acc, p) => {
-        const fam = familiaDe(p.codigo);
-        acc[fam] = (acc[fam] ?? 0) + 1;
-        return acc;
-      }, {})
-  ).sort(([a], [b]) => a.localeCompare(b));
   const filteredProd = productos.filter(p =>
     (!ocultarProdInactivos || p.activo !== false) &&
     (!prodFamilia.trim() || p.codigo.startsWith(prodFamilia.trim())) &&
@@ -589,10 +577,7 @@ export default function MaestrosPage() {
             <div style={{ position: 'relative' }}>
               <input
                 value={prodFamilia}
-                onChange={e => { setProdFamilia(e.target.value.replace(/\D/g, '')); setFamDropdown(true); }}
-                onFocus={() => setFamDropdown(true)}
-                onBlur={() => setTimeout(() => setFamDropdown(false), 150)}
-                onKeyDown={e => { if (e.key === 'Escape' || e.key === 'Enter') setFamDropdown(false); }}
+                onChange={e => setProdFamilia(e.target.value.replace(/\D/g, ''))}
                 inputMode="numeric"
                 placeholder="Familia (ej. 0502)"
                 aria-label="Filtrar por familia"
@@ -602,30 +587,10 @@ export default function MaestrosPage() {
                 <button
                   type="button"
                   aria-label="Limpiar familia"
-                  onClick={() => { setProdFamilia(''); setFamDropdown(false); }}
+                  onClick={() => setProdFamilia('')}
                   style={{ position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', color: 'var(--ts)', fontSize: '16px', cursor: 'pointer', padding: '2px 6px' }}
                 >×</button>
               )}
-              {famDropdown && (() => {
-                const sugeridas = familiasProd.filter(([fam]) => fam.startsWith(prodFamilia.trim()));
-                return (
-                  <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 20, width: '190px', maxHeight: '260px', overflowY: 'auto', background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '8px', boxShadow: '0 6px 18px rgba(0,0,0,.12)' }}>
-                    {sugeridas.length === 0 ? (
-                      <div style={{ padding: '8px 12px', fontSize: '13px', color: 'var(--ts)' }}>Sin familias</div>
-                    ) : sugeridas.map(([fam, n]) => (
-                      <button
-                        key={fam}
-                        type="button"
-                        onMouseDown={e => { e.preventDefault(); setProdFamilia(fam); setFamDropdown(false); }}
-                        style={{ display: 'flex', justifyContent: 'space-between', width: '100%', padding: '8px 12px', border: 'none', background: fam === prodFamilia ? 'var(--bg)' : 'transparent', color: 'var(--tx)', fontSize: '13px', cursor: 'pointer', textAlign: 'left' }}
-                      >
-                        <span style={{ fontWeight: 600 }}>{fam}</span>
-                        <span style={{ color: 'var(--ts)' }}>{n} prod.</span>
-                      </button>
-                    ))}
-                  </div>
-                );
-              })()}
             </div>
           )}
           {tab === 'productos' && (
