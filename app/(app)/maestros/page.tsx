@@ -98,6 +98,7 @@ export default function MaestrosPage() {
   const [soloDuplicadas, setSoloDuplicadas] = useState(false);
   const [ocultarProdInactivos, setOcultarProdInactivos] = useState(true);
   const [prodFamilia, setProdFamilia] = useState('');
+  const [famDropdown, setFamDropdown] = useState(false);
   const [recetaAccion, setRecetaAccion] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const recetasBodyRef = useRef<HTMLTableSectionElement>(null);
@@ -416,7 +417,7 @@ export default function MaestrosPage() {
   ).sort(([a], [b]) => a.localeCompare(b));
   const filteredProd = productos.filter(p =>
     (!ocultarProdInactivos || p.activo !== false) &&
-    (!prodFamilia || familiaDe(p.codigo) === prodFamilia) &&
+    (!prodFamilia.trim() || p.codigo.startsWith(prodFamilia.trim())) &&
     (p.nombre.toLowerCase().includes(search.toLowerCase()) ||
      p.codigo.toLowerCase().includes(search.toLowerCase()) ||
      (p.codigo_defontana ?? '').includes(search.trim()))
@@ -585,19 +586,47 @@ export default function MaestrosPage() {
             style={{ ...inputStyle, maxWidth: '280px' }}
           />
           {tab === 'productos' && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: 'var(--tx)' }}>
-              Familia
-              <select
+            <div style={{ position: 'relative' }}>
+              <input
                 value={prodFamilia}
-                onChange={e => setProdFamilia(e.target.value)}
-                style={{ ...inputStyle, width: 'auto', minWidth: '150px', cursor: 'pointer' }}
-              >
-                <option value="">Todas</option>
-                {familiasProd.map(([fam, n]) => (
-                  <option key={fam} value={fam}>{fam} ({n})</option>
-                ))}
-              </select>
-            </label>
+                onChange={e => { setProdFamilia(e.target.value.replace(/\D/g, '')); setFamDropdown(true); }}
+                onFocus={() => setFamDropdown(true)}
+                onBlur={() => setTimeout(() => setFamDropdown(false), 150)}
+                onKeyDown={e => { if (e.key === 'Escape' || e.key === 'Enter') setFamDropdown(false); }}
+                inputMode="numeric"
+                placeholder="Familia (ej. 0502)"
+                aria-label="Filtrar por familia"
+                style={{ ...inputStyle, width: '190px', paddingRight: prodFamilia ? '32px' : '12px' }}
+              />
+              {prodFamilia && (
+                <button
+                  type="button"
+                  aria-label="Limpiar familia"
+                  onClick={() => { setProdFamilia(''); setFamDropdown(false); }}
+                  style={{ position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', color: 'var(--ts)', fontSize: '16px', cursor: 'pointer', padding: '2px 6px' }}
+                >×</button>
+              )}
+              {famDropdown && (() => {
+                const sugeridas = familiasProd.filter(([fam]) => fam.startsWith(prodFamilia.trim()));
+                return (
+                  <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 20, width: '190px', maxHeight: '260px', overflowY: 'auto', background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '8px', boxShadow: '0 6px 18px rgba(0,0,0,.12)' }}>
+                    {sugeridas.length === 0 ? (
+                      <div style={{ padding: '8px 12px', fontSize: '13px', color: 'var(--ts)' }}>Sin familias</div>
+                    ) : sugeridas.map(([fam, n]) => (
+                      <button
+                        key={fam}
+                        type="button"
+                        onMouseDown={e => { e.preventDefault(); setProdFamilia(fam); setFamDropdown(false); }}
+                        style={{ display: 'flex', justifyContent: 'space-between', width: '100%', padding: '8px 12px', border: 'none', background: fam === prodFamilia ? 'var(--bg)' : 'transparent', color: 'var(--tx)', fontSize: '13px', cursor: 'pointer', textAlign: 'left' }}
+                      >
+                        <span style={{ fontWeight: 600 }}>{fam}</span>
+                        <span style={{ color: 'var(--ts)' }}>{n} prod.</span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
           )}
           {tab === 'productos' && (
             <button
@@ -924,7 +953,7 @@ export default function MaestrosPage() {
               </thead>
               <tbody>
                 {filteredProd.length === 0 && (
-                  <tr><td colSpan={6} style={emptyCell}>{prodFamilia ? `Sin productos en la familia ${prodFamilia}${search ? ` para “${search}”` : ''}.` : <>Sin resultados. Usa &quot;+ Nuevo producto&quot; o importa desde Softland.</>}</td></tr>
+                  <tr><td colSpan={6} style={emptyCell}>{prodFamilia ? `Sin productos en la familia ${prodFamilia.trim()}${search ? ` para “${search}”` : ''}.` : <>Sin resultados. Usa &quot;+ Nuevo producto&quot; o importa desde Softland.</>}</td></tr>
                 )}
                 {filteredProd.map(p => {
                   const sinCosto = p.costo_promedio === 0 || p.costo_promedio == null;
