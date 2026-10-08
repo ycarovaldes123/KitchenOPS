@@ -229,8 +229,12 @@ export async function DELETE(req: NextRequest) {
   const supabase = await createClient();
   const { data: movimientos, error: fetchError } = await supabase.from('carnicos_movimientos').select('*').in('id', ids);
   if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
-  if ((movimientos ?? []).some(m => m.origen === 'venta_toteat')) {
-    return NextResponse.json({ error: 'Las salidas por venta se revierten desde la pestaña Ventas, no se borran directamente.' }, { status: 400 });
+  // Las salidas por venta solo se borran juntas desde el basurero del dia (pestaña Ventas del historial):
+  // { ventas: true } exige que todas las filas sean de venta. carnicos_ventas_registradas cae en cascada,
+  // asi la venta de ese dia puede registrarse de nuevo.
+  const sonVentas = (movimientos ?? []).map(m => m.origen === 'venta_toteat');
+  if (body.ventas === true ? sonVentas.some(v => !v) : sonVentas.some(v => v)) {
+    return NextResponse.json({ error: 'Las salidas por venta se eliminan desde la pestaña Ventas del historial, por día completo.' }, { status: 400 });
   }
 
   const { data: borrado, error } = await supabase.from('carnicos_movimientos').delete().in('id', ids).select('id');

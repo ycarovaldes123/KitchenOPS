@@ -159,6 +159,7 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
     | { variante: 'movimiento'; grupo: GrupoMovimiento }
     | { variante: 'inventario'; grupo: GrupoInventario }
     | { variante: 'inventario_dia'; grupo: GrupoInventario; bodegas: number }
+    | { variante: 'movimiento_dia'; grupo: GrupoMovimiento; movimientos: number; esVenta: boolean }
     | null
   >(null);
   const [eliminando, setEliminando] = useState(false);
@@ -316,20 +317,22 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
     setEliminando(true);
     setError('');
     try {
-      const url = confirmarEliminar.variante === 'movimiento'
-        ? '/api/control-carnicos/movimientos'
-        : '/api/control-carnicos/inventarios';
+      const esMov = confirmarEliminar.variante === 'movimiento' || confirmarEliminar.variante === 'movimiento_dia';
+      const url = esMov ? '/api/control-carnicos/movimientos' : '/api/control-carnicos/inventarios';
+      // Las ventas de Toteat solo se borran desde el basurero del dia en la pestaña Ventas.
+      const ventas = confirmarEliminar.variante === 'movimiento_dia' && confirmarEliminar.esVenta;
       // Una sola llamada con todos los productos del grupo (antes era una por producto).
       const res = await fetch(url, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: confirmarEliminar.grupo.items.map(it => it.id) }),
+        body: JSON.stringify({ ids: confirmarEliminar.grupo.items.map(it => it.id), ...(ventas ? { ventas: true } : {}) }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error ?? 'Error eliminando');
       // Si el drawer estaba abierto sobre este mismo grupo (o sobre una bodega del dia eliminado), se cierra.
       if (drawer && drawer.key === confirmarEliminar.grupo.key) setDrawer(null);
       if (drawer && confirmarEliminar.variante === 'inventario_dia' && drawer.variante === 'inventario' && drawer.fecha === confirmarEliminar.grupo.fecha) setDrawer(null);
+      if (drawer && confirmarEliminar.variante === 'movimiento_dia' && drawer.variante === 'movimiento' && drawer.fecha === confirmarEliminar.grupo.fecha) setDrawer(null);
       setConfirmarEliminar(null);
       refrescar();
     } catch (e) {
@@ -449,6 +452,12 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
                 puedeEditar={puedeEditar}
                 onEditar={abrirEditorMovimiento}
                 onEliminar={g => setConfirmarEliminar({ variante: 'movimiento', grupo: g })}
+                onEliminarDia={fg => setConfirmarEliminar({
+                  variante: 'movimiento_dia',
+                  movimientos: fg.grupos.length,
+                  esVenta: subTab === 'ventas',
+                  grupo: { ...fg.grupos[0], key: `dia||${subTab}||${fg.fecha}`, items: fg.grupos.flatMap(g => g.items) },
+                })}
                 busqueda={busquedaNormalizada}
               />
             )}
@@ -491,10 +500,15 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
             <h3 style={{ margin: '0 0 8px', fontFamily: 'Syne, sans-serif', fontSize: '15px', fontWeight: 800 }}>
               {confirmarEliminar.variante === 'movimiento' ? 'Eliminar movimiento completo'
                 : confirmarEliminar.variante === 'inventario_dia' ? 'Eliminar inventario completo del día'
+                : confirmarEliminar.variante === 'movimiento_dia' ? (confirmarEliminar.esVenta ? 'Eliminar ventas del día' : 'Eliminar movimientos del día')
                 : 'Eliminar conteo de inventario'}
             </h3>
             <p style={{ margin: '0 0 18px', fontSize: '13px', color: 'var(--ts)', lineHeight: 1.5 }}>
-              {confirmarEliminar.variante === 'inventario_dia'
+              {confirmarEliminar.variante === 'movimiento_dia'
+                ? (confirmarEliminar.esVenta
+                  ? `Se eliminarán las salidas por venta del ${isoAFecha(confirmarEliminar.grupo.fecha)} (${confirmarEliminar.grupo.items.length} productos). La venta de ese día podrá registrarse de nuevo desde la pestaña Ventas.`
+                  : `Se eliminarán los ${confirmarEliminar.movimientos} movimientos del ${isoAFecha(confirmarEliminar.grupo.fecha)} (${confirmarEliminar.grupo.items.length} productos en total).`)
+                : confirmarEliminar.variante === 'inventario_dia'
                 ? `Se eliminarán los conteos de las ${confirmarEliminar.bodegas} cámaras/bodegas del ${isoAFecha(confirmarEliminar.grupo.fecha)} (${confirmarEliminar.grupo.items.length} productos en total).`
                 : `Se eliminará el ${confirmarEliminar.variante === 'movimiento' ? 'movimiento' : 'conteo'} completo del ${isoAFecha(confirmarEliminar.grupo.fecha)} junto con sus ${confirmarEliminar.grupo.items.length} producto${confirmarEliminar.grupo.items.length !== 1 ? 's' : ''}.`}
               {' '}Esta acción afectará el historial y los cálculos relacionados.
@@ -521,7 +535,7 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
 // ─── Ingresos / Salidas / Ventas: Fecha → Movimiento(s) → Productos ──────────
 
 function TablaFechasMovimientos({
-  fechas, fechaUltimo, soloVentas, fechasAbiertas, onToggleFecha, batchesAbiertos, onToggleBatch, puedeEditar, onEditar, onEliminar, busqueda,
+  fechas, fechaUltimo, soloVentas, fechasAbiertas, onToggleFecha, batchesAbiertos, onToggleBatch, puedeEditar, onEditar, onEliminar, onEliminarDia, busqueda,
 }: {
   fechas: GrupoFecha<GrupoMovimiento>[];
   fechaUltimo?: string;
@@ -533,6 +547,8 @@ function TablaFechasMovimientos({
   puedeEditar: boolean;
   onEditar: (g: GrupoMovimiento) => void;
   onEliminar: (g: GrupoMovimiento) => void;
+  /** Elimina todos los movimientos de la fecha (varios movimientos, o la venta del dia). */
+  onEliminarDia: (fg: GrupoFecha<GrupoMovimiento>) => void;
   /** Termino de busqueda ya normalizado (minusculas, sin acentos); resalta filas de producto que coinciden. */
   busqueda: string;
 }) {
@@ -575,6 +591,9 @@ function TablaFechasMovimientos({
                           <button type="button" onClick={() => onEditar(unBatch)} style={{ ...accionBtn, color: 'var(--ac)', borderColor: 'var(--ac)' }}>Editar</button>
                           <button type="button" onClick={() => onEliminar(unBatch)} title="Eliminar movimiento completo" aria-label="Eliminar movimiento completo" style={accionBtnEliminar}>🗑</button>
                         </>
+                      )}
+                      {puedeEditar && (soloVentas || !unBatch) && (
+                        <button type="button" onClick={() => onEliminarDia(fg)} title={soloVentas ? 'Eliminar ventas del día' : 'Eliminar todos los movimientos del día'} aria-label={soloVentas ? 'Eliminar ventas del día' : 'Eliminar todos los movimientos del día'} style={accionBtnEliminar}>🗑</button>
                       )}
                     </div>
                   </td>
