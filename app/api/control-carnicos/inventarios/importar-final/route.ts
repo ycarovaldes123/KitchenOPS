@@ -3,6 +3,7 @@ import ExcelJS from 'exceljs';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol } from '@/lib/auth-server';
 import { BODEGAS_CARNICOS, BODEGA_LABEL } from '@/lib/config-carnicos';
+import { evaluarFormulaAritmetica } from '@/lib/formula-aritmetica';
 
 const BODEGAS_CONTEO = ['CAMARA CONGELADOS', 'CAMARA MANTENCION', 'COCINA'] as const;
 const FALLBACK_COL_PRODUCTO = 3; // C
@@ -59,19 +60,37 @@ function cellText(cell: ExcelJS.Cell) {
   return String(value ?? '');
 }
 
+function textoANumero(text: string): ConteoCell {
+  const raw = text.replace(',', '.').trim();
+  if (!raw) return { kind: 'empty' };
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? { kind: 'number', value: parsed } : { kind: 'invalid', raw: text.trim() };
+}
+
 function numberValue(cell: ExcelJS.Cell): ConteoCell {
   const value = cell.value;
   if (value == null) return { kind: 'empty' };
   if (typeof value === 'number') return Number.isFinite(value) ? { kind: 'number', value } : { kind: 'invalid', raw: String(value) };
-  if (value && typeof value === 'object' && 'result' in value) {
-    if (value.result == null || String(value.result).trim() === '') return { kind: 'empty' };
-    const result = Number(String(value.result).replace(',', '.').trim());
-    return Number.isFinite(result) ? { kind: 'number', value: result } : { kind: 'invalid', raw: String(value.result) };
+  if (value instanceof Date) return { kind: 'invalid', raw: value.toISOString().slice(0, 10) };
+  if (typeof value === 'object') {
+    // Formula (normal o compartida): usa el resultado guardado; si el Excel se guardo sin
+    // resultado (p.ej. "=8+4" para sumar conteos parciales) se evalua la aritmetica simple.
+    if ('formula' in value || 'sharedFormula' in value) {
+      const f = value as { formula?: string; sharedFormula?: string; result?: unknown };
+      const result = f.result;
+      if (result && typeof result === 'object' && 'error' in result) return { kind: 'invalid', raw: String((result as { error: unknown }).error) };
+      if (result != null && String(result).trim() !== '') return textoANumero(String(result));
+      if (f.formula) {
+        const evaluado = evaluarFormulaAritmetica(f.formula);
+        return evaluado === null ? { kind: 'invalid', raw: `=${f.formula}` } : { kind: 'number', value: Math.round(evaluado * 1e6) / 1e6 };
+      }
+      return { kind: 'invalid', raw: 'fórmula sin resultado' };
+    }
+    if ('error' in value) return { kind: 'invalid', raw: String((value as { error: unknown }).error) };
+    // Texto con formato o hipervinculo: se lee el texto visible.
+    return textoANumero(cellText(cell));
   }
-  const raw = String(value).replace(',', '.').trim();
-  if (!raw) return { kind: 'empty' };
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) ? { kind: 'number', value: parsed } : { kind: 'invalid', raw };
+  return textoANumero(String(value));
 }
 
 function findHeader(headers: Map<string, number>, aliases: string[]) {
