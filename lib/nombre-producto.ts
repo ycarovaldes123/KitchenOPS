@@ -1,5 +1,6 @@
 // Normaliza el nombre de un producto (maestro productos):
 //  - sin puntos ni espacios sobrantes al final
+//  - prefijo de producto en proceso uniforme: "P.P.", "P.P", "PP" → "PP. "
 //  - unidad de medida al final y entre paréntesis, abreviada: (GR) (KG) (LT) (UN) (CC) (PR) (PQ)
 //    "ACEITE DE COCINA (LTS)." → "ACEITE DE COCINA (LT)"   ·   "ALBAHACA SECA GRS" → "ALBAHACA SECA (GR)"
 // Se aplica al importar desde Softland y al crear/editar, para que los nombres no vuelvan al formato antiguo.
@@ -13,7 +14,7 @@ const UNIDAD: Record<string, string> = {
 const ES_TAMANO = /^(GRS?|KGS?|LTS?|CC|C\.C)$/i;
 
 export function normalizarNombreProducto(nombre: string): string {
-  let n = nombre.trim().toUpperCase().replace(/[\s.]+$/, '');
+  let n = nombre.trim().toUpperCase().replace(/[\s.]+$/, '').replace(/^P\s*\.?\s*P(?:\s*\.\s*|\s+)/, 'PP. ');
 
   // Unidad ya entre paréntesis al final: "(LTS)", "( UN)", "(UNIDAD).-" → "(LT)", "(UN)"
   const par = n.match(/^(.*?)\s*\(\s*(UNIDAD|UNID|UND|UN|GRS|GR|KGS|KG|LTS|LT|CC|C\.C|PQTE|PQ|PR)\s*\)[\s.\-]*$/);
