@@ -95,6 +95,9 @@ export function construirReporteWorkbook(filas: ResumenFila[], verCostos: boolea
 
     for (const key of COLS_MILLARES) row.getCell(key).numFmt = FMT_ESTILO_MILLARES_1;
     row.getCell('diferencia').numFmt = FMT_MILLARES_1;
+    // Diferencia y Diferencia $ en negrita (el color lo pone el condicional / el estado).
+    row.getCell('diferencia').font = { bold: true };
+    if (verCostos) row.getCell('diferencia_valor').font = { bold: true };
     if (verCostos) {
       row.getCell('costo_unitario').numFmt = FMT_CONTABILIDAD_1;
       row.getCell('diferencia_valor').numFmt = FMT_CONTABILIDAD_1;
@@ -107,7 +110,7 @@ export function construirReporteWorkbook(filas: ResumenFila[], verCostos: boolea
     } else if (f.estado === 'alerta') {
       estadoCell.font = { bold: true, color: { argb: ROJO_TX } };
       estadoCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ROJO_FONDO } };
-      if (verCostos) row.getCell('diferencia_valor').font = { color: { argb: ROJO_TX } };
+      if (verCostos) row.getCell('diferencia_valor').font = { bold: true, color: { argb: ROJO_TX } };
     }
   });
 
