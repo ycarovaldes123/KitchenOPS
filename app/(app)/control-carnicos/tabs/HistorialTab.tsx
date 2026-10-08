@@ -158,6 +158,7 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
   const [confirmarEliminar, setConfirmarEliminar] = useState<
     | { variante: 'movimiento'; grupo: GrupoMovimiento }
     | { variante: 'inventario'; grupo: GrupoInventario }
+    | { variante: 'inventario_dia'; grupo: GrupoInventario; bodegas: number }
     | null
   >(null);
   const [eliminando, setEliminando] = useState(false);
@@ -326,8 +327,9 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error ?? 'Error eliminando');
-      // Si el drawer estaba abierto sobre este mismo grupo, se cierra.
+      // Si el drawer estaba abierto sobre este mismo grupo (o sobre una bodega del dia eliminado), se cierra.
       if (drawer && drawer.key === confirmarEliminar.grupo.key) setDrawer(null);
+      if (drawer && confirmarEliminar.variante === 'inventario_dia' && drawer.variante === 'inventario' && drawer.fecha === confirmarEliminar.grupo.fecha) setDrawer(null);
       setConfirmarEliminar(null);
       refrescar();
     } catch (e) {
@@ -460,6 +462,11 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
                 puedeEditar={puedeEditar}
                 onEditar={abrirEditorInventario}
                 onEliminar={g => setConfirmarEliminar({ variante: 'inventario', grupo: g })}
+                onEliminarDia={fg => setConfirmarEliminar({
+                  variante: 'inventario_dia',
+                  bodegas: fg.grupos.length,
+                  grupo: { ...fg.grupos[0], key: `dia||${fg.fecha}`, items: fg.grupos.flatMap(g => g.items) },
+                })}
                 busqueda={busquedaNormalizada}
               />
             )}
@@ -482,10 +489,15 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,20,20,0.4)', zIndex: 960, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
           <div style={{ background: 'var(--sf)', borderRadius: '14px', padding: '22px', width: '100%', maxWidth: '400px', boxShadow: '0 16px 48px rgba(0,0,0,0.2)' }}>
             <h3 style={{ margin: '0 0 8px', fontFamily: 'Syne, sans-serif', fontSize: '15px', fontWeight: 800 }}>
-              {confirmarEliminar.variante === 'movimiento' ? 'Eliminar movimiento completo' : 'Eliminar conteo de inventario'}
+              {confirmarEliminar.variante === 'movimiento' ? 'Eliminar movimiento completo'
+                : confirmarEliminar.variante === 'inventario_dia' ? 'Eliminar inventario completo del día'
+                : 'Eliminar conteo de inventario'}
             </h3>
             <p style={{ margin: '0 0 18px', fontSize: '13px', color: 'var(--ts)', lineHeight: 1.5 }}>
-              Se eliminará el {confirmarEliminar.variante === 'movimiento' ? 'movimiento' : 'conteo'} completo del {isoAFecha(confirmarEliminar.grupo.fecha)} junto con sus {confirmarEliminar.grupo.items.length} producto{confirmarEliminar.grupo.items.length !== 1 ? 's' : ''}. Esta acción afectará el historial y los cálculos relacionados.
+              {confirmarEliminar.variante === 'inventario_dia'
+                ? `Se eliminarán los conteos de las ${confirmarEliminar.bodegas} cámaras/bodegas del ${isoAFecha(confirmarEliminar.grupo.fecha)} (${confirmarEliminar.grupo.items.length} productos en total).`
+                : `Se eliminará el ${confirmarEliminar.variante === 'movimiento' ? 'movimiento' : 'conteo'} completo del ${isoAFecha(confirmarEliminar.grupo.fecha)} junto con sus ${confirmarEliminar.grupo.items.length} producto${confirmarEliminar.grupo.items.length !== 1 ? 's' : ''}.`}
+              {' '}Esta acción afectará el historial y los cálculos relacionados.
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
               <button type="button" onClick={() => setConfirmarEliminar(null)} disabled={eliminando} style={{ background: 'none', border: '1px solid var(--bo)', color: 'var(--ts)', borderRadius: '8px', padding: '8px 14px', fontSize: '12.5px', fontWeight: 700, cursor: 'pointer' }}>Cancelar</button>
@@ -659,7 +671,7 @@ function DetalleProductosMovimiento({ items, esVenta, busqueda }: { items: Movim
 // ─── Inventarios: Fecha → Cámara/Bodega → Productos ──────────────────────────
 
 function TablaFechasInventarios({
-  fechas, fechaUltimo, fechasAbiertas, onToggleFecha, batchesAbiertos, onToggleBatch, puedeEditar, onEditar, onEliminar, busqueda,
+  fechas, fechaUltimo, fechasAbiertas, onToggleFecha, batchesAbiertos, onToggleBatch, puedeEditar, onEditar, onEliminar, onEliminarDia, busqueda,
 }: {
   fechas: GrupoFecha<GrupoInventario>[];
   fechaUltimo?: string;
@@ -670,6 +682,8 @@ function TablaFechasInventarios({
   puedeEditar: boolean;
   onEditar: (g: GrupoInventario) => void;
   onEliminar: (g: GrupoInventario) => void;
+  /** Elimina todas las cámaras/bodegas de la fecha (cuando el día tiene más de un conteo). */
+  onEliminarDia: (fg: GrupoFecha<GrupoInventario>) => void;
   busqueda: string;
 }) {
   return (
@@ -709,6 +723,9 @@ function TablaFechasInventarios({
                           <button type="button" onClick={() => onEditar(unBatch)} style={{ ...accionBtn, color: 'var(--ac)', borderColor: 'var(--ac)' }}>Editar</button>
                           <button type="button" onClick={() => onEliminar(unBatch)} title="Eliminar conteo completo" aria-label="Eliminar conteo completo" style={accionBtnEliminar}>🗑</button>
                         </>
+                      )}
+                      {puedeEditar && !unBatch && (
+                        <button type="button" onClick={() => onEliminarDia(fg)} title="Eliminar inventario completo del día (todas las bodegas)" aria-label="Eliminar inventario completo del día" style={accionBtnEliminar}>🗑</button>
                       )}
                     </div>
                   </td>
