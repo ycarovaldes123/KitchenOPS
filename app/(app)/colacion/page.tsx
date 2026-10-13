@@ -5,6 +5,7 @@ import AnchoredPanel from '@/components/forms/AnchoredPanel';
 import { formatCLP } from '@/lib/calculos';
 import { useRol } from '@/components/RolProvider';
 import { useAdvertenciasGuardado } from '@/components/alertas/AdvertenciasGuardado';
+import { filtrarResponsablesIngreso } from '@/lib/responsables-ingreso';
 import type { Responsable, Producto } from '@/types/database';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -215,7 +216,7 @@ export default function ColacionPage() {
   useEffect(() => {
     fetch('/api/maestros')
       .then(r => r.json())
-      .then(data => setMaestros(data))
+      .then(data => setMaestros({ ...data, responsables: filtrarResponsablesIngreso(data.responsables) }))
       .catch(() => setErr('Error cargando datos maestros.'))
       .finally(() => setCargando(false));
   }, []);

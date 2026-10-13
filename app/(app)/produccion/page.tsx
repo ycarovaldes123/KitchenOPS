@@ -5,6 +5,7 @@ import AnchoredPanel from '@/components/forms/AnchoredPanel';
 import { calcTotalPP, calcCostoProduccionPP, calcMerma, formatCLP, formatPct } from '@/lib/calculos';
 import { useRol } from '@/components/RolProvider';
 import { useAdvertenciasGuardado } from '@/components/alertas/AdvertenciasGuardado';
+import { filtrarResponsablesIngreso } from '@/lib/responsables-ingreso';
 import type { PP, Responsable, Verdura, Producto, TipoPP } from '@/types/database';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -287,7 +288,7 @@ export default function ProduccionPage() {
   useEffect(() => {
     fetch('/api/maestros')
       .then(r => r.json())
-      .then(data => setMaestros(data))
+      .then(data => setMaestros({ ...data, responsables: filtrarResponsablesIngreso(data.responsables) }))
       .catch(() => setErr('Error cargando datos maestros.'))
       .finally(() => setCargando(false));
   }, []);
