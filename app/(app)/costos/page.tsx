@@ -78,7 +78,7 @@ function PlatoCard({ p, selected, onClick, productoQuery }: { p: Plato; selected
   const sem = SEMAFORO[p.semaforo];
 
   return (
-    <button type="button" onClick={onClick} className={`ck-card${selected ? ' is-selected' : ''}`} aria-pressed={selected} style={{ viewTransitionName: `ck-card-${p.id}` }}>
+    <button type="button" onClick={onClick} className={`ck-card${selected ? ' is-selected' : ''}`} aria-pressed={selected} data-vt={`ck-card-${p.id}`}>
       <div className="ck-card__img">
         <PlatoFoto src={p.foto_url} alt={p.nombre} />
         <span className="ck-card__pct" style={{ color: sem.color }}>
@@ -164,11 +164,18 @@ export default function CostosPage() {
       if (next) setPanelVisible(next);
       return;
     }
-    const doc = document as Document & { startViewTransition: (cb: () => void) => unknown };
-    doc.startViewTransition(() => flushSync(() => {
+    // Solo las tarjetas que se ven animan su cambio de posicion: las demas no se capturan.
+    const visibles = Array.from(document.querySelectorAll<HTMLElement>('.ck-card[data-vt]')).filter(el => {
+      const r = el.getBoundingClientRect();
+      return r.bottom > 0 && r.top < window.innerHeight;
+    });
+    for (const el of visibles) el.style.viewTransitionName = el.dataset.vt ?? '';
+    const doc = document as Document & { startViewTransition: (cb: () => void) => { finished: Promise<void> } };
+    const vt = doc.startViewTransition(() => flushSync(() => {
       setPanel(next);
       setPanelVisible(next);
     }));
+    void vt.finished.finally(() => { for (const el of visibles) el.style.viewTransitionName = ''; });
   }, []);
 
   function abrirPlato(p: Plato) {
@@ -197,14 +204,17 @@ export default function CostosPage() {
   // El panel es sticky pero parte bajo las pestañas: su alto se ajusta a lo visible para que
   // el pie de edicion (costos y botones) siempre se vea sin hacer scroll de la pagina.
   const layoutRef = useRef<HTMLDivElement>(null);
+  const sideRef = useRef<HTMLElement>(null);
   useEffect(() => {
     const el = layoutRef.current;
-    if (!panel || !el) return;
+    const side = sideRef.current;
+    if (!panel || !el || !side) return;
     let frame = 0;
     const medir = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        el.style.setProperty('--ck-side-top', `${Math.max(16, Math.round(el.getBoundingClientRect().top))}px`);
+        // La variable va en el panel (no en el catalogo) para no recalcular los estilos de todas las tarjetas.
+        side.style.setProperty('--ck-side-top', `${Math.max(16, Math.round(el.getBoundingClientRect().top))}px`);
       });
     };
     medir();
@@ -501,6 +511,7 @@ export default function CostosPage() {
 
       <div className="ck-side-backdrop" onClick={cerrarPanel} aria-hidden="true" />
       <aside
+        ref={sideRef}
         className="ck-side"
         aria-label="Detalle del plato"
         onTransitionEnd={e => { if (e.target === e.currentTarget && !panel) setPanelVisible(null); }}

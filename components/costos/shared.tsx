@@ -60,5 +60,5 @@ export function PlatoFoto({ src, alt, iconSize = 34, className }: { src: string 
     );
   }
   // eslint-disable-next-line @next/next/no-img-element -- fotos externas (CDN/Storage) de largo arbitrario
-  return <img src={src} alt={alt} className={className} loading="lazy" onError={() => setFallida(src)} />;
+  return <img src={src} alt={alt} className={className} loading="lazy" decoding="async" onError={() => setFallida(src)} />;
 }

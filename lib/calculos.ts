@@ -120,9 +120,11 @@ export function costoPorPlato(costoTotal: number, nInscritos: number): number {
  * Formatea un valor CLP a string con separador de miles.
  * Ejemplo: 12345 → "$12.345"
  */
+const FORMATO_CLP = new Intl.NumberFormat('es-CL');
+
 export function formatCLP(value: number | null | undefined): string {
   if (value == null) return '—';
-  return `$${Math.round(value).toLocaleString('es-CL')}`;
+  return `$${FORMATO_CLP.format(Math.round(value))}`;
 }
 
 /**

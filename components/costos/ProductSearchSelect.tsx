@@ -50,8 +50,10 @@ function puntaje(producto: ProductoMaestro, query: string, terms: string[]): num
   return 4;
 }
 
+const FORMATO_DECIMAL = new Intl.NumberFormat('es-CL', { maximumFractionDigits: 3 });
+
 function formatCosto(costo: number) {
-  return costo >= 100 ? formatCLP(Math.round(costo)) : `$${costo.toLocaleString('es-CL', { maximumFractionDigits: 3 })}`;
+  return costo >= 100 ? formatCLP(Math.round(costo)) : `$${FORMATO_DECIMAL.format(costo)}`;
 }
 
 export default function ProductSearchSelect({
@@ -71,6 +73,8 @@ export default function ProductSearchSelect({
   const listRef = useRef<HTMLDivElement | null>(null);
 
   const { results, total } = useMemo(() => {
+    // Cerrado no se muestra nada: no filtrar ni ordenar (en una receta hay un buscador por ingrediente).
+    if (!open) return { results: [], total: 0 };
     const normalizedQuery = normalizeText(query).trim();
     if (!normalizedQuery) return { results: productos.slice(0, MAX_RESULTADOS), total: productos.length };
 
@@ -83,7 +87,7 @@ export default function ProductSearchSelect({
       .map(producto => ({ producto, score: puntaje(producto, normalizedQuery, terms) }))
       .sort((a, b) => a.score - b.score || a.producto.nombre.localeCompare(b.producto.nombre, 'es'));
     return { results: matches.slice(0, MAX_RESULTADOS).map(m => m.producto), total: matches.length };
-  }, [productos, query]);
+  }, [productos, query, open]);
 
   // Mantener visible la opción activa al navegar con flechas
   useEffect(() => {
@@ -189,7 +193,8 @@ export default function ProductSearchSelect({
       </div>
 
       {/* Portal a <body>: la lista no queda recortada por tablas con scroll ni por el modal */}
-      <AnchoredPanel open={open && !disabled} anchorRef={rootRef} onClose={close} minWidth={380}>
+      {open && !disabled && (
+      <AnchoredPanel open anchorRef={rootRef} onClose={close} minWidth={380}>
         <div style={{ padding: '6px 12px', borderBottom: '1px solid var(--bo)', fontSize: '11px', color: 'var(--ts)', display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
           <span>
             {query.trim()
@@ -253,6 +258,7 @@ export default function ProductSearchSelect({
           )}
         </div>
       </AnchoredPanel>
+      )}
     </div>
   );
 }

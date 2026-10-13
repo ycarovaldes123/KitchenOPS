@@ -81,6 +81,7 @@
 /* ── Mosaico ────────────────────────────────────────────── */
 .ck-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(212px, 1fr)); gap: 14px; }
 .ck-card { background: var(--sf); border: 1px solid var(--bo); border-radius: 12px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; text-align: left; padding: 0; font-family: 'DM Sans', sans-serif; transition: border-color var(--dur-ui) ease, transform var(--dur-ui) ease, box-shadow var(--dur-ui) ease; }
+.ck-card { content-visibility: auto; contain-intrinsic-size: auto 250px; } /* no dibuja tarjetas fuera de pantalla */
 .ck-card:hover { border-color: var(--bo-ac); transform: translateY(-2px); box-shadow: var(--sh-card-hover); }
 .ck-card.is-selected { border-color: var(--ac); box-shadow: 0 0 0 1px var(--ac); }
 .ck-card__img { position: relative; height: 132px; background: var(--ck-gray-bg); flex-shrink: 0; overflow: hidden; }
@@ -185,11 +186,11 @@
 .page.ck { max-width: none; }
 .ck {
   --ck-content-w: calc(100vw - var(--sidebar-w, 220px) - 64px);
-  --ck-side-w: clamp(440px, calc(var(--ck-content-w) * 0.36), 560px);
   --ck-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 /* Editar necesita mas espacio que consultar: el panel se ensancha y el catalogo cede. */
-.ck-layout.is-editing { --ck-side-w: clamp(520px, calc(var(--ck-content-w) * 0.46), 720px); }
+.ck-side { --ck-side-w: clamp(440px, calc(var(--ck-content-w) * 0.36), 560px); }
+.ck-layout.is-editing .ck-side { --ck-side-w: clamp(520px, calc(var(--ck-content-w) * 0.46), 720px); }
 .ck-layout { display: flex; align-items: flex-start; gap: 0; transition: gap 260ms var(--ck-ease); }
 .ck-layout.has-panel { gap: 20px; }
 /* Con el panel abierto, maximo 4 platos por fila. */

@@ -154,11 +154,16 @@ async function readJsonResponse(res: Response) {
 }
 
 // Modo edicion del panel lateral de Costos (crear, editar o copiar un plato).
+// Maestro de productos compartido entre aperturas del editor: se recarga como maximo cada 5 min
+// (descargarlo y parsearlo en cada "Editar" trababa la apertura del panel).
+const PRODUCTOS_TTL_MS = 5 * 60 * 1000;
+let productosCache: { data: ProductoMaestro[]; at: number } | null = null;
+
 export default function PlatoEditor({ plato, copyFrom = null, defaultTipoCarta = 'ANTIGUA', forceCreate = false, onCancel, onSaved, canDelete = false, onDeleted }: Props) {
   const source = plato ?? copyFrom;
   const isCopy = forceCreate || (!plato && !!copyFrom);
-  const [productos, setProductos] = useState<ProductoMaestro[]>([]);
-  const [loadingProductos, setLoadingProductos] = useState(true);
+  const [productos, setProductos] = useState<ProductoMaestro[]>(() => productosCache?.data ?? []);
+  const [loadingProductos, setLoadingProductos] = useState(() => !productosCache);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
@@ -177,13 +182,14 @@ export default function PlatoEditor({ plato, copyFrom = null, defaultTipoCarta =
   );
 
   useEffect(() => {
+    if (productosCache && Date.now() - productosCache.at < PRODUCTOS_TTL_MS) return;
     let alive = true;
     fetch('/api/maestros')
       .then(r => r.json())
       .then(data => {
-        if (!alive) return;
         if (data.error) throw new Error(data.error);
-        setProductos(data.productos ?? []);
+        productosCache = { data: data.productos ?? [], at: Date.now() };
+        if (alive) setProductos(productosCache.data);
       })
       .catch(e => alive && setError(e instanceof Error ? e.message : 'Error cargando productos'))
       .finally(() => alive && setLoadingProductos(false));
