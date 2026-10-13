@@ -98,6 +98,7 @@ export default function MaestrosPage() {
   const [soloDuplicadas, setSoloDuplicadas] = useState(false);
   const [ocultarProdInactivos, setOcultarProdInactivos] = useState(true);
   const [prodFamilia, setProdFamilia] = useState('');
+  const [prodSinDefontana, setProdSinDefontana] = useState(false);
   const [recetaAccion, setRecetaAccion] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const recetasBodyRef = useRef<HTMLTableSectionElement>(null);
@@ -406,11 +407,15 @@ export default function MaestrosPage() {
   const filteredProd = productos.filter(p =>
     (!ocultarProdInactivos || p.activo !== false) &&
     (!prodFamilia.trim() || p.codigo.startsWith(prodFamilia.trim())) &&
+    (!prodSinDefontana || !(p.codigo_defontana ?? '').trim()) &&
     (p.nombre.toLowerCase().includes(search.toLowerCase()) ||
      p.codigo.toLowerCase().includes(search.toLowerCase()) ||
      (p.codigo_defontana ?? '').includes(search.trim()))
   );
   const prodInactivos = productos.filter(p => p.activo === false).length;
+  const prodSinDefontanaCount = productos.filter(p =>
+    (!ocultarProdInactivos || p.activo !== false) && !(p.codigo_defontana ?? '').trim()
+  ).length;
   const filteredProdSearch = productos.filter(p =>
     p.nombre.toLowerCase().includes(prodSearch.toLowerCase()) ||
     p.codigo.toLowerCase().includes(prodSearch.toLowerCase())
@@ -592,6 +597,28 @@ export default function MaestrosPage() {
                 >×</button>
               )}
             </div>
+          )}
+          {tab === 'productos' && (
+            <button
+              type="button"
+              aria-pressed={prodSinDefontana}
+              onClick={() => setProdSinDefontana(v => !v)}
+              title="Mostrar solo productos sin código Defontana"
+              style={{
+                display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer',
+                fontSize: '13px', fontWeight: 600, borderRadius: '999px', padding: '7px 14px',
+                color: prodSinDefontana ? '#fff' : 'var(--tx)',
+                background: prodSinDefontana ? 'var(--ac)' : 'var(--sf)',
+                border: `1px solid ${prodSinDefontana ? 'var(--ac)' : 'var(--bo)'}`,
+              }}
+            >
+              Sin cód. Defontana
+              <span style={{
+                fontSize: '11px', fontWeight: 800, borderRadius: '999px', padding: '1px 8px',
+                background: prodSinDefontana ? 'rgba(255,255,255,.25)' : '#FEF3C7',
+                color: prodSinDefontana ? '#fff' : '#92400E',
+              }}>{prodSinDefontanaCount}</span>
+            </button>
           )}
           {tab === 'productos' && (
             <button
@@ -918,7 +945,7 @@ export default function MaestrosPage() {
               </thead>
               <tbody>
                 {filteredProd.length === 0 && (
-                  <tr><td colSpan={6} style={emptyCell}>{prodFamilia ? `Sin productos en la familia ${prodFamilia.trim()}${search ? ` para “${search}”` : ''}.` : <>Sin resultados. Usa &quot;+ Nuevo producto&quot; o importa desde Softland.</>}</td></tr>
+                  <tr><td colSpan={6} style={emptyCell}>{prodSinDefontana && !prodFamilia && !search ? 'Todos los productos tienen código Defontana.' : prodFamilia ? `Sin productos en la familia ${prodFamilia.trim()}${search ? ` para “${search}”` : ''}.` : <>Sin resultados. Usa &quot;+ Nuevo producto&quot; o importa desde Softland.</>}</td></tr>
                 )}
                 {filteredProd.map(p => {
                   const sinCosto = p.costo_promedio === 0 || p.costo_promedio == null;
