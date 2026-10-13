@@ -165,6 +165,24 @@ function coincidenciasProduccion(rows: Record<string, unknown>[], terms: string[
   return [...grupos.values()].sort((a, b) => b.cantidad - a.cantidad);
 }
 
+// Producción: suma por verdura de los rendimientos que coinciden (ej. "limon" → kg utilizados y rendidos del período).
+function coincidenciasRendimiento(rows: Record<string, unknown>[], terms: string[]) {
+  const grupos = new Map<string, { verdura: string; kg_utilizados: number; rendimiento_kg: number; registros: number }>();
+  for (const row of rows) {
+    const vistos = new Set<string>();
+    for (const r of childRows(row, 'rendimiento')) {
+      const verdura = String(r.verdura ?? '').trim();
+      if (!terms.every(t => normalizarBusqueda(verdura).includes(t))) continue;
+      const g = grupos.get(verdura) ?? { verdura, kg_utilizados: 0, rendimiento_kg: 0, registros: 0 };
+      g.kg_utilizados += num(r.kg_utilizados);
+      g.rendimiento_kg += num(r.rendimiento_kg);
+      if (!vistos.has(verdura)) { g.registros++; vistos.add(verdura); }
+      grupos.set(verdura, g);
+    }
+  }
+  return [...grupos.values()].sort((a, b) => b.kg_utilizados - a.kg_utilizados);
+}
+
 // Colación, frutas, mermas e inventario: suma por producto (código + unidad) de las líneas que
 // coinciden con la búsqueda.
 const DETALLE_POR_TIPO: Record<string, string> = { colacion: 'detalle_colacion', frutas: 'detalle_frutas', mermas: 'detalle_mermas', inventario: 'detalle_inventario' };
@@ -191,15 +209,25 @@ function coincidenciasLineas(tipo: string, rows: Record<string, unknown>[], term
   return [...grupos.values()].sort((a, b) => b.registros - a.registros || b.cantidad - a.cantidad);
 }
 
+// Un registro coincide si todas las palabras están en el encabezado (responsable, observación…)
+// o en una misma línea de detalle junto con el encabezado. Así "pancetas de pollo" no trae un
+// informe que solo tiene "PANCETAS DE CIRUELA" más otro PP con "POLLO".
+function coincideRegistro(row: unknown, terms: string[]) {
+  if (!row || typeof row !== 'object') return false;
+  const valores = Object.values(row as Record<string, unknown>);
+  const encabezado = valores.filter(v => !Array.isArray(v)).map(textoBuscable).join(' ');
+  const lineas = valores.filter(Array.isArray).flat();
+  const textos = [encabezado, ...lineas.map(l => `${encabezado} ${textoBuscable(l)}`)];
+  return textos.some(t => {
+    const n = normalizarBusqueda(t);
+    return terms.every(term => n.includes(term));
+  });
+}
+
 function responderConBusqueda(data: unknown[] | null, busqueda: string, offset: number, limit: number, tipo: string, verCostos: boolean, baseCount?: number | null, extra: Record<string, unknown> = {}) {
   const terms = normalizarBusqueda(busqueda).split(/\s+/).filter(Boolean);
   const rows = data ?? [];
-  const filtered = terms.length
-    ? rows.filter(row => {
-        const text = normalizarBusqueda(textoBuscable(row));
-        return terms.every(term => text.includes(term));
-      })
-    : rows;
+  const filtered = terms.length ? rows.filter(row => coincideRegistro(row, terms)) : rows;
   const items = filtered.slice(offset, offset + limit);
   return NextResponse.json({
     items,
@@ -211,6 +239,7 @@ function responderConBusqueda(data: unknown[] | null, busqueda: string, offset: 
     coincidencias: tipo === 'produccion'
       ? coincidenciasProduccion(asRecordRows(filtered), terms, verCostos)
       : coincidenciasLineas(tipo, asRecordRows(filtered), terms, verCostos),
+    ...(tipo === 'produccion' ? { coincidencias_rendimiento: coincidenciasRendimiento(asRecordRows(filtered), terms) } : {}),
     ...extra,
   });
 }

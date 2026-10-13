@@ -173,7 +173,8 @@ type Tab = 'produccion' | 'colacion' | 'mermas' | 'frutas' | 'inventario';
 const PAGE_SIZE = 25;
 
 type Coincidencia = { codigo_producto: string | null; nombre_pp: string; tipo_pp: string | null; gramos_por_pp: number | null; cantidad: number; total_producido: number; costo_total: number | null; registros: number };
-type ResultadoBusqueda = { q: string; coincidencias: Coincidencia[] };
+type CoincidenciaRendimiento = { verdura: string; kg_utilizados: number; rendimiento_kg: number; registros: number };
+type ResultadoBusqueda = { q: string; coincidencias: Coincidencia[]; rendimiento?: CoincidenciaRendimiento[] };
 
 // Misma normalización que el buscador del servidor: todas las palabras deben estar en el texto.
 function terminosBusqueda(q: string) {
@@ -775,9 +776,32 @@ function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps,
   const estaAbierto = (id: string) => expanded.has(id) !== autoAbrir;
   const abrir = (id: string) => setExpanded(s => { const n = new Set(s); if (autoAbrir) n.delete(id); else n.add(id); return n; });
   const coincidencias = busqueda?.coincidencias ?? [];
+  const coincRend = busqueda?.rendimiento ?? [];
 
   return (
     <div className="hst-list">
+      {coincRend.length > 0 && (
+        <section className="hst-coinc hst-coinc-rend" aria-label="Totales de rendimiento de la búsqueda">
+          <h4 className="hst-sec-title">
+            <span className="hst-leaf"><NavIcon name="leaf" size={14} /></span>
+            Rendimiento en el período para «{busqueda?.q}»
+          </h4>
+          {coincRend.map(r => {
+            const m = calcMerma(r.kg_utilizados, r.rendimiento_kg);
+            return (
+              <div key={r.verdura} className="hst-coinc-row">
+                <div className="hst-pp-nombre">
+                  <b>{r.verdura}</b>
+                  <small>{r.registros} registro{r.registros !== 1 ? 's' : ''}</small>
+                </div>
+                <div className="hst-pp-ing"><b>{fmtNum(r.kg_utilizados)} kg</b><small>Utilizado</small></div>
+                <div className="hst-pp-total"><b>{fmtNum(r.rendimiento_kg)} kg</b><small>Rendido</small></div>
+                <div className="hst-pp-costo"><span className={`hst-merma is-${m.estado}`}>{formatPct(m.mermaPct)}</span><small>Merma</small></div>
+              </div>
+            );
+          })}
+        </section>
+      )}
       {coincidencias.length > 0 && (
         <section className="hst-coinc" aria-label="Totales de la búsqueda">
           <h4 className="hst-sec-title">
@@ -1940,7 +1964,11 @@ export default function HistorialPage() {
       setTotal(data.count ?? (data.items?.length ?? 0));
       setSummary(data.summary ?? null);
       setResponsables(Array.isArray(data.responsables) ? data.responsables : []);
-      setResultadoBusqueda(q.trim() ? { q: q.trim(), coincidencias: Array.isArray(data.coincidencias) ? data.coincidencias : [] } : null);
+      setResultadoBusqueda(q.trim() ? {
+        q: q.trim(),
+        coincidencias: Array.isArray(data.coincidencias) ? data.coincidencias : [],
+        rendimiento: Array.isArray(data.coincidencias_rendimiento) ? data.coincidencias_rendimiento : [],
+      } : null);
     } catch (e: unknown) {
       if (reqId !== reqIdRef.current) return;
       setErr(e instanceof Error ? e.message : 'Error cargando datos');
