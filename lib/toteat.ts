@@ -1,7 +1,13 @@
 import { FOOD_SUBCATEGORIAS, CAFETERIA_SUBCATEGORIAS } from '@/lib/toteat-catalog';
 
 const DEFAULT_TOTEAT_BASE_URL = 'https://toteatglobal.appspot.com/mw/or/1.0';
-const MAX_DAYS_PER_REQUEST = 15;
+// Toteat responde ~1 s por dia y ~10 s por tramo de 15 dias: se consulta un dia por request, varios
+// en paralelo, y cada dia queda en cache (los dias cerrados no cambian).
+const MAX_DAYS_PER_REQUEST = 1;
+const PARALLEL_REQUESTS = 8;
+const CACHE_TTL_CLOSED_MS = 6 * 60 * 60 * 1000;
+const CACHE_TTL_OPEN_MS = 2 * 60 * 1000;
+const CACHE_MAX_CHUNKS = 120;
 
 export interface ToteatCredentials {
   xir: string;
@@ -17,6 +23,7 @@ export interface ToteatVentaItem {
   product_code: string | null;
   product_name: string;
   category: string | null;
+  hierarchy_id: string | null;
   quantity: number;
   gross_amount: number | null;
   net_amount: number | null;
@@ -105,21 +112,68 @@ export function getToteatCredentials(): ToteatCredentials {
   };
 }
 
+type CachedChunk = { at: number; ttl: number; rows: unknown[]; items: ToteatVentaItem[] };
+const chunkCache = new Map<string, CachedChunk>();
+const chunkInFlight = new Map<string, Promise<CachedChunk>>();
+
+function todayChile() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago' }).format(new Date()).replace(/-/g, '');
+}
+
+async function loadChunk(credentials: ToteatCredentials, ini: string, end: string): Promise<CachedChunk> {
+  const key = `${credentials.xir}|${credentials.xil}|${ini}|${end}`;
+  const cached = chunkCache.get(key);
+  if (cached && Date.now() - cached.at < cached.ttl) return cached;
+
+  // Dos consultas simultaneas del mismo dia comparten la misma llamada a Toteat.
+  const pending = chunkInFlight.get(key);
+  if (pending) return pending;
+
+  const promise = fetchToteatSalesChunk(credentials, ini, end)
+    .then(result => {
+      // Hoy y ayer (turno nocturno) pueden seguir recibiendo ventas: cache corto.
+      const ayer = new Date(`${todayChile().replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')}T12:00:00Z`);
+      ayer.setUTCDate(ayer.getUTCDate() - 1);
+      const entry: CachedChunk = {
+        at: Date.now(),
+        ttl: end >= toToteatDate(ayer) ? CACHE_TTL_OPEN_MS : CACHE_TTL_CLOSED_MS,
+        rows: result.rows,
+        items: normalizeSalesRows(result.rows, toIsoDate(ini)),
+      };
+      chunkCache.delete(key);
+      chunkCache.set(key, entry);
+      while (chunkCache.size > CACHE_MAX_CHUNKS) chunkCache.delete(chunkCache.keys().next().value!);
+      return entry;
+    })
+    .finally(() => chunkInFlight.delete(key));
+  chunkInFlight.set(key, promise);
+  return promise;
+}
+
 export async function fetchToteatSales(desde: string, hasta: string, options: ToteatSalesOptions = {}): Promise<ToteatSalesResponse> {
   const credentials = getToteatCredentials();
   const chunks = splitDateRange(desde, hasta, MAX_DAYS_PER_REQUEST);
+  const results: CachedChunk[] = new Array(chunks.length);
+
+  let next = 0;
+  const worker = async () => {
+    while (next < chunks.length) {
+      const i = next++;
+      results[i] = await loadChunk(credentials, chunks[i].ini, chunks[i].end);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(PARALLEL_REQUESTS, chunks.length) }, worker));
+
   const raw: unknown[] = [];
   const items: ToteatVentaItem[] = [];
   const chunkMeta: { ini: string; end: string; count: number }[] = [];
-
-  for (const chunk of chunks) {
-    const result = await fetchToteatSalesChunk(credentials, chunk.ini, chunk.end);
+  chunks.forEach((chunk, i) => {
+    const result = results[i];
     raw.push(...result.rows);
-    const normalized = normalizeSalesRows(result.rows, chunk.ini);
-    const scoped = options.soloComida === false ? normalized : normalized.filter(isFoodSale);
+    const scoped = options.soloComida === false ? result.items : result.items.filter(isFoodSale);
     items.push(...scoped);
     chunkMeta.push({ ...chunk, count: scoped.length });
-  }
+  });
 
   return { raw, items, chunks: chunkMeta };
 }
@@ -193,8 +247,10 @@ function normalizeSalesRows(rows: unknown[], fallbackDate: string): ToteatVentaI
       continue;
     }
 
+    // Una sola copia de la orden, sin el arreglo de productos, compartida por todas sus lineas.
+    const order = Object.fromEntries(Object.entries(record).filter(([, v]) => !Array.isArray(v) || !v.includes(details[0])));
     for (const detail of details) {
-      const item = normalizeDetail(record, detail, fallbackDate);
+      const item = normalizeDetail(order, detail, fallbackDate);
       if (item) items.push(item);
     }
   }
@@ -249,6 +305,7 @@ function normalizeDetail(
     product_code: firstString(detail, ['productCode', 'code', 'codigo', 'sku', 'externalCode', 'external_id', 'id']) ?? null,
     product_name: productName,
     category: firstString(detail, ['category', 'categoria', 'hierarchyName', 'hierarchy', 'jerarquia', 'family', 'familia']) ?? null,
+    hierarchy_id: firstString(detail, ['hierarchyId']) ?? null,
     quantity: firstNumber(detail, ['quantity', 'qty', 'cantidad', 'amount']) ?? 1,
     gross_amount: firstNumber(detail, ['grossAmount', 'payed', 'total', 'totalAmount', 'gross', 'monto', 'priceTotal', 'netPrice']),
     net_amount: firstNumber(detail, ['netAmount', 'netPrice', 'subtotal', 'net', 'montoNeto']),
@@ -311,6 +368,10 @@ function parseIsoDate(value: string) {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) throw new Error('Fecha invalida. Usa formato YYYY-MM-DD');
   return new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+}
+
+function toIsoDate(toteatDate: string) {
+  return `${toteatDate.slice(0, 4)}-${toteatDate.slice(4, 6)}-${toteatDate.slice(6, 8)}`;
 }
 
 function toToteatDate(date: Date) {

@@ -5,8 +5,8 @@ import { fetchToteatSales } from '@/lib/toteat';
 import { mapaCodigosDefontana } from '@/lib/codigos-defontana';
 import { ingredientesVigentes, versionReceta } from '@/lib/carta-vigencias';
 import {
-  esPP, estadoHomologacion, explotarPP, lineasConsumo, normalizarCodigoToteat,
-  type IngredienteDefontana, type LineaConsumo, type RecetaPPDefontana,
+  esPP, estadoHomologacion, explotarPP, grupoVentaDefontana, lineasConsumo, normalizarCodigoToteat,
+  type GrupoVentaDefontana, type IngredienteDefontana, type LineaConsumo, type RecetaPPDefontana,
 } from '@/lib/defontana-consumo';
 
 // GET /api/carta/defontana?desde&hasta — homologacion Toteat/Defontana por plato y consumo
@@ -95,18 +95,28 @@ export async function GET(req: NextRequest) {
       if (code) porCodigo.set(code, (porCodigo.get(code) ?? 0) + 1);
     }
 
-    // Ventas Toteat del rango, por codigo y version de receta (lib/carta-vigencias.ts).
+    // Ventas Toteat del rango que entran a Defontana (Alimentos, Cafeteria y jugos naturales; ver
+    // grupoVentaDefontana), por codigo y version de receta (lib/carta-vigencias.ts).
     let ventasError: string | null = null;
     const ventas = new Map<string, { code: string; fecha: string; vendidos: number }>();
+    const productosVendidos = new Map<string, { codigo: string; nombre: string; categoria: string | null; grupo: GrupoVentaDefontana; vendidos: number; monto: number }>();
     try {
-      const result = await fetchToteatSales(desde, hasta, { soloComida: true });
+      const result = await fetchToteatSales(desde, hasta, { soloComida: false });
       for (const item of result.items) {
         const code = normalizarCodigoToteat(item.product_code);
         if (!code) continue;
+        const grupo = grupoVentaDefontana({ ...item, hierarchyId: item.hierarchy_id });
+        if (!grupo) continue;
+        const cantidad = Number(item.quantity) || 0;
         const key = `${code}||${versionReceta(code, item.fecha)}`;
         const actual = ventas.get(key) ?? { code, fecha: item.fecha, vendidos: 0 };
-        actual.vendidos += Number(item.quantity) || 0;
+        actual.vendidos += cantidad;
         ventas.set(key, actual);
+
+        const producto = productosVendidos.get(code) ?? { codigo: code, nombre: item.product_name, categoria: item.category, grupo, vendidos: 0, monto: 0 };
+        producto.vendidos += cantidad;
+        producto.monto += Number(item.gross_amount) || 0;
+        productosVendidos.set(code, producto);
       }
     } catch (e) {
       ventasError = e instanceof Error ? e.message : 'No se pudieron leer las ventas Toteat';
@@ -154,6 +164,26 @@ export async function GET(req: NextRequest) {
       };
     });
 
+    // Cada producto vendido enlazado por codigo Toteat con los platos de la carta.
+    const platosPorCodigo = new Map<string, typeof platos>();
+    for (const p of platos) {
+      if (!p.codigo_toteat) continue;
+      platosPorCodigo.set(p.codigo_toteat, [...(platosPorCodigo.get(p.codigo_toteat) ?? []), p]);
+    }
+    const ventasProductos = Array.from(productosVendidos.values())
+      .map(v => {
+        const asociados = platosPorCodigo.get(v.codigo) ?? [];
+        const conReceta = asociados.some(p => p.lineas_receta > 0);
+        return {
+          ...v,
+          vendidos: Number(v.vendidos.toFixed(3)),
+          monto: Math.round(v.monto),
+          platos: asociados.map(p => ({ id: p.id, nombre: p.nombre, lineas_receta: p.lineas_receta })),
+          vinculo: (conReceta ? 'con_receta' : asociados.length ? 'sin_receta' : 'sin_plato') as 'con_receta' | 'sin_receta' | 'sin_plato',
+        };
+      })
+      .sort((a, b) => b.vendidos - a.vendidos);
+
     const ppDistintos = new Set<string>();
     const directosDistintos = new Set<string>();
     for (const p of carta) {
@@ -176,6 +206,7 @@ export async function GET(req: NextRequest) {
         productos_directos: directosDistintos.size,
       },
       platos,
+      ventas: ventasProductos,
     });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Error calculando homologacion Defontana' }, { status: 500 });

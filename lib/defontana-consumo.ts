@@ -138,3 +138,17 @@ export function explotarPP(total: number, unidad: string | null, receta: RecetaP
 function redondear(n: number) {
   return Number(n.toFixed(6));
 }
+
+// Ventas Toteat que entran a Defontana: toda la jerarquia Alimentos (AB.700…), toda Cafeteria
+// y, de Jugos y limonadas, solo los extras de jugo natural (el resto de bebidas no se descuenta).
+export type GrupoVentaDefontana = 'alimentos' | 'cafeteria' | 'jugos';
+export const JUGOS_DEFONTANA = new Set(['E5000', 'E5001', 'E5002', 'E5500', 'E5501', 'E5502']);
+
+export function grupoVentaDefontana(venta: { product_code: string | null; category: string | null; hierarchyId?: string | null }): GrupoVentaDefontana | null {
+  const code = normalizarCodigoToteat(venta.product_code);
+  if (JUGOS_DEFONTANA.has(code)) return 'jugos';
+  const categoria = String(venta.category ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  if (categoria.includes('CAFETERIA')) return 'cafeteria';
+  if (String(venta.hierarchyId ?? '').startsWith('AB.700')) return 'alimentos';
+  return null;
+}

@@ -44,6 +44,8 @@
 .ck-kpi.is-on { border-color: currentColor; }
 .ck-kpi--plain { background: var(--sf); border-color: var(--bo); color: var(--tx); cursor: default; }
 .ck-kpi--plain span { color: var(--ts); }
+.ck-kpi--filtro { cursor: pointer; }
+.ck-kpi--filtro:hover { border-color: var(--bo-ac); }
 
 /* ── Buscador y filtros ─────────────────────────────────── */
 .ck-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
@@ -294,3 +296,6 @@
   .ck-layout, .ck-side { transition: none; }
   .ck-card, .ck-card:hover { transition: none; transform: none; }
 }
+
+/* Atajo de teclado dentro de un boton (Guardar · F12). */
+.ck-kbd { margin-left: 2px; padding: 1px 5px; border-radius: 4px; background: rgba(255,255,255,0.22); font: 600 10.5px 'DM Sans', sans-serif; letter-spacing: 0.02em; }

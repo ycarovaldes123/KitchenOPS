@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
       scope: soloComida ? 'comida' : 'todo',
       chunks: result.chunks,
       count: result.items.length,
-      items: result.items,
+      items: raw ? result.items : result.items.map(item => ({ ...item, raw: undefined })),
       ...(raw ? { raw: result.raw } : {}),
     });
   } catch (e) {

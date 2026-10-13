@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatCLP, formatPct } from '@/lib/calculos';
 import NavIcon from '@/components/layout/NavIcon';
 import { TIPOS_CARTA } from '@/lib/carta';
@@ -320,6 +320,21 @@ export default function PlatoEditor({ plato, copyFrom = null, defaultTipoCarta =
     }
   }
 
+  // F12 guarda el plato (atajo pedido por cocina); se ignora mientras se guarda o sube la foto.
+  const atajoGuardar = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    atajoGuardar.current = saving || deleting || uploadingFoto ? null : () => void save();
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'F12') return;
+      e.preventDefault();
+      atajoGuardar.current?.();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
+
   async function deletePlato() {
     if (!plato || forceCreate || !canDelete) return;
     const ok = window.confirm(`¿Eliminar "${plato.nombre}" de la carta? El plato dejará de aparecer en Costos, pero se conserva el registro histórico.`);
@@ -502,8 +517,9 @@ export default function PlatoEditor({ plato, copyFrom = null, defaultTipoCarta =
           <button type="button" className="ck-btn" onClick={onCancel} disabled={saving || deleting}>
             Cancelar
           </button>
-          <button type="button" className="ck-btn ck-btn--primary" onClick={save} disabled={saving || deleting || uploadingFoto}>
+          <button type="button" className="ck-btn ck-btn--primary" onClick={save} title="Guardar (F12)" disabled={saving || deleting || uploadingFoto}>
             <NavIcon name="save" size={15} /> {saving ? 'Guardando...' : 'Guardar'}
+            {!saving && <kbd className="ck-kbd">F12</kbd>}
           </button>
         </div>
       </div>

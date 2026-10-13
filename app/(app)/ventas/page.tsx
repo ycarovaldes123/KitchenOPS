@@ -196,6 +196,9 @@ export default function VentasPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     cargarMaestros();
+    // Al abrir Ventas se consulta altiro el periodo por defecto (mes en curso).
+    void consultar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al montar
   }, []);
 
   async function consultar() {

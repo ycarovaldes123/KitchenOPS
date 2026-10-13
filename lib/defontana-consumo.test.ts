@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { convertirUnidad, esPP, estadoHomologacion, explotarPP, lineasConsumo } from './defontana-consumo.ts';
+import { convertirUnidad, esPP, estadoHomologacion, explotarPP, grupoVentaDefontana, lineasConsumo } from './defontana-consumo.ts';
 
 // Receta real de BLUE SALAD ENSALADA (K17015), resumida.
 const blueSalad = [
@@ -59,4 +59,15 @@ test('explotarPP reparte el consumo segun el rendimiento de la receta PP', () =>
     ['CREMA', 0.16, null],
   ]);
   assert.equal(explotarPP(2, 'UN', receta, new Map()), null);
+});
+
+test('grupoVentaDefontana: alimentos, cafeteria y solo los jugos indicados', () => {
+  assert.equal(grupoVentaDefontana({ product_code: 'K15097', category: 'PLATOS', hierarchyId: 'AB.700703' }), 'alimentos');
+  assert.equal(grupoVentaDefontana({ product_code: 'E19001', category: 'PICADAS', hierarchyId: 'AB.700701' }), 'alimentos');
+  assert.equal(grupoVentaDefontana({ product_code: 'K25000', category: 'CAFETERIA', hierarchyId: 'AB.730733' }), 'cafeteria');
+  assert.equal(grupoVentaDefontana({ product_code: 'K28005', category: 'CAFETERÍA PERSONAL', hierarchyId: 'AB.730736' }), 'cafeteria');
+  assert.equal(grupoVentaDefontana({ product_code: 'e5000', category: 'JUGOS Y LIMONADAS', hierarchyId: 'AB.730732' }), 'jugos');
+  assert.equal(grupoVentaDefontana({ product_code: 'K24002', category: 'JUGOS Y LIMONADAS', hierarchyId: 'AB.730732' }), null);
+  assert.equal(grupoVentaDefontana({ product_code: 'K23028', category: 'BEBIDAS', hierarchyId: 'AB.730731' }), null);
+  assert.equal(grupoVentaDefontana({ product_code: 'K2009', category: 'SCHOP GRANDE', hierarchyId: 'AB.600602' }), null);
 });

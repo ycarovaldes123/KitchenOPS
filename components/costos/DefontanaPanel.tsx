@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import NavIcon from '@/components/layout/NavIcon';
 import { formatCantidad } from '@/lib/costo-receta-pp';
-import type { EstadoDefontana, LineaConsumo, MateriaPrimaPP } from '@/lib/defontana-consumo';
+import { formatCLP } from '@/lib/calculos';
+import type { EstadoDefontana, GrupoVentaDefontana, LineaConsumo, MateriaPrimaPP } from '@/lib/defontana-consumo';
 
 interface PlatoDefontana {
   id: string;
   codigo_toteat: string | null;
-  cod_softland: string | null;
   nombre: string;
   categoria: string;
   estado: EstadoDefontana;
@@ -22,12 +22,26 @@ interface PlatoDefontana {
   consumo: (LineaConsumo & { materias_primas: MateriaPrimaPP[] | null })[];
 }
 
+type VinculoVenta = 'con_receta' | 'sin_receta' | 'sin_plato';
+
+interface VentaProducto {
+  codigo: string;
+  nombre: string;
+  categoria: string | null;
+  grupo: GrupoVentaDefontana;
+  vendidos: number;
+  monto: number;
+  platos: { id: string; nombre: string; lineas_receta: number }[];
+  vinculo: VinculoVenta;
+}
+
 interface DefontanaResponse {
   desde: string;
   hasta: string;
   ventasError: string | null;
   resumen: { vinculados: number; sin_vincular: number; pendientes: number; pp_utilizados: number; productos_directos: number };
   platos: PlatoDefontana[];
+  ventas: VentaProducto[];
 }
 
 const ESTADOS: Record<EstadoDefontana, { label: string; ayuda: string }> = {
@@ -35,6 +49,16 @@ const ESTADOS: Record<EstadoDefontana, { label: string; ayuda: string }> = {
   pendiente:  { label: 'Pendiente',  ayuda: 'Falta código Defontana en algún producto/PP, o el código Toteat está repetido' },
   incompleto: { label: 'Incompleto', ayuda: 'Sin receta, o líneas sin código de producto / cantidad' },
   sin_codigo: { label: 'Sin código', ayuda: 'El plato no tiene Código TOTEAT: sus ventas no se pueden cruzar' },
+};
+
+// Cada KPI funciona tambien como filtro de la tabla (clic de nuevo para quitarlo).
+type KpiFiltro = 'vinculados' | 'sin_vincular' | 'pp' | 'directos' | 'pendientes';
+const KPI_FILTRO: Record<KpiFiltro, (p: PlatoDefontana) => boolean> = {
+  vinculados: p => p.estado === 'vinculado',
+  sin_vincular: p => p.estado === 'sin_codigo',
+  pp: p => p.pp > 0,
+  directos: p => p.directos > 0,
+  pendientes: p => p.estado === 'pendiente' || p.estado === 'incompleto',
 };
 
 const hoyChile = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago' }).format(new Date());
@@ -68,7 +92,9 @@ export default function DefontanaPanel() {
   const [estadoFiltro, setEstadoFiltro] = useState<EstadoDefontana | 'all'>('all');
   const [catFiltro, setCatFiltro] = useState('all');
   const [ventasFiltro, setVentasFiltro] = useState<'all' | 'con' | 'sin'>('all');
+  const [kpiFiltro, setKpiFiltro] = useState<KpiFiltro | null>(null);
   const [detalle, setDetalle] = useState<PlatoDefontana | null>(null);
+  const [vista, setVista] = useState<'platos' | 'ventas'>('platos');
 
   const consultar = useCallback(async (d: string, h: string) => {
     if (d > h) {
@@ -102,12 +128,13 @@ export default function DefontanaPanel() {
   const filtrados = useMemo(() => {
     const q = normalizar(busqueda);
     return (data?.platos ?? []).filter(p =>
+      (!kpiFiltro || KPI_FILTRO[kpiFiltro](p)) &&
       (estadoFiltro === 'all' || p.estado === estadoFiltro) &&
       (catFiltro === 'all' || p.categoria === catFiltro) &&
       (ventasFiltro === 'all' || (ventasFiltro === 'con' ? p.vendidos > 0 : p.vendidos === 0)) &&
-      (!q || normalizar([p.nombre, p.codigo_toteat, p.cod_softland, ...p.receta.flatMap(l => [l.nombre, l.codigo_producto, l.codigo_defontana])].join(' ')).includes(q)),
+      (!q || normalizar([p.nombre, p.codigo_toteat, ...p.receta.flatMap(l => [l.nombre, l.codigo_producto, l.codigo_defontana])].join(' ')).includes(q)),
     );
-  }, [data, busqueda, estadoFiltro, catFiltro, ventasFiltro]);
+  }, [data, busqueda, estadoFiltro, catFiltro, ventasFiltro, kpiFiltro]);
 
   const r = data?.resumen;
 
@@ -143,19 +170,48 @@ export default function DefontanaPanel() {
         <div className="ck-warn">No se pudieron leer las ventas Toteat ({data.ventasError}). La homologación se muestra igual; el consumo queda en 0.</div>
       )}
 
+      <div className="ck-toggle" role="group" aria-label="Vista Defontana" style={{ marginBottom: '14px' }}>
+        <button type="button" className={vista === 'platos' ? 'is-on' : ''} aria-pressed={vista === 'platos'} onClick={() => setVista('platos')}>
+          <NavIcon name="utensils" size={14} /> Platos de carta
+        </button>
+        <button type="button" className={vista === 'ventas' ? 'is-on' : ''} aria-pressed={vista === 'ventas'} onClick={() => setVista('ventas')}>
+          <NavIcon name="barchart" size={14} /> Ventas Toteat
+          {!!data?.ventas && <span style={{ fontWeight: 500, opacity: 0.85 }}>· {data.ventas.filter(v => v.vinculo !== 'con_receta').length} sin receta</span>}
+        </button>
+      </div>
+
+      {vista === 'ventas' ? (
+        loading && !data
+          ? <div className="ck-empty">Leyendo ventas Toteat...</div>
+          : <VentasDefontana ventas={data?.ventas ?? []} loading={loading} />
+      ) : (<>
       <div className="ck-kpis ck-kpis--5">
-        {[
-          { label: 'Platos vinculados', value: r?.vinculados, color: '#059669' },
-          { label: 'Sin vincular', value: r?.sin_vincular, color: '#B91C1C' },
-          { label: 'PP utilizados', value: r?.pp_utilizados, color: 'var(--ac)' },
-          { label: 'Productos directos', value: r?.productos_directos, color: 'var(--tx)' },
-          { label: 'Pendientes', value: r?.pendientes, color: '#B45309' },
-        ].map(k => (
-          <div key={k.label} className="ck-kpi ck-kpi--plain">
-            <strong style={{ color: k.color }}>{k.value ?? '—'}</strong>
-            <span>{k.label}</span>
-          </div>
-        ))}
+        {([
+          { key: 'vinculados', label: 'Platos vinculados', value: r?.vinculados, color: '#059669', ayuda: 'Ver platos vinculados' },
+          { key: 'sin_vincular', label: 'Sin vincular', value: r?.sin_vincular, color: '#B91C1C', ayuda: 'Ver platos sin código Toteat' },
+          { key: 'pp', label: 'PP utilizados', value: r?.pp_utilizados, color: 'var(--ac)', ayuda: 'Ver platos que usan PP' },
+          { key: 'directos', label: 'Productos directos', value: r?.productos_directos, color: 'var(--tx)', ayuda: 'Ver platos con productos directos' },
+          { key: 'pendientes', label: 'Pendientes', value: r?.pendientes, color: '#B45309', ayuda: 'Ver platos pendientes o incompletos' },
+        ] as const).map(k => {
+          const on = kpiFiltro === k.key;
+          return (
+            <button
+              key={k.key}
+              type="button"
+              className={`ck-kpi ck-kpi--plain ck-kpi--filtro${on ? ' is-on' : ''}`}
+              style={on ? { borderColor: k.color, boxShadow: `inset 0 0 0 1px ${k.color}` } : undefined}
+              aria-pressed={on}
+              title={on ? 'Quitar filtro' : k.ayuda}
+              onClick={() => {
+                setKpiFiltro(on ? null : k.key);
+                setEstadoFiltro('all');
+              }}
+            >
+              <strong style={{ color: k.color }}>{k.value ?? '—'}</strong>
+              <span>{k.label}</span>
+            </button>
+          );
+        })}
       </div>
 
       <div className="ck-toolbar" style={{ marginBottom: '16px' }}>
@@ -176,6 +232,11 @@ export default function DefontanaPanel() {
           <option value="con">Con ventas en el período</option>
           <option value="sin">Sin ventas en el período</option>
         </select>
+        {kpiFiltro && (
+          <button type="button" className="ck-btn ck-btn--sm" onClick={() => setKpiFiltro(null)}>
+            Quitar filtro <NavIcon name="x" size={12} />
+          </button>
+        )}
         {data && <span className="ck-hint">{filtrados.length} de {data.platos.length} platos</span>}
       </div>
 
@@ -186,12 +247,11 @@ export default function DefontanaPanel() {
       ) : (
         <div className="ck-panel" style={{ opacity: loading ? 0.6 : 1 }}>
           <div style={{ overflowX: 'auto' }}>
-            <table className="ck-table ck-table--click" style={{ minWidth: '1040px' }}>
+            <table className="ck-table ck-table--click" style={{ minWidth: '940px' }}>
               <thead>
                 <tr>
                   <th>Código Toteat</th>
                   <th>Plato</th>
-                  <th>Código plato</th>
                   <th>Estado</th>
                   <th className="num">PP</th>
                   <th className="num">Productos</th>
@@ -206,7 +266,6 @@ export default function DefontanaPanel() {
                   <tr key={p.id} onClick={() => setDetalle(p)} className={detalle?.id === p.id ? 'is-selected' : undefined}>
                     <td><span className="ck-code">{p.codigo_toteat ?? '—'}</span></td>
                     <td style={{ fontWeight: 600 }}>{p.nombre}<div style={{ fontSize: '11px', color: 'var(--ts)', fontWeight: 400 }}>{p.categoria}</div></td>
-                    <td><span className="ck-code">{p.cod_softland ?? '—'}</span></td>
                     <td><EstadoChip estado={p.estado} /></td>
                     <td className="num">{p.pp ? `${p.pp} PP` : '—'}</td>
                     <td className="num">{p.directos}</td>
@@ -233,6 +292,7 @@ export default function DefontanaPanel() {
           </div>
         </div>
       )}
+      </>)}
 
       <p className="ck-note" style={{ marginTop: '4px' }}>
         Se reutilizan las recetas de Carta y de Recetas PP; no se guarda una receta paralela para Defontana. Los PP (0502…) se
@@ -277,7 +337,6 @@ function DetalleDefontana({ plato, desde, hasta, onClose }: { plato: PlatoDefont
           <div className="ck-meta">
             {[
               { label: 'Código Toteat', value: plato.codigo_toteat ?? 'Sin código' },
-              { label: 'Código KitchenOps', value: plato.cod_softland ?? '—' },
               { label: 'Cód. Defontana insumos', value: `${plato.con_defontana} de ${plato.lineas_receta}` },
               { label: `Vendidos ${fechaCorta(desde)}–${fechaCorta(hasta)}`, value: formatCantidad(plato.vendidos) },
             ].map(m => (
@@ -369,5 +428,121 @@ function TablaLineas({ titulo, lineas, conVentas }: { titulo: string; lineas: (L
         </div>
       )}
     </div>
+  );
+}
+
+const GRUPOS: Record<GrupoVentaDefontana, string> = { alimentos: 'Alimentos', cafeteria: 'Cafetería', jugos: 'Jugos' };
+const VINCULOS: Record<VinculoVenta, { label: string; clase: string; ayuda: string }> = {
+  con_receta: { label: 'Con receta', clase: 'ck-status--vinculado', ayuda: 'Hay un plato con este código Toteat y tiene receta' },
+  sin_receta: { label: 'Plato sin receta', clase: 'ck-status--incompleto', ayuda: 'El plato existe pero no tiene ingredientes: la venta no descuenta inventario' },
+  sin_plato: { label: 'Sin plato', clase: 'ck-status--sin_codigo', ayuda: 'Ningún plato activo de la carta tiene este código Toteat' },
+};
+
+/** Todo lo vendido en Toteat que entra a Defontana, enlazado por código con los platos de la carta. */
+function VentasDefontana({ ventas, loading }: { ventas: VentaProducto[]; loading: boolean }) {
+  const [busqueda, setBusqueda] = useState('');
+  const [grupo, setGrupo] = useState<GrupoVentaDefontana | 'all'>('all');
+  const [vinculo, setVinculo] = useState<VinculoVenta | 'faltan' | null>(null);
+
+  const filtradas = useMemo(() => {
+    const q = normalizar(busqueda);
+    return ventas.filter(v =>
+      (grupo === 'all' || v.grupo === grupo) &&
+      (!vinculo || (vinculo === 'faltan' ? v.vinculo !== 'con_receta' : v.vinculo === vinculo)) &&
+      (!q || normalizar([v.codigo, v.nombre, v.categoria, ...v.platos.map(p => p.nombre)].join(' ')).includes(q)),
+    );
+  }, [ventas, busqueda, grupo, vinculo]);
+
+  const delGrupo = ventas.filter(v => grupo === 'all' || v.grupo === grupo);
+  const kpis = [
+    { key: null, label: 'Productos vendidos', value: delGrupo.length, color: 'var(--tx)' },
+    { key: 'con_receta', label: 'Con plato y receta', value: delGrupo.filter(v => v.vinculo === 'con_receta').length, color: '#059669' },
+    { key: 'faltan', label: 'Venta sin plato con receta', value: delGrupo.filter(v => v.vinculo !== 'con_receta').length, color: '#B91C1C' },
+    { key: 'sin_plato', label: 'Sin plato asociado', value: delGrupo.filter(v => v.vinculo === 'sin_plato').length, color: '#B91C1C' },
+    { key: 'sin_receta', label: 'Plato sin receta', value: delGrupo.filter(v => v.vinculo === 'sin_receta').length, color: '#C2410C' },
+  ] as const;
+
+  return (
+    <>
+      <div className="ck-kpis ck-kpis--5">
+        {kpis.map(k => {
+          const on = vinculo === k.key;
+          return (
+            <button
+              key={k.label}
+              type="button"
+              className={`ck-kpi ck-kpi--plain ck-kpi--filtro${on && k.key ? ' is-on' : ''}`}
+              style={on && k.key ? { borderColor: k.color, boxShadow: `inset 0 0 0 1px ${k.color}` } : undefined}
+              aria-pressed={on && !!k.key}
+              onClick={() => setVinculo(on ? null : k.key)}
+            >
+              <strong style={{ color: k.color }}>{k.value}</strong>
+              <span>{k.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="ck-toolbar" style={{ marginBottom: '16px' }}>
+        <div className="ck-search">
+          <NavIcon name="search" size={16} />
+          <input type="search" value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar código, producto o plato..." />
+        </div>
+        <select className="ck-select" value={grupo} onChange={e => setGrupo(e.target.value as GrupoVentaDefontana | 'all')} aria-label="Grupo">
+          <option value="all">Alimentos, Cafetería y Jugos</option>
+          {(Object.keys(GRUPOS) as GrupoVentaDefontana[]).map(g => <option key={g} value={g}>{GRUPOS[g]}</option>)}
+        </select>
+        {vinculo && (
+          <button type="button" className="ck-btn ck-btn--sm" onClick={() => setVinculo(null)}>
+            Quitar filtro <NavIcon name="x" size={12} />
+          </button>
+        )}
+        <span className="ck-hint">{filtradas.length} de {ventas.length} productos</span>
+      </div>
+
+      {filtradas.length === 0 ? (
+        <div className="ck-empty">No hay ventas que coincidan con los filtros.</div>
+      ) : (
+        <div className="ck-panel" style={{ opacity: loading ? 0.6 : 1 }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="ck-table" style={{ minWidth: '940px' }}>
+              <thead>
+                <tr>
+                  <th>Código Toteat</th>
+                  <th>Producto Toteat</th>
+                  <th>Grupo</th>
+                  <th className="num">Vendidos</th>
+                  <th className="num">Venta</th>
+                  <th>Plato asociado</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtradas.map(v => (
+                  <tr key={v.codigo}>
+                    <td><span className="ck-code">{v.codigo}</span></td>
+                    <td style={{ fontWeight: 600 }}>{v.nombre}<div style={{ fontSize: '11px', color: 'var(--ts)', fontWeight: 400 }}>{v.categoria ?? '—'}</div></td>
+                    <td>{GRUPOS[v.grupo]}</td>
+                    <td className="num">{formatCantidad(v.vendidos)}</td>
+                    <td className="num">{v.monto ? formatCLP(v.monto) : <span className="muted">$0</span>}</td>
+                    <td>
+                      {v.platos.length
+                        ? v.platos.map(p => <div key={p.id}>{p.nombre} <span className="muted" style={{ fontSize: '11px' }}>· {p.lineas_receta} ing.</span></div>)
+                        : <span className="muted">—</span>}
+                    </td>
+                    <td>
+                      <span className={`ck-status ${VINCULOS[v.vinculo].clase}`} title={VINCULOS[v.vinculo].ayuda}>
+                        <span className="ck-dot" style={{ background: 'currentColor' }} />
+                        {VINCULOS[v.vinculo].label}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
