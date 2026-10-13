@@ -424,9 +424,6 @@ function SearchablePicker({
                 }}
               >
                 <div style={{ fontSize: '12px', fontWeight: 600 }}>{opt.label}</div>
-                <div style={{ fontSize: '10px', color: 'var(--ts)', marginTop: '2px' }}>
-                  {opt.searchText}
-                </div>
               </button>
             ))
           )}
@@ -700,7 +697,7 @@ function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps,
   const ppOptions = useMemo(() => pps.map(pp => ({
     value: pp.id as string,
     label: formatPPDisplay(pp),
-    searchText: [pp.id, pp.nombre, pp.codigo_producto, pp.tipo_pp].filter(Boolean).join(' '),
+    searchText: [pp.nombre, pp.codigo_producto].filter(Boolean).join(' '),
   })), [pps]);
   const saveEditProd = async (prodId: string, det: Record<string, unknown>[], rend: Record<string, unknown>[]) => {
     const rendimientoNuevo = newRendRows.filter(r => r.verdura || r.kg_utilizados || r.rendimiento_kg);
