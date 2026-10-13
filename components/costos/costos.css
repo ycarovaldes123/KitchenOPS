@@ -183,18 +183,26 @@
    Sin plato seleccionado el panel mide 0: el catalogo usa todo el ancho y el grid
    recalcula columnas solo. Con plato, el panel se abre a la derecha (consulta / edicion). */
 .page.ck { max-width: none; }
-.ck { --ck-side-w: clamp(420px, calc((100vw - var(--sidebar-w, 220px) - 64px) * 0.34), 480px); }
-.ck-layout { display: flex; align-items: flex-start; gap: 0; transition: gap 220ms ease; }
+.ck {
+  --ck-content-w: calc(100vw - var(--sidebar-w, 220px) - 64px);
+  --ck-side-w: clamp(440px, calc(var(--ck-content-w) * 0.36), 560px);
+  --ck-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+/* Editar necesita mas espacio que consultar: el panel se ensancha y el catalogo cede. */
+.ck-layout.is-editing { --ck-side-w: clamp(520px, calc(var(--ck-content-w) * 0.46), 720px); }
+.ck-layout { display: flex; align-items: flex-start; gap: 0; transition: gap 260ms var(--ck-ease); }
 .ck-layout.has-panel { gap: 20px; }
+/* Con el panel abierto, maximo 4 platos por fila. */
+.ck-layout.has-panel .ck-grid { grid-template-columns: repeat(auto-fill, minmax(max(212px, calc((100% - 42px) / 4)), 1fr)); }
 .ck-main { flex: 1 1 auto; min-width: 0; }
-.ck-side { flex: 0 0 auto; width: 0; overflow: hidden; position: sticky; top: 16px; transition: width 220ms ease; }
+.ck-side { flex: 0 0 auto; width: 0; overflow: hidden; position: sticky; top: 16px; transition: width 260ms var(--ck-ease); view-transition-name: ck-side; }
 .ck-layout.has-panel .ck-side { width: var(--ck-side-w); }
-.ck-side__box { position: relative; width: var(--ck-side-w); max-height: calc(100vh - var(--ck-side-top, 16px) - 16px); display: flex; flex-direction: column; background: var(--sf); border: 1px solid var(--bo); border-radius: 12px; overflow: hidden; }
+.ck-side__box { position: relative; width: var(--ck-side-w); max-height: calc(100vh - var(--ck-side-top, 16px) - 16px); display: flex; flex-direction: column; background: var(--sf); border: 1px solid var(--bo); border-radius: 12px; overflow: hidden; container-type: inline-size; }
 .ck-side__box > .ck-close { position: absolute; top: 12px; right: 12px; z-index: 2; border-color: var(--bo); background: rgba(255,255,255,0.94); }
 .ck-side__scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .ck-side__hero { height: 210px; background: var(--ck-gray-bg); }
 .ck-side__hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.ck-side__body { padding: 18px 22px 22px; }
+.ck-side__body { padding: 18px 24px 24px; }
 .ck-side__head { flex: 0 0 auto; padding: 20px 22px 12px; border-bottom: 1px solid var(--bo); }
 .ck-side__title { margin: 0; padding-right: 40px; font-family: 'Syne', sans-serif; font-size: 19px; font-weight: 700; color: var(--tx); line-height: 1.2; text-transform: uppercase; }
 .ck-side__meta { margin: 6px 0 0; font-size: 12px; color: var(--ts); }
@@ -223,11 +231,37 @@
 .ck-side__buttons { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ck-side-backdrop { display: none; }
 
+/* Panel ancho (edicion): formulario en 4 columnas y cada ingrediente en una sola fila. */
+@container (min-width: 600px) {
+  .ck-form--side { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .ck-form--side .ck-field--half { grid-column: span 2; }
+  .ck-ing { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 300px); gap: 12px; align-items: end; padding: 10px 12px; }
+  .ck-ing__grid { margin-top: 0; grid-template-columns: 0.9fr 0.7fr 1fr 0.9fr; }
+  .ck-ing__top { grid-column: 1; grid-row: 1; align-self: end; padding-bottom: 0; }
+  .ck-ing > input { grid-column: 1; grid-row: 2; margin-top: 0 !important; }
+  .ck-ing__grid { grid-column: 2; grid-row: 1; }
+}
+
+/* View Transitions (escritorio): reemplazan a las transiciones CSS de ancho. */
+::view-transition-group(*) { animation-duration: 280ms; animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1); }
+::view-transition-old(ck-side):only-child { animation: 220ms cubic-bezier(0.4, 0, 1, 1) both ck-side-out; }
+::view-transition-new(ck-side):only-child { animation: 280ms cubic-bezier(0.2, 0.8, 0.2, 1) both ck-side-in; }
+::view-transition-old(ck-side), ::view-transition-new(ck-side) { height: 100%; object-fit: cover; object-position: left top; }
+@keyframes ck-side-in { from { opacity: 0; transform: translateX(32px); } }
+@keyframes ck-side-out { to { opacity: 0; transform: translateX(32px); } }
+@supports (view-transition-name: none) {
+  @media (min-width: 1241px) {
+    .ck-layout, .ck-side { transition: none; }
+  }
+}
+
 /* ── Responsive ─────────────────────────────────────────── */
-@media (max-width: 1180px) {
+@media (max-width: 1240px) {
   .ck-layout.has-panel { gap: 0; }
-  .ck-side, .ck-layout.has-panel .ck-side { position: fixed; top: 0; right: 0; bottom: 0; width: auto; z-index: 600; transform: translateX(100%); transition: transform 220ms ease; overflow: visible; }
+  .ck-layout.has-panel .ck-grid { grid-template-columns: repeat(auto-fill, minmax(212px, 1fr)); }
+  .ck-side, .ck-layout.has-panel .ck-side { position: fixed; top: 0; right: 0; bottom: 0; width: auto; z-index: 600; transform: translateX(100%); transition: transform 260ms var(--ck-ease); overflow: visible; view-transition-name: none; }
   .ck-layout.has-panel .ck-side { transform: none; }
+  .ck-layout.is-editing .ck-side__box { width: min(100vw, 680px); }
   .ck-side__box { width: min(100vw, 520px); height: 100vh; max-height: none; border-radius: 0; border-width: 0 0 0 1px; }
   .ck-layout.has-panel .ck-side-backdrop { display: block; position: fixed; inset: 0; z-index: 590; background: rgba(20, 16, 10, 0.35); }
 }

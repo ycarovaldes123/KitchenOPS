@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { formatCLP } from '@/lib/calculos';
 import NavIcon from '@/components/layout/NavIcon';
 import Semaforo, { SEMAFORO } from '@/components/costos/Semaforo';
@@ -32,6 +33,15 @@ type Vista = 'lista' | 'mosaico';
 type FiltroCarta = 'all' | 'ANTIGUA' | 'NUEVA';
 type SeccionCostos = 'carta' | 'defontana' | 'consumo';
 // Panel lateral derecho: consulta primero; editar/nuevo/copiar usan el mismo panel.
+// Abrir/cerrar el panel o cambiar de modo cambia el numero de columnas del mosaico: con la
+// View Transitions API cada tarjeta se desliza a su nueva posicion en vez de saltar.
+// Sin soporte (o en modo cajon / movimiento reducido) se usan las transiciones CSS.
+function usarTransicionVista() {
+  if (typeof document === 'undefined' || !('startViewTransition' in document)) return false;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+  return window.matchMedia('(min-width: 1241px)').matches;
+}
+
 type PanelPlato =
   | { modo: 'consulta' | 'editar' | 'copiar'; platoId: string }
   | { modo: 'nuevo' };
@@ -68,7 +78,7 @@ function PlatoCard({ p, selected, onClick, productoQuery }: { p: Plato; selected
   const sem = SEMAFORO[p.semaforo];
 
   return (
-    <button type="button" onClick={onClick} className={`ck-card${selected ? ' is-selected' : ''}`} aria-pressed={selected}>
+    <button type="button" onClick={onClick} className={`ck-card${selected ? ' is-selected' : ''}`} aria-pressed={selected} style={{ viewTransitionName: `ck-card-${p.id}` }}>
       <div className="ck-card__img">
         <PlatoFoto src={p.foto_url} alt={p.nombre} />
         <span className="ck-card__pct" style={{ color: sem.color }}>
@@ -148,8 +158,17 @@ export default function CostosPage() {
   const editando = panel != null && panel.modo !== 'consulta';
 
   const abrirPanel = useCallback((next: PanelPlato | null) => {
-    setPanel(next);
-    if (next) setPanelVisible(next);
+    if (!usarTransicionVista()) {
+      // Transicion CSS: al cerrar, el contenido se mantiene hasta que termina de animarse el ancho.
+      setPanel(next);
+      if (next) setPanelVisible(next);
+      return;
+    }
+    const doc = document as Document & { startViewTransition: (cb: () => void) => unknown };
+    doc.startViewTransition(() => flushSync(() => {
+      setPanel(next);
+      setPanelVisible(next);
+    }));
   }, []);
 
   function abrirPlato(p: Plato) {
@@ -313,7 +332,7 @@ export default function CostosPage() {
       ) : seccion === 'defontana' && puedeVerConsumo ? (
         <DefontanaPanel />
       ) : (
-      <div ref={layoutRef} className={`ck-layout${panel ? ' has-panel' : ''}`}>
+      <div ref={layoutRef} className={`ck-layout${panel ? ' has-panel' : ''}${editando ? ' is-editing' : ''}`}>
       <div className="ck-main">
 
       <div className="ck-kpis">

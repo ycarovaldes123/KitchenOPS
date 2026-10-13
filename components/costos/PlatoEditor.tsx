@@ -360,11 +360,11 @@ export default function PlatoEditor({ plato, copyFrom = null, defaultTipoCarta =
               Código Toteat
               <input value={codigoToteat} onChange={e => setCodigoToteat(e.target.value)} className="ck-input" />
             </label>
-            <label className="ck-field ck-field--full">
+            <label className="ck-field ck-field--full ck-field--half">
               Nombre del plato
               <input value={nombre} onChange={e => setNombre(e.target.value)} className="ck-input" />
             </label>
-            <label className="ck-field ck-field--full">
+            <label className="ck-field ck-field--full ck-field--half">
               Categoría
               <input value={categoria} onChange={e => setCategoria(e.target.value)} list="categorias-carta" className="ck-input" />
               <datalist id="categorias-carta">
@@ -385,11 +385,11 @@ export default function PlatoEditor({ plato, copyFrom = null, defaultTipoCarta =
               Precio carta
               <input type="number" min={0} step={1} value={precioCarta} onChange={e => setPrecioCarta(e.target.value)} className="ck-input" />
             </label>
-            <label className="ck-field ck-field--full">
+            <label className="ck-field ck-field--full ck-field--half">
               Foto URL
               <input value={fotoUrl} onChange={e => setFotoUrl(e.target.value)} className="ck-input" />
             </label>
-            <label className="ck-field ck-field--full">
+            <label className="ck-field ck-field--full ck-field--half">
               {uploadingFoto ? 'Subiendo foto...' : 'Subir foto'}
               <input
                 type="file"
