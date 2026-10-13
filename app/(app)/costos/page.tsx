@@ -1,11 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatCLP } from '@/lib/calculos';
 import NavIcon from '@/components/layout/NavIcon';
 import Semaforo, { SEMAFORO } from '@/components/costos/Semaforo';
-import FichaTecnicaModal from '@/components/costos/FichaTecnicaModal';
-import PlatoEditorModal from '@/components/costos/PlatoEditorModal';
+import PlatoConsulta from '@/components/costos/PlatoConsulta';
+import PlatoEditor from '@/components/costos/PlatoEditor';
 import ConsumoVentasPanel from '@/components/costos/ConsumoVentasPanel';
 import DefontanaPanel from '@/components/costos/DefontanaPanel';
 import { CartaTag, NOMBRE_CARTA, PlatoFoto, type Ingrediente, type Plato } from '@/components/costos/shared';
@@ -31,6 +31,10 @@ const KPI_CLASE: Record<ColorSemaforo, string> = {
 type Vista = 'lista' | 'mosaico';
 type FiltroCarta = 'all' | 'ANTIGUA' | 'NUEVA';
 type SeccionCostos = 'carta' | 'defontana' | 'consumo';
+// Panel lateral derecho: consulta primero; editar/nuevo/copiar usan el mismo panel.
+type PanelPlato =
+  | { modo: 'consulta' | 'editar' | 'copiar'; platoId: string }
+  | { modo: 'nuevo' };
 
 function normalizeSearch(value: unknown) {
   return String(value ?? '')
@@ -109,25 +113,22 @@ export default function CostosPage() {
   const [verFiltros, setVerFiltros] = useState(false);
   const [soloSinToteat, setSoloSinToteat] = useState(false);
   const [soloSinFoto, setSoloSinFoto] = useState(false);
-  const [modal, setModal] = useState<Plato | null>(null);
-  const [seleccionado, setSeleccionado] = useState<string | null>(null);
-  const [editor, setEditor] = useState<Plato | 'new' | null>(null);
-  const [copyFrom, setCopyFrom] = useState<Plato | null>(null);
+  const [panel, setPanel] = useState<PanelPlato | null>(null);
+  // Contenido que se sigue mostrando mientras el panel se cierra (animacion de ancho).
+  const [panelVisible, setPanelVisible] = useState<PanelPlato | null>(null);
   const [seccion, setSeccion] = useState<SeccionCostos>('carta');
   // Al entrar a Costos siempre parte en vista Mosaico.
   const [vista, setVista] = useState<Vista>('mosaico');
 
   const cargarCarta = useCallback(() => {
-    setLoading(true);
     setError('');
-    fetch('/api/carta')
+    return fetch('/api/carta')
       .then(r => r.json())
       .then(data => {
         if (data.error) throw new Error(data.error);
         setPlatos(data);
       })
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false));
+      .catch(e => setError(e.message));
   }, []);
 
   useEffect(() => {
@@ -144,10 +145,58 @@ export default function CostosPage() {
     return () => { alive = false; };
   }, []);
 
+  const editando = panel != null && panel.modo !== 'consulta';
+
+  const abrirPanel = useCallback((next: PanelPlato | null) => {
+    setPanel(next);
+    if (next) setPanelVisible(next);
+  }, []);
+
   function abrirPlato(p: Plato) {
-    setSeleccionado(p.id);
-    setModal(p);
+    if (panel?.modo === 'consulta' && panel.platoId === p.id) return;
+    if (editando && !window.confirm('Hay cambios sin guardar en el plato. ¿Descartarlos?')) return;
+    abrirPanel({ modo: 'consulta', platoId: p.id });
   }
+
+  function cerrarPanel() {
+    if (editando && !window.confirm('Hay cambios sin guardar en el plato. ¿Descartarlos?')) return;
+    abrirPanel(null);
+  }
+
+  // Escape cierra el panel solo en consulta (en edicion no se pierden cambios por accidente).
+  useEffect(() => {
+    if (panel?.modo !== 'consulta') return;
+    function handler(e: KeyboardEvent) {
+      if (e.key === 'Escape') abrirPanel(null);
+    }
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [panel, abrirPanel]);
+
+  const seleccionado = panel && panel.modo !== 'nuevo' ? panel.platoId : null;
+
+  // El panel es sticky pero parte bajo las pestañas: su alto se ajusta a lo visible para que
+  // el pie de edicion (costos y botones) siempre se vea sin hacer scroll de la pagina.
+  const layoutRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = layoutRef.current;
+    if (!panel || !el) return;
+    let frame = 0;
+    const medir = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        el.style.setProperty('--ck-side-top', `${Math.max(16, Math.round(el.getBoundingClientRect().top))}px`);
+      });
+    };
+    medir();
+    window.addEventListener('scroll', medir, { passive: true });
+    window.addEventListener('resize', medir);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', medir);
+      window.removeEventListener('resize', medir);
+    };
+  }, [panel]);
 
   const categorias = useMemo(() => Array.from(new Set(platos.map(p => p.categoria))).sort(), [platos]);
 
@@ -225,7 +274,7 @@ export default function CostosPage() {
         {seccion === 'carta' && (
           <div className="ck-actions">
             {canManage && (
-              <button type="button" className="ck-btn ck-btn--primary" onClick={() => { setCopyFrom(null); setEditor('new'); }}>
+              <button type="button" className="ck-btn ck-btn--primary" onClick={() => { if (!editando || window.confirm('Hay cambios sin guardar en el plato. ¿Descartarlos?')) abrirPanel({ modo: 'nuevo' }); }}>
                 <NavIcon name="plus" size={16} /> Nuevo plato
               </button>
             )}
@@ -250,7 +299,7 @@ export default function CostosPage() {
             type="button"
             role="tab"
             aria-selected={seccion === tab.id}
-            onClick={() => setSeccion(tab.id)}
+            onClick={() => { if (tab.id !== 'carta' && panel) abrirPanel(null); setSeccion(tab.id); }}
             className={`ck-tab${seccion === tab.id ? ' is-on' : ''}`}
           >
             {tab.label}
@@ -264,7 +313,8 @@ export default function CostosPage() {
       ) : seccion === 'defontana' && puedeVerConsumo ? (
         <DefontanaPanel />
       ) : (
-      <>
+      <div ref={layoutRef} className={`ck-layout${panel ? ' has-panel' : ''}`}>
+      <div className="ck-main">
 
       <div className="ck-kpis">
         {([
@@ -428,29 +478,63 @@ export default function CostosPage() {
         </div>
       )}
 
-      {modal && (
-        <FichaTecnicaModal
-          plato={modal}
-          onClose={() => setModal(null)}
-          onEdit={canManage ? () => { setEditor(modal); setModal(null); } : undefined}
-          onCopy={isAdmin ? () => { setCopyFrom(modal); setEditor('new'); setModal(null); } : undefined}
-        />
-      )}
+      </div>
 
-      {editor && (
-        <PlatoEditorModal
-          plato={editor === 'new' ? copyFrom : editor}
-          copyFrom={null}
-          defaultTipoCarta={cartaFiltro === 'NUEVA' ? 'NUEVA' : 'ANTIGUA'}
-          forceCreate={editor === 'new' && !!copyFrom}
-          onClose={() => { setEditor(null); setCopyFrom(null); }}
-          onSaved={() => { setEditor(null); setCopyFrom(null); setModal(null); cargarCarta(); }}
-          canDelete={isAdmin && !(editor === 'new' && !!copyFrom)}
-          onDeleted={() => { setEditor(null); setCopyFrom(null); setModal(null); cargarCarta(); }}
-        />
-      )}
-      </>
+      <div className="ck-side-backdrop" onClick={cerrarPanel} aria-hidden="true" />
+      <aside
+        className="ck-side"
+        aria-label="Detalle del plato"
+        onTransitionEnd={e => { if (e.target === e.currentTarget && !panel) setPanelVisible(null); }}
+      >
+        {panelVisible && (
+          <div className="ck-side__box">
+            <button type="button" className="ck-close" onClick={cerrarPanel} aria-label="Cerrar panel">
+              <NavIcon name="x" size={18} />
+            </button>
+            {renderPanel(panelVisible)}
+          </div>
+        )}
+      </aside>
+      </div>
       )}
     </div>
   );
+
+  function renderPanel(estado: PanelPlato) {
+    if (estado.modo === 'nuevo') {
+      return (
+        <PlatoEditor
+          key="nuevo"
+          plato={null}
+          defaultTipoCarta={cartaFiltro === 'NUEVA' ? 'NUEVA' : 'ANTIGUA'}
+          onCancel={() => abrirPanel(null)}
+          onSaved={id => { void cargarCarta(); abrirPanel(id ? { modo: 'consulta', platoId: id } : null); }}
+        />
+      );
+    }
+    const plato = platos.find(p => p.id === estado.platoId);
+    if (!plato) return null;
+    if (estado.modo === 'consulta') {
+      return (
+        <PlatoConsulta
+          key={plato.id}
+          plato={plato}
+          onEdit={canManage ? () => abrirPanel({ modo: 'editar', platoId: plato.id }) : undefined}
+          onCopy={isAdmin ? () => abrirPanel({ modo: 'copiar', platoId: plato.id }) : undefined}
+        />
+      );
+    }
+    const copia = estado.modo === 'copiar';
+    return (
+      <PlatoEditor
+        key={`${estado.modo}-${plato.id}`}
+        plato={plato}
+        forceCreate={copia}
+        onCancel={() => abrirPanel({ modo: 'consulta', platoId: plato.id })}
+        onSaved={id => { void cargarCarta(); abrirPanel({ modo: 'consulta', platoId: id ?? plato.id }); }}
+        canDelete={isAdmin && !copia}
+        onDeleted={() => { void cargarCarta(); abrirPanel(null); }}
+      />
+    );
+  }
 }

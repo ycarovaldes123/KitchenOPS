@@ -52,8 +52,8 @@ interface Props {
   copyFrom?: PlatoEditable | null;
   defaultTipoCarta?: 'ANTIGUA' | 'NUEVA';
   forceCreate?: boolean;
-  onClose: () => void;
-  onSaved: () => void;
+  onCancel: () => void;
+  onSaved: (id?: string) => void;
   canDelete?: boolean;
   onDeleted?: () => void;
 }
@@ -153,7 +153,8 @@ async function readJsonResponse(res: Response) {
   }
 }
 
-export default function PlatoEditorModal({ plato, copyFrom = null, defaultTipoCarta = 'ANTIGUA', forceCreate = false, onClose, onSaved, canDelete = false, onDeleted }: Props) {
+// Modo edicion del panel lateral de Costos (crear, editar o copiar un plato).
+export default function PlatoEditor({ plato, copyFrom = null, defaultTipoCarta = 'ANTIGUA', forceCreate = false, onCancel, onSaved, canDelete = false, onDeleted }: Props) {
   const source = plato ?? copyFrom;
   const isCopy = forceCreate || (!plato && !!copyFrom);
   const [productos, setProductos] = useState<ProductoMaestro[]>([]);
@@ -174,14 +175,6 @@ export default function PlatoEditorModal({ plato, copyFrom = null, defaultTipoCa
   const [ingredientes, setIngredientes] = useState<IngredienteForm[]>(
     source?.carta_ingredientes?.length ? source.carta_ingredientes.map(rowFromIngrediente) : [emptyRow()],
   );
-
-  useEffect(() => {
-    function handler(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [onClose]);
 
   useEffect(() => {
     let alive = true;
@@ -313,7 +306,7 @@ export default function PlatoEditorModal({ plato, copyFrom = null, defaultTipoCa
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Error guardando plato');
-      onSaved();
+      onSaved(plato && !forceCreate ? plato.id : data.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error guardando plato');
     } finally {
@@ -344,46 +337,34 @@ export default function PlatoEditorModal({ plato, copyFrom = null, defaultTipoCa
     }
   }
 
-  function handleBackdrop(e: React.MouseEvent) {
-    if (e.target === e.currentTarget) onClose();
-  }
-
   const titulo = isCopy ? 'Copiar plato' : plato ? 'Editar plato' : 'Nuevo plato';
   const lineasReceta = ingredientes.filter(i => i.nombre.trim() || i.codigo_producto).length;
   const colorMargen = margen == null ? 'var(--ts)' : margen >= 30 ? '#059669' : margen >= 25 ? '#B45309' : '#DC2626';
 
   return (
-    <div className="ck-overlay" onClick={handleBackdrop} style={{ zIndex: 520 }}>
-      <div className="ck-modal" style={{ maxWidth: '1040px' }} role="dialog" aria-modal="true" aria-label={titulo}>
-        <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--bo)', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <p className="ck-eyebrow">{titulo}</p>
-            <h2 style={{ margin: 0, fontFamily: 'Syne, sans-serif', fontSize: '20px', fontWeight: 700, color: 'var(--tx)', textTransform: 'uppercase' }}>
-              {nombre.trim() || 'Ficha de plato'}
-            </h2>
-          </div>
-          <button type="button" className="ck-close" onClick={onClose} aria-label="Cerrar">
-            <NavIcon name="x" size={18} />
-          </button>
-        </div>
+    <>
+      <div className="ck-side__head">
+        <p className="ck-eyebrow">{titulo}</p>
+        <h2 className="ck-side__title">{nombre.trim() || 'Ficha de plato'}</h2>
+      </div>
+      <div className="ck-side__scroll">
+        <div className="ck-side__body" style={{ paddingTop: '4px' }}>
+          {error && <div className="ck-error" style={{ marginTop: '14px' }}>{error}</div>}
 
-        <div className="ck-modal__scroll" style={{ padding: '18px 22px' }}>
-          {error && <div className="ck-error">{error}</div>}
-
-          <div className="ck-form" style={{ marginBottom: '20px' }}>
+          <div className="ck-form ck-form--side">
             <label className="ck-field">
               Código
               <input value={codSoftland} onChange={e => setCodSoftland(e.target.value)} className="ck-input" />
             </label>
             <label className="ck-field">
-              Código TOTEAT
+              Código Toteat
               <input value={codigoToteat} onChange={e => setCodigoToteat(e.target.value)} className="ck-input" />
             </label>
-            <label className="ck-field ck-field--2">
-              Plato
+            <label className="ck-field ck-field--full">
+              Nombre del plato
               <input value={nombre} onChange={e => setNombre(e.target.value)} className="ck-input" />
             </label>
-            <label className="ck-field">
+            <label className="ck-field ck-field--full">
               Categoría
               <input value={categoria} onChange={e => setCategoria(e.target.value)} list="categorias-carta" className="ck-input" />
               <datalist id="categorias-carta">
@@ -391,7 +372,7 @@ export default function PlatoEditorModal({ plato, copyFrom = null, defaultTipoCa
               </datalist>
             </label>
             <label className="ck-field">
-              Tipo carta
+              Tipo de carta
               <select value={tipoCarta} onChange={e => setTipoCarta(e.target.value as 'ANTIGUA' | 'NUEVA')} className="ck-input">
                 {TIPOS_CARTA.map(tipo => (
                   <option key={tipo} value={tipo}>
@@ -404,20 +385,11 @@ export default function PlatoEditorModal({ plato, copyFrom = null, defaultTipoCa
               Precio carta
               <input type="number" min={0} step={1} value={precioCarta} onChange={e => setPrecioCarta(e.target.value)} className="ck-input" />
             </label>
-            {canDelete ? (
-              <label className="ck-field">
-                Estado
-                <span className="ck-check">
-                  <input type="checkbox" checked={activo} onChange={e => setActivo(e.target.checked)} />
-                  Activo
-                </span>
-              </label>
-            ) : <span />}
-            <label className="ck-field ck-field--2">
+            <label className="ck-field ck-field--full">
               Foto URL
               <input value={fotoUrl} onChange={e => setFotoUrl(e.target.value)} className="ck-input" />
             </label>
-            <label className="ck-field ck-field--2">
+            <label className="ck-field ck-field--full">
               {uploadingFoto ? 'Subiendo foto...' : 'Subir foto'}
               <input
                 type="file"
@@ -427,126 +399,108 @@ export default function PlatoEditorModal({ plato, copyFrom = null, defaultTipoCa
                 disabled={uploadingFoto}
               />
             </label>
+            {canDelete && (
+              <label className="ck-check ck-field--full">
+                <input type="checkbox" checked={activo} onChange={e => setActivo(e.target.checked)} />
+                Plato activo
+              </label>
+            )}
           </div>
 
-          <div style={{ border: '1px solid var(--bo)', borderRadius: '10px', overflow: 'hidden' }}>
-            <div className="ck-panel__head" style={{ justifyContent: 'space-between' }}>
-              <span>Receta ({lineasReceta})</span>
-              <button type="button" className="ck-btn ck-btn--sm" style={{ color: 'var(--ac)', borderColor: 'var(--bo-ac)' }} onClick={() => setIngredientes(rows => [...rows, emptyRow()])}>
-                <NavIcon name="plus" size={14} /> Producto
-              </button>
-            </div>
-
-            <div style={{ overflowX: 'auto' }}>
-              <table className="ck-table" style={{ minWidth: '900px' }}>
-                <thead>
-                  <tr>
-                    <th>Producto</th>
-                    <th>Nombre</th>
-                    <th>Cantidad</th>
-                    <th>UM</th>
-                    <th>Precio unit.</th>
-                    <th className="num">Costo</th>
-                    <th aria-label="Eliminar" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {ingredientes.map(row => {
-                    const producto = row.codigo_producto ? productoMap.get(row.codigo_producto) : undefined;
-                    const cantidad = Number(row.cantidad) || 0;
-                    const precio = producto ? precioUnitarioPorUnidad(row.unidad_medida, producto) : Number(row.precio_unitario) || 0;
-                    const costo = cantidad * (precio ?? 0);
-
-                    return (
-                      <tr key={row.localId}>
-                        <td style={{ width: '260px', padding: '7px 10px' }}>
-                          <ProductSearchSelect
-                            value={row.codigo_producto}
-                            onChange={codigo => handleProductoChange(row.localId, codigo)}
-                            productos={productos}
-                            placeholder={row.pp_id ? 'PP / manual' : `Buscar en ${productos.length} productos...`}
-                            allowManual
-                            disabled={loadingProductos}
-                          />
-                        </td>
-                        <td style={{ padding: '7px 10px' }}>
-                          <input
-                            value={row.nombre}
-                            onChange={e => updateRow(row.localId, { nombre: e.target.value })}
-                            disabled={!!producto}
-                            className="ck-input ck-input--sm"
-                          />
-                        </td>
-                        <td style={{ width: '110px', padding: '7px 10px' }}>
-                          <input
-                            type="number"
-                            min={0}
-                            step="any"
-                            value={row.cantidad}
-                            onChange={e => updateRow(row.localId, { cantidad: e.target.value })}
-                            className="ck-input ck-input--sm"
-                          />
-                        </td>
-                        <td style={{ width: '90px', padding: '7px 10px' }}>
-                          <input
-                            value={row.unidad_medida}
-                            onChange={e => handleUnidadChange(row.localId, e.target.value.toUpperCase())}
-                            list="unidades-receta"
-                            className="ck-input ck-input--sm"
-                          />
-                        </td>
-                        <td style={{ width: '130px', padding: '7px 10px' }}>
-                          <input
-                            type="number"
-                            min={0}
-                            step="any"
-                            value={producto && precio != null ? String(precio) : row.precio_unitario}
-                            onChange={e => updateRow(row.localId, { precio_unitario: e.target.value })}
-                            disabled={!!producto}
-                            className="ck-input ck-input--sm"
-                          />
-                        </td>
-                        <td className="num" style={{ width: '100px', fontWeight: 700 }}>
-                          {formatCLP(Math.round(costo))}
-                        </td>
-                        <td style={{ width: '44px', padding: '7px 8px' }}>
-                          <button type="button" className="ck-icon-btn" onClick={() => removeRow(row.localId)} aria-label="Quitar producto de la receta" title="Quitar producto">
-                            <NavIcon name="trash" size={15} />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              <datalist id="unidades-receta">
-                {UNIDADES.map(u => <option key={u} value={u} />)}
-              </datalist>
-            </div>
+          <div className="ck-block__title" style={{ marginTop: '22px' }}>
+            <span>Receta ({lineasReceta})</span>
+            <button type="button" className="ck-btn ck-btn--sm" style={{ color: 'var(--ac)', borderColor: 'var(--bo-ac)' }} onClick={() => setIngredientes(rows => [...rows, emptyRow()])}>
+              <NavIcon name="plus" size={14} /> Producto
+            </button>
           </div>
+
+          <div className="ck-ings">
+            {ingredientes.map(row => {
+              const producto = row.codigo_producto ? productoMap.get(row.codigo_producto) : undefined;
+              const cantidad = Number(row.cantidad) || 0;
+              const precio = producto ? precioUnitarioPorUnidad(row.unidad_medida, producto) : Number(row.precio_unitario) || 0;
+              const costo = cantidad * (precio ?? 0);
+
+              return (
+                <div key={row.localId} className="ck-ing">
+                  <div className="ck-ing__top">
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <ProductSearchSelect
+                        value={row.codigo_producto}
+                        onChange={codigo => handleProductoChange(row.localId, codigo)}
+                        productos={productos}
+                        placeholder={row.pp_id ? 'PP / manual' : `Buscar en ${productos.length} productos...`}
+                        allowManual
+                        disabled={loadingProductos}
+                      />
+                    </div>
+                    <button type="button" className="ck-icon-btn" onClick={() => removeRow(row.localId)} aria-label="Quitar producto de la receta" title="Quitar producto">
+                      <NavIcon name="trash" size={15} />
+                    </button>
+                  </div>
+                  {!producto && (
+                    <input
+                      value={row.nombre}
+                      onChange={e => updateRow(row.localId, { nombre: e.target.value })}
+                      placeholder="Nombre del ingrediente (manual)"
+                      className="ck-input ck-input--sm"
+                      style={{ marginTop: '8px' }}
+                    />
+                  )}
+                  <div className="ck-ing__grid">
+                    <label className="ck-field">
+                      Cantidad
+                      <input type="number" min={0} step="any" value={row.cantidad}
+                        onChange={e => updateRow(row.localId, { cantidad: e.target.value })} className="ck-input ck-input--sm" />
+                    </label>
+                    <label className="ck-field">
+                      U/M
+                      <input value={row.unidad_medida} list="unidades-receta"
+                        onChange={e => handleUnidadChange(row.localId, e.target.value.toUpperCase())} className="ck-input ck-input--sm" />
+                    </label>
+                    <label className="ck-field">
+                      Precio unit.
+                      <input type="number" min={0} step="any"
+                        value={producto && precio != null ? String(precio) : row.precio_unitario}
+                        onChange={e => updateRow(row.localId, { precio_unitario: e.target.value })}
+                        disabled={!!producto} className="ck-input ck-input--sm" />
+                    </label>
+                    <div className="ck-field">
+                      Costo
+                      <span className="ck-ing__costo">{formatCLP(Math.round(costo))}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <datalist id="unidades-receta">
+            {UNIDADES.map(u => <option key={u} value={u} />)}
+          </datalist>
         </div>
+      </div>
 
-        <div className="ck-modal__foot">
+      <div className="ck-side__foot">
+        <div className="ck-side__totals">
+          <div><span>Costo neto</span><strong>{formatCLP(Math.round(costoNeto))}</strong></div>
+          <div><span>Costo bruto</span><strong>{formatCLP(costoBruto)}</strong></div>
+          <div><span>Margen</span><strong style={{ color: colorMargen }}>{formatPct(margen)}</strong></div>
+        </div>
+        <div className="ck-side__buttons">
           {plato && !forceCreate && canDelete && (
             <button type="button" className="ck-btn ck-btn--danger" onClick={deletePlato} disabled={saving || deleting}>
               <NavIcon name="trash" size={15} /> {deleting ? 'Eliminando...' : 'Eliminar plato'}
             </button>
           )}
-          <div className="ck-totals">
-            <span><strong>{formatCLP(Math.round(costoNeto))}</strong> neto</span>
-            <span><strong>{formatCLP(costoBruto)}</strong> bruto</span>
-            <span><strong style={{ color: colorMargen }}>{formatPct(margen)}</strong> margen</span>
-          </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button type="button" className="ck-btn" onClick={onClose} disabled={saving || deleting}>
-              Cancelar
-            </button>
-            <button type="button" className="ck-btn ck-btn--primary" onClick={save} disabled={saving || deleting || uploadingFoto}>
-              <NavIcon name="save" size={15} /> {saving ? 'Guardando...' : 'Guardar'}
-            </button>
-          </div>
+          <span style={{ flex: 1 }} />
+          <button type="button" className="ck-btn" onClick={onCancel} disabled={saving || deleting}>
+            Cancelar
+          </button>
+          <button type="button" className="ck-btn ck-btn--primary" onClick={save} disabled={saving || deleting || uploadingFoto}>
+            <NavIcon name="save" size={15} /> {saving ? 'Guardando...' : 'Guardar'}
+          </button>
         </div>
       </div>
-    </div>
+    </>
   );
 }
