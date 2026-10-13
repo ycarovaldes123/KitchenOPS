@@ -79,7 +79,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/ventas',     label: 'Ventas',     icon: 'chart-column', roles: ['admin', 'cocina', 'finanzas', 'jefatura', 'economo', 'bodega', 'gerencia'], descripcion: 'Ventas Toteat por período' },
   { href: '/dashboard',  label: 'Dashboard',  icon: 'dashboard',     roles: ['admin', 'finanzas'], descripcion: 'KPIs y filtros por período' },
   { href: '/kpis',       label: 'KPIs',       icon: 'chart-line', roles: ['admin', 'finanzas', 'jefatura', 'cocina', 'gerencia'], descripcion: 'Indicadores operacionales' },
-  { href: '/costos',     label: 'Costos',     icon: 'coins',   roles: ['admin', 'finanzas', 'jefatura', 'cocina', 'gerencia'], descripcion: 'Reportería de costos y fichas técnicas' },
+  { href: '/costos',     label: 'Costos',     icon: 'chef-hat', roles: ['admin', 'finanzas', 'jefatura', 'cocina', 'gerencia'], descripcion: 'Reportería de costos y fichas técnicas' },
   { href: '/export',     label: 'Exportar',   icon: 'file-down', roles: ['admin', 'finanzas'], descripcion: 'Exportar datos a Excel' },
   { href: '/maestros',   label: 'Maestros',   icon: 'settings', roles: ['admin', 'finanzas'], descripcion: 'PP, productos y personal' },
 ];

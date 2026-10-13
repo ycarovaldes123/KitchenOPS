@@ -1,46 +1,21 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { formatCLP } from '@/lib/calculos';
-import Semaforo from './Semaforo';
-import type { ColorSemaforo } from '@/types/database';
-
-interface Ingrediente {
-  id:              string;
-  nombre:          string | null;
-  cantidad:        number;
-  unidad_medida:   string | null;
-  precio_unitario: number | null;
-  costo_total:     number | null;
-  codigo_producto: string | null;
-  pp_id:           string | null;
-}
-
-interface FichaData {
-  id:           string;
-  codigo_toteat?: string | null;
-  nombre:       string;
-  categoria:    string;
-  precio_carta: number | null;
-  costo_neto:   number;
-  costo_bruto:  number;
-  margen_pct:   number | null;
-  semaforo:     ColorSemaforo;
-  foto_url:     string | null;
-  carta_ingredientes: Ingrediente[];
-}
+import { useEffect } from 'react';
+import { formatCLP, formatPct } from '@/lib/calculos';
+import { formatCantidad } from '@/lib/costo-receta-pp';
+import NavIcon from '@/components/layout/NavIcon';
+import Semaforo, { SEMAFORO } from './Semaforo';
+import { NOMBRE_CARTA, PlatoFoto, esIngredientePP, type Plato } from './shared';
 
 interface Props {
-  plato:    FichaData;
+  plato:    Plato;
   onClose:  () => void;
   onEdit?:  () => void;
   onCopy?:  () => void;
 }
 
+// Vista de consulta del plato: siempre se abre primero esta ficha; editar es una accion explicita.
 export default function FichaTecnicaModal({ plato, onClose, onEdit, onCopy }: Props) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  // Cerrar con Escape o click fuera
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
@@ -49,143 +24,109 @@ export default function FichaTecnicaModal({ plato, onClose, onEdit, onCopy }: Pr
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  function handleBackdrop(e: React.MouseEvent) {
-    if (e.target === e.currentTarget) onClose();
-  }
-
   const ings = plato.carta_ingredientes ?? [];
+  const sem = SEMAFORO[plato.semaforo];
 
   return (
-    <div
-      onClick={handleBackdrop}
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 500, padding: '20px',
-      }}
-    >
-      <div
-        ref={ref}
-        style={{
-          background: 'var(--sf)', borderRadius: '16px', width: '100%',
-          maxWidth: '560px', maxHeight: '90vh', overflowY: 'auto',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
-        }}
-      >
-        {/* Foto portada */}
-        {plato.foto_url && (
-          <div style={{ position: 'relative', width: '100%', height: '200px', overflow: 'hidden', borderRadius: '16px 16px 0 0' }}>
-            <img
-              src={plato.foto_url}
-              alt={plato.nombre}
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-            />
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 60%)' }} />
-            <button
-              onClick={onClose}
-              style={{ position: 'absolute', top: '12px', right: '12px', background: 'rgba(0,0,0,0.4)', border: 'none', cursor: 'pointer', color: '#fff', fontSize: '20px', lineHeight: 1, padding: '4px 8px', borderRadius: '6px', backdropFilter: 'blur(4px)' }}
-            >×</button>
-          </div>
-        )}
-
-        {/* Header */}
-        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--bo)', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-          <div style={{ flex: 1 }}>
-            <p style={{ fontSize: '10px', fontWeight: 600, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 4px' }}>
-              {plato.categoria}
-            </p>
-            <h2 style={{ fontFamily: 'Syne, sans-serif', fontSize: '18px', fontWeight: 800, margin: 0, color: 'var(--tx)' }}>
-              {plato.nombre}
-            </h2>
-          </div>
-          {onEdit && (
-            <button
-              onClick={onEdit}
-              style={{ background: 'var(--ac)', border: 'none', cursor: 'pointer', color: '#fff', fontSize: '12px', fontWeight: 700, padding: '7px 11px', borderRadius: '7px', whiteSpace: 'nowrap' }}
-            >
-              Editar
+    <div className="ck-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="ck-modal" style={{ maxWidth: '680px' }} role="dialog" aria-modal="true" aria-label={plato.nombre}>
+        <div className="ck-modal__scroll">
+          <div className="ck-modal__hero">
+            <PlatoFoto src={plato.foto_url} alt={plato.nombre} iconSize={54} />
+            <button type="button" className="ck-close" onClick={onClose} aria-label="Cerrar">
+              <NavIcon name="x" size={18} />
             </button>
-          )}
-          {onCopy && (
-            <button
-              onClick={onCopy}
-              style={{ background: '#2563EB', border: 'none', cursor: 'pointer', color: '#fff', fontSize: '12px', fontWeight: 700, padding: '7px 11px', borderRadius: '7px', whiteSpace: 'nowrap' }}
-            >
-              Copiar
-            </button>
-          )}
-          <Semaforo color={plato.semaforo} margen={plato.margen_pct} />
-          {!plato.foto_url && (
-            <button
-              onClick={onClose}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ts)', fontSize: '22px', lineHeight: 1, padding: '0 4px', flexShrink: 0 }}
-            >×</button>
-          )}
-        </div>
+          </div>
 
-        {/* KPIs */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1px', background: 'var(--bo)', borderBottom: '1px solid var(--bo)' }}>
-          {[
-            { label: 'Precio carta',  value: formatCLP(plato.precio_carta), sub: 'con IVA' },
-            { label: 'Costo bruto',   value: formatCLP(plato.costo_bruto),  sub: 'costo neto × 1.19' },
-            { label: 'Margen',        value: plato.margen_pct != null ? `${plato.margen_pct.toFixed(1)}%` : '—', sub: plato.margen_pct != null ? (plato.margen_pct >= 30 ? 'Óptimo ≥30%' : plato.margen_pct >= 25 ? 'Medio 25–30%' : 'Bajo <25%') : 'Sin datos' },
-          ].map(({ label, value, sub }) => (
-            <div key={label} style={{ background: 'var(--sf)', padding: '14px 18px' }}>
-              <p style={{ fontSize: '10px', fontWeight: 600, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 4px' }}>{label}</p>
-              <p style={{ fontSize: '18px', fontWeight: 800, fontFamily: 'Syne, sans-serif', color: 'var(--tx)', margin: 0 }}>{value}</p>
-              <p style={{ fontSize: '11px', color: 'var(--ts)', margin: '2px 0 0' }}>{sub}</p>
+          <div className="ck-modal__head">
+            <div style={{ flex: '1 1 240px', minWidth: 0 }}>
+              <p className="ck-eyebrow">{NOMBRE_CARTA[plato.tipo_carta ?? 'ANTIGUA']} · {plato.categoria}</p>
+              <h2>{plato.nombre}</h2>
+              {(plato.cod_softland || plato.codigo_toteat) && (
+                <p style={{ margin: '5px 0 0', fontSize: '12px', color: 'var(--ts)' }}>
+                  {plato.cod_softland && <>Código <span className="ck-code">{plato.cod_softland}</span></>}
+                  {plato.cod_softland && plato.codigo_toteat && ' · '}
+                  {plato.codigo_toteat && <>Toteat <span className="ck-code">{plato.codigo_toteat}</span></>}
+                </p>
+              )}
             </div>
-          ))}
-        </div>
+            <div className="ck-modal__actions">
+              {onEdit && (
+                <button type="button" className="ck-btn ck-btn--primary" onClick={onEdit}>
+                  <NavIcon name="pencil" size={15} /> Editar
+                </button>
+              )}
+              {onCopy && (
+                <button type="button" className="ck-btn ck-btn--copy" onClick={onCopy}>
+                  <NavIcon name="copy" size={15} /> Copiar
+                </button>
+              )}
+              <Semaforo color={plato.semaforo} margen={plato.margen_pct} />
+            </div>
+          </div>
 
-        {/* Ingredientes */}
-        <div style={{ padding: '20px 24px' }}>
-          <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>
-            Ingredientes ({ings.length})
-          </p>
+          <div className="ck-costs">
+            <div className="ck-cost">
+              <p className="ck-cost__label">Precio carta</p>
+              <p className="ck-cost__value">{formatCLP(plato.precio_carta)}</p>
+              <p className="ck-cost__sub">con IVA</p>
+            </div>
+            <div className="ck-cost">
+              <p className="ck-cost__label">Costo bruto</p>
+              <p className="ck-cost__value">{plato.semaforo === 'gray' && !plato.costo_neto ? '—' : formatCLP(plato.costo_bruto)}</p>
+              <p className="ck-cost__sub">costo neto × 1,19</p>
+            </div>
+            <div className="ck-cost" style={{ background: sem.bg, borderColor: 'transparent' }}>
+              <p className="ck-cost__label" style={{ color: sem.color }}>Margen</p>
+              <p className="ck-cost__value" style={{ color: sem.color }}>
+                {formatPct(plato.margen_pct)}
+              </p>
+              <p className="ck-cost__sub" style={{ color: sem.color }}>{sem.rango}</p>
+            </div>
+          </div>
 
-          {ings.length === 0 ? (
-            <p style={{ color: 'var(--ts)', fontSize: '13px' }}>Sin ingredientes cargados.</p>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  {['Ingrediente', 'Cantidad', 'Costo unitario', 'Costo total'].map(h => (
-                    <th key={h} style={{ textAlign: 'left', fontSize: '10px', fontWeight: 600, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px', padding: '0 8px 8px', whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {ings.map(ing => (
-                  <tr key={ing.id} style={{ borderTop: '1px solid var(--bo)' }}>
-                    <td style={{ padding: '8px', fontSize: '13px', color: 'var(--tx)' }}>
-                      {ing.nombre ?? '—'}
-                      {ing.pp_id && <span style={{ fontSize: '10px', color: 'var(--ts)', marginLeft: '6px', background: 'var(--al)', padding: '1px 5px', borderRadius: '3px' }}>PP</span>}
-                    </td>
-                    <td style={{ padding: '8px', fontSize: '13px', color: 'var(--ts)', whiteSpace: 'nowrap' }}>
-                      {ing.cantidad} {ing.unidad_medida ?? ''}
-                    </td>
-                    <td style={{ padding: '8px', fontSize: '13px', color: 'var(--ts)', whiteSpace: 'nowrap' }}>
-                      {ing.precio_unitario != null ? formatCLP(ing.precio_unitario) : '—'}
-                    </td>
-                    <td style={{ padding: '8px', fontSize: '13px', fontWeight: 500, color: 'var(--tx)', whiteSpace: 'nowrap' }}>
-                      {ing.costo_total != null ? formatCLP(ing.costo_total) : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr style={{ borderTop: '2px solid var(--bo)' }}>
-                  <td colSpan={3} style={{ padding: '10px 8px', fontSize: '12px', fontWeight: 600, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                    Costo neto total
-                  </td>
-                  <td style={{ padding: '10px 8px', fontSize: '15px', fontWeight: 800, fontFamily: 'Syne, sans-serif', color: 'var(--tx)' }}>
-                    {formatCLP(plato.costo_neto)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          )}
+          <div className="ck-block">
+            <p className="ck-block__title"><span>Ingredientes ({ings.length})</span></p>
+            {ings.length === 0 ? (
+              <p style={{ color: 'var(--ts)', fontSize: '13px', margin: 0 }}>Sin ingredientes cargados.</p>
+            ) : (
+              <div style={{ border: '1px solid var(--bo)', borderRadius: '10px', overflowX: 'auto' }}>
+                <table className="ck-table">
+                  <thead>
+                    <tr>
+                      <th>Ingrediente</th>
+                      <th className="num">Cantidad</th>
+                      <th className="num">Costo unitario</th>
+                      <th className="num">Costo total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ings.map(ing => (
+                      <tr key={ing.id}>
+                        <td>
+                          {ing.nombre ?? '—'}
+                          {esIngredientePP(ing) && <span className="ck-tag ck-tag--pp" style={{ marginLeft: '6px' }}>PP</span>}
+                        </td>
+                        <td className="num muted">{formatCantidad(ing.cantidad)} {ing.unidad_medida ?? ''}</td>
+                        <td className="num muted">{ing.precio_unitario != null ? formatCLP(ing.precio_unitario) : '—'}</td>
+                        <td className="num" style={{ fontWeight: 600 }}>{ing.costo_total != null ? formatCLP(ing.costo_total) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={3} style={{ borderTop: '1px solid var(--bo)', fontSize: '11.5px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                        Costo neto total
+                      </td>
+                      <td className="num" style={{ borderTop: '1px solid var(--bo)', fontSize: '15px', fontWeight: 700, fontFamily: 'Syne, sans-serif' }}>
+                        {formatCLP(plato.costo_neto)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -1,10 +1,12 @@
+import { formatPct } from '@/lib/calculos';
 import type { ColorSemaforo } from '@/types/database';
 
-const CONFIG: Record<ColorSemaforo, { bg: string; color: string; label: string }> = {
-  green:  { bg: '#DCFCE7', color: '#16A34A', label: 'Óptimo'    },
-  yellow: { bg: '#FEF9C3', color: '#CA8A04', label: 'Medio'     },
-  red:    { bg: '#FEE2E2', color: '#DC2626', label: 'Bajo'      },
-  gray:   { bg: '#F3F4F6', color: '#9CA3AF', label: 'Sin datos' },
+// Colores suaves del semaforo de rentabilidad (mismos tonos que costos.css).
+export const SEMAFORO: Record<ColorSemaforo, { bg: string; color: string; label: string; rango: string }> = {
+  green:  { bg: '#ECFDF5', color: '#059669', label: 'Óptimo',    rango: 'Óptimo ≥30%' },
+  yellow: { bg: '#FEF7E6', color: '#B45309', label: 'Medio',     rango: 'Medio 25–30%' },
+  red:    { bg: '#FEF1F1', color: '#DC2626', label: 'Bajo',      rango: 'Bajo <25%' },
+  gray:   { bg: '#F2F0ED', color: '#8A847D', label: 'Sin datos', rango: 'Sin datos' },
 };
 
 interface SemaforoProps {
@@ -13,33 +15,27 @@ interface SemaforoProps {
   compact?: boolean;
 }
 
+/** compact: chip "● 73,6%" para tarjetas y tablas. Normal: bloque "73,6% / Óptimo" del detalle. */
 export default function Semaforo({ color, margen, compact = false }: SemaforoProps) {
-  const cfg = CONFIG[color];
+  const cfg = SEMAFORO[color];
 
   if (compact) {
     return (
       <span style={{
-        display: 'inline-flex', alignItems: 'center', gap: '4px',
-        background: cfg.bg, color: cfg.color,
-        padding: '3px 8px', borderRadius: '20px',
-        fontSize: '11px', fontWeight: 700,
+        display: 'inline-flex', alignItems: 'center', gap: '5px', height: '22px',
+        background: cfg.bg, color: cfg.color, padding: '0 8px', borderRadius: '999px',
+        fontSize: '11.5px', fontWeight: 700, whiteSpace: 'nowrap',
       }}>
         <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: cfg.color, flexShrink: 0 }} />
-        {margen != null ? `${margen.toFixed(1)}%` : cfg.label}
+        {margen != null ? formatPct(margen) : cfg.label}
       </span>
     );
   }
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
-      background: cfg.bg, borderRadius: '8px', padding: '8px 12px',
-    }}>
-      <span style={{ width: '12px', height: '12px', borderRadius: '50%', background: cfg.color }} />
-      <span style={{ fontSize: '11px', fontWeight: 700, color: cfg.color }}>
-        {margen != null ? `${margen.toFixed(1)}%` : cfg.label}
-      </span>
-      <span style={{ fontSize: '10px', color: cfg.color, opacity: 0.8 }}>{cfg.label}</span>
+    <div className="ck-margin-badge" style={{ background: cfg.bg, color: cfg.color }}>
+      <strong>{margen != null ? formatPct(margen) : '—'}</strong>
+      <span>{cfg.label}</span>
     </div>
   );
 }

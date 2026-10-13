@@ -2,72 +2,41 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatCLP } from '@/lib/calculos';
-import Semaforo from '@/components/costos/Semaforo';
+import NavIcon from '@/components/layout/NavIcon';
+import Semaforo, { SEMAFORO } from '@/components/costos/Semaforo';
 import FichaTecnicaModal from '@/components/costos/FichaTecnicaModal';
 import PlatoEditorModal from '@/components/costos/PlatoEditorModal';
 import ConsumoVentasPanel from '@/components/costos/ConsumoVentasPanel';
+import DefontanaPanel from '@/components/costos/DefontanaPanel';
+import { CartaTag, NOMBRE_CARTA, PlatoFoto, type Ingrediente, type Plato } from '@/components/costos/shared';
 import { useRol } from '@/components/RolProvider';
 import type { ColorSemaforo } from '@/types/database';
-
-interface Ingrediente {
-  id: string;
-  nombre: string | null;
-  cantidad: number;
-  unidad_medida: string | null;
-  precio_unitario: number | null;
-  costo_total: number | null;
-  codigo_producto: string | null;
-  pp_id: string | null;
-}
-
-interface Plato {
-  id: string;
-  cod_softland: string | null;
-  codigo_toteat?: string | null;
-  nombre: string;
-  categoria: string;
-  tipo_carta: 'ANTIGUA' | 'NUEVA';
-  precio_carta: number | null;
-  activo: boolean;
-  costo_neto: number;
-  costo_bruto: number;
-  margen_pct: number | null;
-  semaforo: ColorSemaforo;
-  foto_url: string | null;
-  carta_ingredientes: Ingrediente[];
-}
+import '@/components/costos/costos.css';
 
 const COLORES: { value: ColorSemaforo | 'all'; label: string }[] = [
   { value: 'all', label: 'Todos' },
-  { value: 'green', label: 'Optimo' },
+  { value: 'green', label: 'Óptimo' },
   { value: 'yellow', label: 'Medio' },
   { value: 'red', label: 'Bajo' },
   { value: 'gray', label: 'Sin datos' },
 ];
 
-const DOT: Record<ColorSemaforo, string> = {
-  green: '#16A34A',
-  yellow: '#CA8A04',
-  red: '#DC2626',
-  gray: '#9CA3AF',
-};
-
-const SEM_BG: Record<ColorSemaforo, string> = {
-  green: '#DCFCE7',
-  yellow: '#FEF9C3',
-  red: '#FEE2E2',
-  gray: '#F3F4F6',
+const KPI_CLASE: Record<ColorSemaforo, string> = {
+  green: 'ck-kpi--green',
+  yellow: 'ck-kpi--yellow',
+  red: 'ck-kpi--red',
+  gray: 'ck-kpi--gray',
 };
 
 type Vista = 'lista' | 'mosaico';
 type FiltroCarta = 'all' | 'ANTIGUA' | 'NUEVA';
-type SeccionCostos = 'carta' | 'consumo';
+type SeccionCostos = 'carta' | 'defontana' | 'consumo';
 
 function normalizeSearch(value: unknown) {
   return String(value ?? '')
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .trim();
 }
 
@@ -86,100 +55,41 @@ function matchingIngredientes(plato: Plato, query: string) {
   return (plato.carta_ingredientes ?? []).filter(ing => ingredienteMatches(ing, query));
 }
 
-function CartaBadge({ tipo }: { tipo: 'ANTIGUA' | 'NUEVA' }) {
-  const nueva = tipo === 'NUEVA';
-  return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        borderRadius: '999px',
-        padding: '3px 8px',
-        fontSize: '11px',
-        fontWeight: 700,
-        whiteSpace: 'nowrap',
-        background: nueva ? '#DCFCE7' : '#E2E8F0',
-        color: nueva ? '#0D9373' : '#475569',
-      }}
-    >
-      {nueva ? 'Nueva' : 'Antigua'}
-    </span>
-  );
+function platoMatches(plato: Plato, query: string) {
+  return normalizeSearch([plato.nombre, plato.cod_softland, plato.codigo_toteat].filter(Boolean).join(' ')).includes(query);
 }
 
-function PlatoCard({ p, onClick, productoQuery }: { p: Plato; onClick: () => void; productoQuery: string }) {
-  const matches = matchingIngredientes(p, productoQuery);
+function PlatoCard({ p, selected, onClick, productoQuery }: { p: Plato; selected: boolean; onClick: () => void; productoQuery: string }) {
+  const matches = productoQuery && !platoMatches(p, productoQuery) ? matchingIngredientes(p, productoQuery) : [];
+  const sem = SEMAFORO[p.semaforo];
 
   return (
-    <div
-      onClick={onClick}
-      style={{
-        background: 'var(--sf)',
-        borderRadius: '12px',
-        border: '1px solid var(--bo)',
-        overflow: 'hidden',
-        cursor: 'pointer',
-        transition: 'box-shadow 0.15s, transform 0.12s',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-      onMouseEnter={e => {
-        (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)';
-        (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)';
-      }}
-      onMouseLeave={e => {
-        (e.currentTarget as HTMLDivElement).style.boxShadow = '';
-        (e.currentTarget as HTMLDivElement).style.transform = '';
-      }}
-    >
-      <div style={{ height: '130px', background: 'var(--al)', position: 'relative', flexShrink: 0, overflow: 'hidden' }}>
-        {p.foto_url ? (
-          <img src={p.foto_url} alt={p.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-        ) : (
-          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '36px' }}>🍽</div>
-        )}
-        <div
-          style={{
-            position: 'absolute',
-            top: '8px',
-            right: '8px',
-            background: p.semaforo === 'gray' ? '#F3F4F6' : SEM_BG[p.semaforo],
-            color: DOT[p.semaforo],
-            fontWeight: 700,
-            fontSize: '11px',
-            padding: '3px 8px',
-            borderRadius: '6px',
-            fontFamily: 'Syne, sans-serif',
-          }}
-        >
+    <button type="button" onClick={onClick} className={`ck-card${selected ? ' is-selected' : ''}`} aria-pressed={selected}>
+      <div className="ck-card__img">
+        <PlatoFoto src={p.foto_url} alt={p.nombre} />
+        <span className="ck-card__pct" style={{ color: sem.color }}>
           {p.margen_pct != null ? `${p.margen_pct.toFixed(0)}%` : 'Sin ficha'}
-        </div>
+        </span>
       </div>
-
-      <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'flex-start' }}>
-          <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--tx)', lineHeight: 1.3 }}>{p.nombre}</p>
-          <CartaBadge tipo={p.tipo_carta ?? 'ANTIGUA'} />
+      <div className="ck-card__body">
+        <p className="ck-card__name" title={p.nombre}>{p.nombre}</p>
+        <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+          <CartaTag tipo={p.tipo_carta ?? 'ANTIGUA'} />
         </div>
-        <p style={{ margin: 0, fontSize: '11px', color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{p.categoria}</p>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
-          <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--tx)' }}>
-            {p.precio_carta != null ? formatCLP(p.precio_carta) : '-'}
-          </span>
-          <Semaforo color={p.semaforo} margen={p.margen_pct} compact />
-        </div>
-        {productoQuery && (
-          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '4px' }}>
+        {matches.length > 0 && (
+          <div className="ck-card__match">
             {matches.slice(0, 2).map(ing => (
-              <span key={ing.id} style={{ fontSize: '10px', fontWeight: 700, color: '#0F766E', background: '#CCFBF1', border: '1px solid #99F6E4', borderRadius: '4px', padding: '2px 6px', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {ing.nombre ?? ing.codigo_producto}
-              </span>
+              <span key={ing.id} className="ck-tag ck-tag--match">{ing.nombre ?? ing.codigo_producto}</span>
             ))}
-            {matches.length > 2 && <span style={{ fontSize: '10px', color: 'var(--ts)', padding: '2px 0' }}>+{matches.length - 2}</span>}
+            {matches.length > 2 && <span className="ck-hint">+{matches.length - 2}</span>}
           </div>
         )}
+        <div className="ck-card__foot">
+          <span className="ck-card__price">{p.precio_carta != null ? formatCLP(p.precio_carta) : '—'}</span>
+          <Semaforo color={p.semaforo} margen={p.margen_pct} compact />
+        </div>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -196,7 +106,11 @@ export default function CostosPage() {
   const [cartaFiltro, setCartaFiltro] = useState<FiltroCarta>('all');
   const [semFiltro, setSemFiltro] = useState<ColorSemaforo | 'all'>('all');
   const [productoBusqueda, setProductoBusqueda] = useState('');
+  const [verFiltros, setVerFiltros] = useState(false);
+  const [soloSinToteat, setSoloSinToteat] = useState(false);
+  const [soloSinFoto, setSoloSinFoto] = useState(false);
   const [modal, setModal] = useState<Plato | null>(null);
+  const [seleccionado, setSeleccionado] = useState<string | null>(null);
   const [editor, setEditor] = useState<Plato | 'new' | null>(null);
   const [copyFrom, setCopyFrom] = useState<Plato | null>(null);
   const [seccion, setSeccion] = useState<SeccionCostos>('carta');
@@ -230,10 +144,12 @@ export default function CostosPage() {
     return () => { alive = false; };
   }, []);
 
-  const categorias = useMemo(() => {
-    const cats = Array.from(new Set(platos.map(p => p.categoria))).sort();
-    return [{ value: 'all', label: 'Todas las categorias' }, ...cats.map(c => ({ value: c, label: c }))];
-  }, [platos]);
+  function abrirPlato(p: Plato) {
+    setSeleccionado(p.id);
+    setModal(p);
+  }
+
+  const categorias = useMemo(() => Array.from(new Set(platos.map(p => p.categoria))).sort(), [platos]);
 
   const productoQuery = useMemo(() => normalizeSearch(productoBusqueda), [productoBusqueda]);
 
@@ -242,9 +158,11 @@ export default function CostosPage() {
       (cartaFiltro === 'all' || (p.tipo_carta ?? 'ANTIGUA') === cartaFiltro) &&
       (catFiltro === 'all' || p.categoria === catFiltro) &&
       (semFiltro === 'all' || p.semaforo === semFiltro) &&
-      (!productoQuery || normalizeSearch(p.nombre).includes(productoQuery) || matchingIngredientes(p, productoQuery).length > 0),
+      (!soloSinToteat || !(p.codigo_toteat ?? '').trim()) &&
+      (!soloSinFoto || !p.foto_url) &&
+      (!productoQuery || platoMatches(p, productoQuery) || matchingIngredientes(p, productoQuery).length > 0),
     )
-  ), [platos, cartaFiltro, catFiltro, semFiltro, productoQuery]);
+  ), [platos, cartaFiltro, catFiltro, semFiltro, soloSinToteat, soloSinFoto, productoQuery]);
 
   const grupos = useMemo(() => {
     const map = new Map<string, Plato[]>();
@@ -256,12 +174,23 @@ export default function CostosPage() {
     return map;
   }, [filtrados]);
 
-  const resumen = useMemo(() => ({
-    optimo: platos.filter(p => p.semaforo === 'green').length,
-    medio: platos.filter(p => p.semaforo === 'yellow').length,
-    bajo: platos.filter(p => p.semaforo === 'red').length,
-    sin_datos: platos.filter(p => p.semaforo === 'gray').length,
-  }), [platos]);
+  const resumen = useMemo(() => {
+    const cuenta: Record<ColorSemaforo, number> = { green: 0, yellow: 0, red: 0, gray: 0 };
+    for (const p of platos) cuenta[p.semaforo] += 1;
+    return cuenta;
+  }, [platos]);
+
+  const filtrosExtra = Number(soloSinToteat) + Number(soloSinFoto);
+  const hayFiltros = !!productoBusqueda || cartaFiltro !== 'all' || catFiltro !== 'all' || semFiltro !== 'all' || filtrosExtra > 0;
+
+  function limpiarFiltros() {
+    setProductoBusqueda('');
+    setCartaFiltro('all');
+    setCatFiltro('all');
+    setSemFiltro('all');
+    setSoloSinToteat(false);
+    setSoloSinFoto(false);
+  }
 
   if (loading) {
     return <div className="page" style={{ color: 'var(--ts)', fontSize: '14px' }}>Cargando carta...</div>;
@@ -270,311 +199,234 @@ export default function CostosPage() {
   if (error) {
     return (
       <div className="page">
-        <div style={{ background: '#FEF2F2', border: '1px solid var(--rd)', borderRadius: '10px', padding: '16px', color: 'var(--rd)', fontSize: '14px' }}>
-          {error}
-        </div>
+        <div className="ck-error">{error}</div>
       </div>
     );
   }
 
+  const tabs: { id: SeccionCostos; label: string; nuevo?: boolean }[] = [
+    { id: 'carta', label: 'Carta' },
+    ...(puedeVerConsumo ? [
+      { id: 'defontana' as SeccionCostos, label: 'Defontana', nuevo: true },
+      { id: 'consumo' as SeccionCostos, label: 'Consumo ventas' },
+    ] : []),
+  ];
+
   return (
-    <div className="page">
-      <div className="costos-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '16px', gap: '12px' }}>
-        <div>
-          <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '22px', fontWeight: 800, margin: 0 }}>Costos</h1>
-          <p style={{ color: 'var(--ts)', marginTop: '2px', fontSize: '13px', marginBottom: 0 }}>
-            Semaforo de rentabilidad por plato · {platos.length} platos activos
-          </p>
+    <div className="page ck">
+      <div className="ck-head">
+        <div className="ck-title">
+          <span className="ck-title__icon"><NavIcon name="chef-hat" size={26} strokeWidth={1.9} /></span>
+          <div>
+            <h1>COSTOS</h1>
+            <p>Gestión de costos por plato — {platos.length} platos activos</p>
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, flexWrap: 'wrap' }}>
-          {seccion === 'carta' && canManage && (
-            <button
-              type="button"
-              onClick={() => { setCopyFrom(null); setEditor('new'); }}
-              style={{ border: 'none', background: 'var(--ac)', color: '#fff', borderRadius: '8px', padding: '8px 13px', cursor: 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'DM Sans, sans-serif', whiteSpace: 'nowrap' }}
-            >
-              + Nuevo plato
-            </button>
-          )}
-          {seccion === 'carta' && <div style={{ display: 'flex', background: 'var(--sf)', border: '1px solid var(--bo)', borderRadius: '8px', overflow: 'hidden' }}>
-            {([
-              { v: 'lista' as Vista, icon: '☰', label: 'Lista' },
-              { v: 'mosaico' as Vista, icon: '⊞', label: 'Mosaico' },
-            ]).map(({ v, icon, label }) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setVista(v)}
-                style={{
-                  padding: '7px 14px',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  fontFamily: 'DM Sans, sans-serif',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  background: vista === v ? 'var(--ac)' : 'transparent',
-                  color: vista === v ? '#fff' : 'var(--ts)',
-                }}
-              >
-                <span style={{ fontSize: '14px' }}>{icon}</span> {label}
+        {seccion === 'carta' && (
+          <div className="ck-actions">
+            {canManage && (
+              <button type="button" className="ck-btn ck-btn--primary" onClick={() => { setCopyFrom(null); setEditor('new'); }}>
+                <NavIcon name="plus" size={16} /> Nuevo plato
               </button>
-            ))}
-          </div>}
-        </div>
+            )}
+            <div className="ck-toggle" role="group" aria-label="Vista">
+              {([
+                { v: 'lista' as Vista, icon: 'list', label: 'Lista' },
+                { v: 'mosaico' as Vista, icon: 'layout-grid', label: 'Mosaico' },
+              ]).map(({ v, icon, label }) => (
+                <button key={v} type="button" onClick={() => setVista(v)} className={vista === v ? 'is-on' : undefined} aria-pressed={vista === v}>
+                  <NavIcon name={icon} size={15} /> {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid var(--bo)', marginBottom: '16px' }}>
-        {([
-          { id: 'carta' as SeccionCostos, label: 'Carta' },
-          ...(puedeVerConsumo ? [{ id: 'consumo' as SeccionCostos, label: 'Consumo ventas' }] : []),
-        ]).map(tab => (
+      <div className="ck-tabs" role="tablist">
+        {tabs.map(tab => (
           <button
             key={tab.id}
             type="button"
+            role="tab"
+            aria-selected={seccion === tab.id}
             onClick={() => setSeccion(tab.id)}
-            style={{
-              border: 'none',
-              borderBottom: `2px solid ${seccion === tab.id ? 'var(--ac)' : 'transparent'}`,
-              background: 'transparent',
-              color: seccion === tab.id ? 'var(--tx)' : 'var(--ts)',
-              padding: '9px 14px',
-              marginBottom: '-1px',
-              cursor: 'pointer',
-              fontSize: '13px',
-              fontWeight: seccion === tab.id ? 800 : 600,
-              fontFamily: 'DM Sans, sans-serif',
-            }}
+            className={`ck-tab${seccion === tab.id ? ' is-on' : ''}`}
           >
             {tab.label}
+            {tab.nuevo && <span className="ck-new">Nuevo</span>}
           </button>
         ))}
       </div>
 
       {seccion === 'consumo' && puedeVerConsumo ? (
         <ConsumoVentasPanel />
+      ) : seccion === 'defontana' && puedeVerConsumo ? (
+        <DefontanaPanel />
       ) : (
       <>
 
-      {resumen.sin_datos > 0 && (
-        <div style={{ background: '#FEF9C3', border: '1px solid #CA8A04', borderRadius: '10px', padding: '10px 16px', marginBottom: '16px', fontSize: '13px', color: '#854D0E', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontWeight: 700 }}>!</span>
-          <span>
-            <strong>{resumen.sin_datos} plato{resumen.sin_datos !== 1 ? 's' : ''}</strong> sin ficha tecnica completa.
-          </span>
-        </div>
-      )}
-
-      <div className="costos-resumen-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '20px' }}>
+      <div className="ck-kpis">
         {([
-          { key: 'green' as ColorSemaforo, label: 'Optimo >=30%', count: resumen.optimo, color: '#16A34A', bg: '#DCFCE7' },
-          { key: 'yellow' as ColorSemaforo, label: 'Medio 25-30%', count: resumen.medio, color: '#CA8A04', bg: '#FEF9C3' },
-          { key: 'red' as ColorSemaforo, label: 'Bajo <25%', count: resumen.bajo, color: '#DC2626', bg: '#FEE2E2' },
-          { key: 'gray' as ColorSemaforo, label: 'Sin datos', count: resumen.sin_datos, color: '#9CA3AF', bg: '#F3F4F6' },
-        ] as const).map(s => (
-          <div
+          { key: 'green' as const, label: 'Óptimo ≥30%' },
+          { key: 'yellow' as const, label: 'Medio 25–30%' },
+          { key: 'red' as const, label: 'Bajo <25%' },
+          { key: 'gray' as const, label: 'Sin datos' },
+        ]).map(s => (
+          <button
             key={s.key}
+            type="button"
             onClick={() => setSemFiltro(prev => prev === s.key ? 'all' : s.key)}
-            style={{
-              background: s.bg,
-              borderRadius: '10px',
-              padding: '12px 16px',
-              cursor: 'pointer',
-              border: `2px solid ${semFiltro === s.key ? s.color : 'transparent'}`,
-            }}
+            className={`ck-kpi ${KPI_CLASE[s.key]}${semFiltro === s.key ? ' is-on' : ''}`}
+            aria-pressed={semFiltro === s.key}
           >
-            <p style={{ fontSize: '22px', fontWeight: 800, fontFamily: 'Syne, sans-serif', color: s.color, margin: 0 }}>{s.count}</p>
-            <p style={{ fontSize: '11px', color: s.color, margin: '2px 0 0', fontWeight: 600 }}>{s.label}</p>
-          </div>
+            <strong>{resumen[s.key]}</strong>
+            <span>{s.label}</span>
+          </button>
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px', alignItems: 'center' }}>
-        <div style={{ position: 'relative', flex: '1 1 260px', minWidth: '240px', maxWidth: '420px' }}>
+      <div className="ck-toolbar">
+        <div className="ck-search">
+          <NavIcon name="search" size={16} />
           <input
             type="search"
             value={productoBusqueda}
             onChange={e => setProductoBusqueda(e.target.value)}
             placeholder="Buscar plato o producto en recetas..."
-            style={{ width: '100%', border: '1.5px solid var(--bo)', borderRadius: '8px', padding: '7px 34px 7px 12px', fontSize: '13px', background: 'var(--bg)', color: 'var(--tx)', fontFamily: 'DM Sans, sans-serif', outline: 'none', boxSizing: 'border-box' }}
-            onFocus={e => (e.currentTarget.style.borderColor = 'var(--ac)')}
-            onBlur={e => (e.currentTarget.style.borderColor = 'var(--bo)')}
           />
           {productoBusqueda && (
-            <button
-              type="button"
-              onClick={() => setProductoBusqueda('')}
-              title="Limpiar busqueda"
-              style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', color: 'var(--ts)', cursor: 'pointer', fontSize: '16px', lineHeight: 1, padding: '2px' }}
-            >
-              x
+            <button type="button" className="ck-search__clear" onClick={() => setProductoBusqueda('')} aria-label="Limpiar búsqueda">
+              <NavIcon name="x" size={15} />
             </button>
           )}
         </div>
 
-        <select
-          value={cartaFiltro}
-          onChange={e => setCartaFiltro(e.target.value as FiltroCarta)}
-          style={{ border: '1.5px solid var(--bo)', borderRadius: '8px', padding: '7px 12px', fontSize: '13px', background: 'var(--bg)', color: 'var(--tx)', fontFamily: 'DM Sans, sans-serif', cursor: 'pointer' }}
-        >
-          <option value="all">Toda la carta</option>
-          <option value="NUEVA">Carta nueva</option>
-          <option value="ANTIGUA">Carta antigua</option>
+        <select className="ck-select" value={cartaFiltro} onChange={e => setCartaFiltro(e.target.value as FiltroCarta)} aria-label="Carta">
+          <option value="all">{NOMBRE_CARTA.all}</option>
+          <option value="NUEVA">{NOMBRE_CARTA.NUEVA}</option>
+          <option value="ANTIGUA">{NOMBRE_CARTA.ANTIGUA}</option>
         </select>
 
-        <select
-          value={catFiltro}
-          onChange={e => setCatFiltro(e.target.value)}
-          style={{ border: '1.5px solid var(--bo)', borderRadius: '8px', padding: '7px 12px', fontSize: '13px', background: 'var(--bg)', color: 'var(--tx)', fontFamily: 'DM Sans, sans-serif', cursor: 'pointer' }}
-        >
-          {categorias.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+        <select className="ck-select" value={catFiltro} onChange={e => setCatFiltro(e.target.value)} aria-label="Categoría">
+          <option value="all">Todas las categorías</option>
+          {categorias.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
 
-        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-          {COLORES.map(c => (
-            <button
-              key={c.value}
-              onClick={() => setSemFiltro(c.value as ColorSemaforo | 'all')}
-              style={{
-                padding: '6px 14px',
-                borderRadius: '20px',
-                border: '1.5px solid',
-                borderColor: semFiltro === c.value ? 'var(--ac)' : 'var(--bo)',
-                background: semFiltro === c.value ? 'var(--al)' : 'var(--bg)',
-                color: semFiltro === c.value ? 'var(--ac)' : 'var(--ts)',
-                fontSize: '12px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '5px',
-                fontFamily: 'DM Sans, sans-serif',
-              }}
-            >
-              {c.value !== 'all' && <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: DOT[c.value as ColorSemaforo], flexShrink: 0 }} />}
-              {c.label}
-            </button>
-          ))}
-        </div>
+        <button type="button" className={`ck-btn${verFiltros || filtrosExtra ? ' is-on' : ''}`} onClick={() => setVerFiltros(v => !v)} aria-expanded={verFiltros}>
+          <NavIcon name="funnel" size={15} /> Filtros{filtrosExtra ? ` (${filtrosExtra})` : ''}
+        </button>
 
         {productoQuery && (
-          <span style={{ fontSize: '12px', color: 'var(--ts)', fontWeight: 600 }}>
-            {filtrados.length} plato{filtrados.length !== 1 ? 's' : ''} con ese producto
-          </span>
+          <span className="ck-hint">{filtrados.length} plato{filtrados.length !== 1 ? 's' : ''} encontrados</span>
         )}
+      </div>
 
-        {(productoBusqueda || cartaFiltro !== 'all' || catFiltro !== 'all' || semFiltro !== 'all') && (
+      {verFiltros && (
+        <div className="ck-filters">
+          <label><input type="checkbox" checked={soloSinToteat} onChange={e => setSoloSinToteat(e.target.checked)} /> Sin código Toteat</label>
+          <label><input type="checkbox" checked={soloSinFoto} onChange={e => setSoloSinFoto(e.target.checked)} /> Sin foto</label>
+        </div>
+      )}
+
+      <div className="ck-chips">
+        {COLORES.map(c => (
           <button
-            onClick={() => {
-              setProductoBusqueda('');
-              setCartaFiltro('all');
-              setCatFiltro('all');
-              setSemFiltro('all');
-            }}
-            style={{ padding: '6px 12px', borderRadius: '20px', border: '1.5px solid var(--bo)', background: 'none', color: 'var(--ts)', fontSize: '12px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}
+            key={c.value}
+            type="button"
+            onClick={() => setSemFiltro(c.value)}
+            className={`ck-chip${semFiltro === c.value ? ' is-on' : ''}`}
+            aria-pressed={semFiltro === c.value}
           >
-            x Limpiar
+            {c.value !== 'all' && <span className="ck-dot" style={{ background: SEMAFORO[c.value].color }} />}
+            {c.label}
+          </button>
+        ))}
+        {hayFiltros && (
+          <button type="button" className="ck-chip ck-chip--ghost" onClick={limpiarFiltros}>
+            <NavIcon name="x" size={14} /> Limpiar
           </button>
         )}
       </div>
 
+      {puedeVerConsumo && (
+        <div className="ck-banner">
+          <span className="ck-banner__icon"><NavIcon name="layers" size={20} /></span>
+          <div className="ck-banner__body">
+            <strong>Defontana <span className="ck-new">Nuevo</span></strong>
+            <p>Integra tu carta con Defontana para gestionar códigos de venta Toteat, calcular la utilización en PP, administrar productos y realizar el descuento de stock automáticamente.</p>
+          </div>
+          <button type="button" className="ck-btn" onClick={() => setSeccion('defontana')}>
+            Ir a Defontana <NavIcon name="arrow-right" size={15} />
+          </button>
+        </div>
+      )}
+
+      <p className="ck-section-title">{NOMBRE_CARTA[cartaFiltro]} · {filtrados.length} plato{filtrados.length !== 1 ? 's' : ''}</p>
+
       {filtrados.length === 0 && (
-        <div style={{ background: 'var(--sf)', borderRadius: '12px', border: '1px solid var(--bo)', padding: '40px 24px', textAlign: 'center', color: 'var(--ts)', fontSize: '14px' }}>
-          {productoQuery ? 'No hay platos con ese nombre o que contengan ese producto.' : 'No hay platos que coincidan con los filtros.'}
+        <div className="ck-empty">
+          {productoQuery ? 'No hay platos con ese nombre, código o producto.' : 'No hay platos que coincidan con los filtros.'}
         </div>
       )}
 
       {vista === 'lista' && Array.from(grupos.entries()).map(([cat, items]) => (
-        <div key={cat} style={{ background: 'var(--sf)', borderRadius: '12px', border: '1px solid var(--bo)', marginBottom: '16px', overflow: 'hidden' }}>
-          <div style={{ padding: '10px 18px', background: 'var(--al)', borderBottom: '1px solid var(--bo)' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ac)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              {cat} · {items.length} plato{items.length !== 1 ? 's' : ''}
-            </span>
-          </div>
+        <div key={cat} className="ck-panel">
+          <div className="ck-panel__head">{cat} · {items.length} plato{items.length !== 1 ? 's' : ''}</div>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', minWidth: '840px', borderCollapse: 'collapse' }}>
+            <table className="ck-table ck-table--click" style={{ minWidth: '840px' }}>
               <thead>
                 <tr>
-                  <th style={{ width: '48px', borderBottom: '1px solid var(--bo)' }} />
-                  {['Plato', ...(productoQuery ? ['Producto encontrado'] : []), 'Carta', 'Precio carta', 'Costo bruto', 'Margen', 'Estado'].map(h => (
-                    <th key={h} style={{ textAlign: 'left', fontSize: '10px', fontWeight: 600, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px', padding: '8px 16px', whiteSpace: 'nowrap', borderBottom: '1px solid var(--bo)' }}>
-                      {h}
-                    </th>
-                  ))}
+                  <th style={{ width: '56px' }} aria-label="Foto" />
+                  <th>Plato</th>
+                  {productoQuery && <th>Producto encontrado</th>}
+                  <th>Carta</th>
+                  <th className="num">Precio carta</th>
+                  <th className="num">Costo bruto</th>
+                  <th>Margen</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((p, i) => (
-                  <tr
-                    key={p.id}
-                    onClick={() => setModal(p)}
-                    style={{ borderTop: i > 0 ? '1px solid var(--bo)' : undefined, cursor: 'pointer', transition: 'background 0.12s' }}
-                    onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.background = 'var(--al)'}
-                    onMouseLeave={e => (e.currentTarget as HTMLTableRowElement).style.background = ''}
-                  >
-                    <td style={{ padding: '8px 8px 8px 16px', width: '48px' }}>
-                      {p.foto_url ? (
-                        <img src={p.foto_url} alt={p.nombre} style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover', display: 'block' }} />
-                      ) : (
-                        <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'var(--al)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>🍽</div>
-                      )}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '14px', color: 'var(--tx)', fontWeight: 500 }}>{p.nombre}</td>
-                    {productoQuery && (
-                      <td style={{ padding: '12px 16px', maxWidth: '260px' }}>
-                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                          {matchingIngredientes(p, productoQuery).slice(0, 3).map(ing => (
-                            <span key={ing.id} style={{ fontSize: '11px', fontWeight: 700, color: '#0F766E', background: '#CCFBF1', border: '1px solid #99F6E4', borderRadius: '4px', padding: '2px 7px', whiteSpace: 'nowrap' }}>
-                              {ing.nombre ?? ing.codigo_producto}
-                            </span>
-                          ))}
-                          {matchingIngredientes(p, productoQuery).length > 3 && (
-                            <span style={{ fontSize: '11px', color: 'var(--ts)' }}>+{matchingIngredientes(p, productoQuery).length - 3}</span>
-                          )}
-                        </div>
+                {items.map(p => {
+                  const matches = matchingIngredientes(p, productoQuery);
+                  return (
+                    <tr key={p.id} onClick={() => abrirPlato(p)} className={seleccionado === p.id ? 'is-selected' : undefined}>
+                      <td style={{ padding: '8px 8px 8px 14px' }}>
+                        <div className="ck-thumb"><PlatoFoto src={p.foto_url} alt={p.nombre} iconSize={18} className="ck-thumb" /></div>
                       </td>
-                    )}
-                    <td style={{ padding: '12px 16px' }}>
-                      <CartaBadge tipo={p.tipo_carta ?? 'ANTIGUA'} />
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--ts)', whiteSpace: 'nowrap' }}>
-                      {p.precio_carta != null ? formatCLP(p.precio_carta) : '-'}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--ts)', whiteSpace: 'nowrap' }}>
-                      {p.semaforo === 'gray'
-                        ? <span style={{ fontSize: '11px', fontWeight: 600, color: '#9CA3AF', background: '#F3F4F6', padding: '2px 7px', borderRadius: '4px' }}>Sin ficha</span>
-                        : formatCLP(p.costo_bruto)}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '13px', whiteSpace: 'nowrap', fontWeight: 600, color: DOT[p.semaforo] }}>
-                      {p.margen_pct != null ? `${p.margen_pct.toFixed(1)}%` : '-'}
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <Semaforo color={p.semaforo} margen={p.margen_pct} compact />
-                    </td>
-                  </tr>
-                ))}
+                      <td style={{ fontWeight: 600 }}>{p.nombre}</td>
+                      {productoQuery && (
+                        <td style={{ maxWidth: '260px' }}>
+                          <div className="ck-card__match">
+                            {matches.slice(0, 3).map(ing => (
+                              <span key={ing.id} className="ck-tag ck-tag--match">{ing.nombre ?? ing.codigo_producto}</span>
+                            ))}
+                            {matches.length > 3 && <span className="ck-hint">+{matches.length - 3}</span>}
+                          </div>
+                        </td>
+                      )}
+                      <td><CartaTag tipo={p.tipo_carta ?? 'ANTIGUA'} /></td>
+                      <td className="num" style={{ fontWeight: 600 }}>{p.precio_carta != null ? formatCLP(p.precio_carta) : '—'}</td>
+                      <td className="num muted">
+                        {p.semaforo === 'gray' && !p.costo_neto ? 'Sin ficha' : formatCLP(p.costo_bruto)}
+                      </td>
+                      <td><Semaforo color={p.semaforo} margen={p.margen_pct} compact /></td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
       ))}
 
-      {vista === 'mosaico' && Array.from(grupos.entries()).map(([cat, items]) => (
-        <div key={cat} style={{ marginBottom: '24px' }}>
-          <div style={{ padding: '6px 0 12px', borderBottom: '2px solid var(--bo)', marginBottom: '14px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ac)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              {cat} · {items.length} plato{items.length !== 1 ? 's' : ''}
-            </span>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px' }}>
-            {items.map(p => (
-              <PlatoCard key={p.id} p={p} onClick={() => setModal(p)} productoQuery={productoQuery} />
-            ))}
-          </div>
+      {vista === 'mosaico' && filtrados.length > 0 && (
+        <div className="ck-grid">
+          {filtrados.map(p => (
+            <PlatoCard key={p.id} p={p} selected={seleccionado === p.id} onClick={() => abrirPlato(p)} productoQuery={productoQuery} />
+          ))}
         </div>
-      ))}
+      )}
 
       {modal && (
         <FichaTecnicaModal
@@ -599,22 +451,6 @@ export default function CostosPage() {
       )}
       </>
       )}
-
-      <style>{`
-        @media (max-width: 860px) {
-          .costos-header {
-            flex-direction: column;
-          }
-          .costos-resumen-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-        }
-        @media (max-width: 560px) {
-          .costos-resumen-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-      `}</style>
     </div>
   );
 }

@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { formatCLP } from '@/lib/calculos';
+import { formatCLP, formatPct } from '@/lib/calculos';
+import NavIcon from '@/components/layout/NavIcon';
 import { TIPOS_CARTA } from '@/lib/carta';
 import ProductSearchSelect from './ProductSearchSelect';
 
@@ -347,112 +348,106 @@ export default function PlatoEditorModal({ plato, copyFrom = null, defaultTipoCa
     if (e.target === e.currentTarget) onClose();
   }
 
+  const titulo = isCopy ? 'Copiar plato' : plato ? 'Editar plato' : 'Nuevo plato';
+  const lineasReceta = ingredientes.filter(i => i.nombre.trim() || i.codigo_producto).length;
+  const colorMargen = margen == null ? 'var(--ts)' : margen >= 30 ? '#059669' : margen >= 25 ? '#B45309' : '#DC2626';
+
   return (
-    <div
-      onClick={handleBackdrop}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 520, padding: '18px' }}
-    >
-      <div style={{ width: '100%', maxWidth: '980px', maxHeight: '92vh', overflow: 'hidden', background: 'var(--sf)', borderRadius: '14px', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', display: 'flex', flexDirection: 'column' }}>
+    <div className="ck-overlay" onClick={handleBackdrop} style={{ zIndex: 520 }}>
+      <div className="ck-modal" style={{ maxWidth: '1040px' }} role="dialog" aria-modal="true" aria-label={titulo}>
         <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--bo)', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ flex: 1 }}>
-            <p style={{ margin: '0 0 3px', color: 'var(--ts)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700 }}>
-              {isCopy ? 'Copiar plato' : plato ? 'Editar plato' : 'Nuevo plato'}
-            </p>
-            <h2 style={{ margin: 0, fontFamily: 'Syne, sans-serif', fontSize: '18px', fontWeight: 800, color: 'var(--tx)' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p className="ck-eyebrow">{titulo}</p>
+            <h2 style={{ margin: 0, fontFamily: 'Syne, sans-serif', fontSize: '20px', fontWeight: 700, color: 'var(--tx)', textTransform: 'uppercase' }}>
               {nombre.trim() || 'Ficha de plato'}
             </h2>
           </div>
-          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ts)', fontSize: '24px', lineHeight: 1, padding: '0 4px' }}>×</button>
+          <button type="button" className="ck-close" onClick={onClose} aria-label="Cerrar">
+            <NavIcon name="x" size={18} />
+          </button>
         </div>
 
-        <div style={{ padding: '18px 22px', overflowY: 'auto' }}>
-          {error && (
-            <div style={{ marginBottom: '14px', background: '#FEF2F2', border: '1px solid #DC2626', color: '#991B1B', borderRadius: '8px', padding: '9px 12px', fontSize: '13px' }}>
-              {error}
-            </div>
-          )}
+        <div className="ck-modal__scroll" style={{ padding: '18px 22px' }}>
+          {error && <div className="ck-error">{error}</div>}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', marginBottom: '12px' }}>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: 'var(--ts)', fontWeight: 700 }}>
+          <div className="ck-form" style={{ marginBottom: '20px' }}>
+            <label className="ck-field">
               Código
-              <input value={codSoftland} onChange={e => setCodSoftland(e.target.value)} className="field-input" style={{ minHeight: 'unset', padding: '8px 10px', fontSize: '13px' }} />
+              <input value={codSoftland} onChange={e => setCodSoftland(e.target.value)} className="ck-input" />
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: 'var(--ts)', fontWeight: 700 }}>
-              Codigo TOTEAT
-              <input value={codigoToteat} onChange={e => setCodigoToteat(e.target.value)} className="field-input" style={{ minHeight: 'unset', padding: '8px 10px', fontSize: '13px' }} />
+            <label className="ck-field">
+              Código TOTEAT
+              <input value={codigoToteat} onChange={e => setCodigoToteat(e.target.value)} className="ck-input" />
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: 'var(--ts)', fontWeight: 700 }}>
+            <label className="ck-field ck-field--2">
               Plato
-              <input value={nombre} onChange={e => setNombre(e.target.value)} className="field-input" style={{ minHeight: 'unset', padding: '8px 10px', fontSize: '13px' }} />
+              <input value={nombre} onChange={e => setNombre(e.target.value)} className="ck-input" />
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: 'var(--ts)', fontWeight: 700 }}>
+            <label className="ck-field">
               Categoría
-              <input value={categoria} onChange={e => setCategoria(e.target.value)} list="categorias-carta" className="field-input" style={{ minHeight: 'unset', padding: '8px 10px', fontSize: '13px' }} />
+              <input value={categoria} onChange={e => setCategoria(e.target.value)} list="categorias-carta" className="ck-input" />
               <datalist id="categorias-carta">
                 {CATEGORIAS.map(c => <option key={c} value={c} />)}
               </datalist>
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: 'var(--ts)', fontWeight: 700 }}>
+            <label className="ck-field">
               Tipo carta
-              <select value={tipoCarta} onChange={e => setTipoCarta(e.target.value as 'ANTIGUA' | 'NUEVA')} className="field-input" style={{ minHeight: 'unset', padding: '8px 10px', fontSize: '13px' }}>
+              <select value={tipoCarta} onChange={e => setTipoCarta(e.target.value as 'ANTIGUA' | 'NUEVA')} className="ck-input">
                 {TIPOS_CARTA.map(tipo => (
                   <option key={tipo} value={tipo}>
-                    {tipo === 'NUEVA' ? 'Nueva' : 'Antigua'}
+                    {tipo === 'NUEVA' ? 'Carta actual' : 'Antigua'}
                   </option>
                 ))}
               </select>
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: 'var(--ts)', fontWeight: 700 }}>
+            <label className="ck-field">
               Precio carta
-              <input type="number" min={0} step={1} value={precioCarta} onChange={e => setPrecioCarta(e.target.value)} className="field-input" style={{ minHeight: 'unset', padding: '8px 10px', fontSize: '13px' }} />
+              <input type="number" min={0} step={1} value={precioCarta} onChange={e => setPrecioCarta(e.target.value)} className="ck-input" />
             </label>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', marginBottom: '18px' }}>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: 'var(--ts)', fontWeight: 700 }}>
+            {canDelete ? (
+              <label className="ck-field">
+                Estado
+                <span className="ck-check">
+                  <input type="checkbox" checked={activo} onChange={e => setActivo(e.target.checked)} />
+                  Activo
+                </span>
+              </label>
+            ) : <span />}
+            <label className="ck-field ck-field--2">
               Foto URL
-              <input value={fotoUrl} onChange={e => setFotoUrl(e.target.value)} className="field-input" style={{ minHeight: 'unset', padding: '8px 10px', fontSize: '13px' }} />
+              <input value={fotoUrl} onChange={e => setFotoUrl(e.target.value)} className="ck-input" />
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: 'var(--ts)', fontWeight: 700 }}>
-              Subir foto
+            <label className="ck-field ck-field--2">
+              {uploadingFoto ? 'Subiendo foto...' : 'Subir foto'}
               <input
                 type="file"
                 accept="image/*"
                 onChange={e => void handleFotoFile(e.target.files?.[0] ?? null)}
-                className="field-input"
-                style={{ minHeight: 'unset', padding: '8px 10px', fontSize: '13px' }}
+                className="ck-input"
+                disabled={uploadingFoto}
               />
             </label>
-            {uploadingFoto && (
-              <div style={{ display: 'flex', alignItems: 'end', color: 'var(--ts)', fontSize: '12px', fontWeight: 600 }}>
-                Subiendo foto...
-              </div>
-            )}
-            {canDelete && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', alignSelf: 'end', fontSize: '13px', color: 'var(--tx)', fontWeight: 600, minHeight: '35px' }}>
-                <input type="checkbox" checked={activo} onChange={e => setActivo(e.target.checked)} />
-                Activo
-              </label>
-            )}
           </div>
 
           <div style={{ border: '1px solid var(--bo)', borderRadius: '10px', overflow: 'hidden' }}>
-            <div style={{ padding: '10px 14px', background: 'var(--al)', borderBottom: '1px solid var(--bo)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span style={{ fontSize: '11px', color: 'var(--ac)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 800, flex: 1 }}>
-                Receta ({ingredientes.filter(i => i.nombre.trim() || i.codigo_producto).length})
-              </span>
-              <button type="button" onClick={() => setIngredientes(rows => [...rows, emptyRow()])} style={{ border: '1px solid var(--ac)', background: 'var(--sf)', color: 'var(--ac)', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>
-                + Producto
+            <div className="ck-panel__head" style={{ justifyContent: 'space-between' }}>
+              <span>Receta ({lineasReceta})</span>
+              <button type="button" className="ck-btn ck-btn--sm" style={{ color: 'var(--ac)', borderColor: 'var(--bo-ac)' }} onClick={() => setIngredientes(rows => [...rows, emptyRow()])}>
+                <NavIcon name="plus" size={14} /> Producto
               </button>
             </div>
 
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', minWidth: '860px', borderCollapse: 'collapse' }}>
+              <table className="ck-table" style={{ minWidth: '900px' }}>
                 <thead>
                   <tr>
-                    {['Producto', 'Nombre', 'Cantidad', 'UM', 'Precio unit.', 'Costo', ''].map(h => (
-                      <th key={h} style={{ textAlign: 'left', fontSize: '10px', color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px', padding: '8px 10px', borderBottom: '1px solid var(--bo)' }}>{h}</th>
-                    ))}
+                    <th>Producto</th>
+                    <th>Nombre</th>
+                    <th>Cantidad</th>
+                    <th>UM</th>
+                    <th>Precio unit.</th>
+                    <th className="num">Costo</th>
+                    <th aria-label="Eliminar" />
                   </tr>
                 </thead>
                 <tbody>
@@ -463,8 +458,8 @@ export default function PlatoEditorModal({ plato, copyFrom = null, defaultTipoCa
                     const costo = cantidad * (precio ?? 0);
 
                     return (
-                      <tr key={row.localId} style={{ borderTop: '1px solid var(--bo)' }}>
-                        <td style={{ padding: '8px 10px', width: '250px' }}>
+                      <tr key={row.localId}>
+                        <td style={{ width: '260px', padding: '7px 10px' }}>
                           <ProductSearchSelect
                             value={row.codigo_producto}
                             onChange={codigo => handleProductoChange(row.localId, codigo)}
@@ -474,33 +469,33 @@ export default function PlatoEditorModal({ plato, copyFrom = null, defaultTipoCa
                             disabled={loadingProductos}
                           />
                         </td>
-                        <td style={{ padding: '8px 10px' }}>
+                        <td style={{ padding: '7px 10px' }}>
                           <input
                             value={row.nombre}
                             onChange={e => updateRow(row.localId, { nombre: e.target.value })}
                             disabled={!!producto}
-                            style={{ width: '100%', border: '1px solid var(--bo)', borderRadius: '6px', padding: '7px 8px', fontSize: '12px', background: producto ? 'var(--al)' : 'var(--bg)', color: 'var(--tx)' }}
+                            className="ck-input ck-input--sm"
                           />
                         </td>
-                        <td style={{ padding: '8px 10px', width: '110px' }}>
+                        <td style={{ width: '110px', padding: '7px 10px' }}>
                           <input
                             type="number"
                             min={0}
                             step="any"
                             value={row.cantidad}
                             onChange={e => updateRow(row.localId, { cantidad: e.target.value })}
-                            style={{ width: '100%', border: '1px solid var(--bo)', borderRadius: '6px', padding: '7px 8px', fontSize: '12px', background: 'var(--bg)', color: 'var(--tx)' }}
+                            className="ck-input ck-input--sm"
                           />
                         </td>
-                        <td style={{ padding: '8px 10px', width: '95px' }}>
+                        <td style={{ width: '90px', padding: '7px 10px' }}>
                           <input
                             value={row.unidad_medida}
                             onChange={e => handleUnidadChange(row.localId, e.target.value.toUpperCase())}
                             list="unidades-receta"
-                            style={{ width: '100%', border: '1px solid var(--bo)', borderRadius: '6px', padding: '7px 8px', fontSize: '12px', background: 'var(--bg)', color: 'var(--tx)' }}
+                            className="ck-input ck-input--sm"
                           />
                         </td>
-                        <td style={{ padding: '8px 10px', width: '130px' }}>
+                        <td style={{ width: '130px', padding: '7px 10px' }}>
                           <input
                             type="number"
                             min={0}
@@ -508,14 +503,16 @@ export default function PlatoEditorModal({ plato, copyFrom = null, defaultTipoCa
                             value={producto && precio != null ? String(precio) : row.precio_unitario}
                             onChange={e => updateRow(row.localId, { precio_unitario: e.target.value })}
                             disabled={!!producto}
-                            style={{ width: '100%', border: '1px solid var(--bo)', borderRadius: '6px', padding: '7px 8px', fontSize: '12px', background: producto ? 'var(--al)' : 'var(--bg)', color: 'var(--tx)' }}
+                            className="ck-input ck-input--sm"
                           />
                         </td>
-                        <td style={{ padding: '8px 10px', width: '110px', fontSize: '12px', fontWeight: 700, color: 'var(--tx)', whiteSpace: 'nowrap' }}>
+                        <td className="num" style={{ width: '100px', fontWeight: 700 }}>
                           {formatCLP(Math.round(costo))}
                         </td>
-                        <td style={{ padding: '8px 10px', width: '42px' }}>
-                          <button type="button" onClick={() => removeRow(row.localId)} style={{ border: 'none', background: 'transparent', color: 'var(--rd)', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }}>×</button>
+                        <td style={{ width: '44px', padding: '7px 8px' }}>
+                          <button type="button" className="ck-icon-btn" onClick={() => removeRow(row.localId)} aria-label="Quitar producto de la receta" title="Quitar producto">
+                            <NavIcon name="trash" size={15} />
+                          </button>
                         </td>
                       </tr>
                     );
@@ -529,23 +526,25 @@ export default function PlatoEditorModal({ plato, copyFrom = null, defaultTipoCa
           </div>
         </div>
 
-        <div style={{ padding: '14px 22px', borderTop: '1px solid var(--bo)', display: 'flex', alignItems: 'center', gap: '16px', background: 'var(--bg)' }}>
+        <div className="ck-modal__foot">
           {plato && !forceCreate && canDelete && (
-            <button type="button" onClick={deletePlato} disabled={saving || deleting} style={{ border: '1px solid var(--rd)', background: '#FEF2F2', color: 'var(--rd)', borderRadius: '7px', padding: '8px 14px', cursor: deleting ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 700 }}>
-              {deleting ? 'Eliminando...' : 'Eliminar plato'}
+            <button type="button" className="ck-btn ck-btn--danger" onClick={deletePlato} disabled={saving || deleting}>
+              <NavIcon name="trash" size={15} /> {deleting ? 'Eliminando...' : 'Eliminar plato'}
             </button>
           )}
-          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '12px', color: 'var(--ts)', flex: 1 }}>
-            <span><strong style={{ color: 'var(--tx)' }}>{formatCLP(Math.round(costoNeto))}</strong> neto</span>
-            <span><strong style={{ color: 'var(--tx)' }}>{formatCLP(costoBruto)}</strong> bruto</span>
-            <span><strong style={{ color: margen == null ? 'var(--ts)' : margen >= 30 ? '#16A34A' : margen >= 25 ? '#CA8A04' : '#DC2626' }}>{margen == null ? '—' : `${margen.toFixed(1)}%`}</strong> margen</span>
+          <div className="ck-totals">
+            <span><strong>{formatCLP(Math.round(costoNeto))}</strong> neto</span>
+            <span><strong>{formatCLP(costoBruto)}</strong> bruto</span>
+            <span><strong style={{ color: colorMargen }}>{formatPct(margen)}</strong> margen</span>
           </div>
-          <button type="button" onClick={onClose} disabled={saving || deleting} style={{ border: '1px solid var(--bo)', background: 'var(--sf)', color: 'var(--ts)', borderRadius: '7px', padding: '8px 14px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
-            Cancelar
-          </button>
-          <button type="button" onClick={save} disabled={saving || deleting} style={{ border: 'none', background: 'var(--ac)', color: '#fff', borderRadius: '7px', padding: '8px 16px', cursor: 'pointer', fontSize: '13px', fontWeight: 700 }}>
-            {saving ? 'Guardando...' : 'Guardar'}
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button type="button" className="ck-btn" onClick={onClose} disabled={saving || deleting}>
+              Cancelar
+            </button>
+            <button type="button" className="ck-btn ck-btn--primary" onClick={save} disabled={saving || deleting || uploadingFoto}>
+              <NavIcon name="save" size={15} /> {saving ? 'Guardando...' : 'Guardar'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
