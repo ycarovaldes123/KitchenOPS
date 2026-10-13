@@ -421,7 +421,7 @@ export default function ProduccionPage() {
   const costoTotal  = ppRows.reduce((s, r) => s + calcCostoFila(r), 0);
   const warnings    = ppRows.filter(r => { const s = getRowStatus(r); return s === 'sin-costo' || s === 'sin-equiv'; }).length;
   const rendCount   = rendRows.filter(r => r.verdura).length;
-  const canSave     = !soloLectura && !!responsableId && (ppValidos.length > 0 || rendValidos.length > 0);
+  const canSave     = !soloLectura && !!responsableId && !!observacion.trim() && (ppValidos.length > 0 || rendValidos.length > 0);
 
   // ── Shared styles ─────────────────────────────────────────────────────────
 
@@ -922,6 +922,12 @@ export default function ProduccionPage() {
                     <span style={{ fontSize: '12px', color: '#991B1B', fontWeight: 600 }}>Falta responsable</span>
                   </div>
                 )}
+                {!observacion.trim() && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: '8px', padding: '5px 11px' }}>
+                    <span style={{ fontSize: '13px' }}>⚠</span>
+                    <span style={{ fontSize: '12px', color: '#991B1B', fontWeight: 600 }}>Falta observación</span>
+                  </div>
+                )}
                 {ppValidos.length === 0 && rendValidos.length === 0 && (
                   <span style={{ fontSize: '13px', color: 'var(--ts)' }}>Agrega al menos un PP o un rendimiento valido para guardar</span>
                 )}
@@ -929,7 +935,7 @@ export default function ProduccionPage() {
             </div>
 
             {/* Save button */}
-            <button type="submit" disabled={guardando} style={{
+            <button type="submit" disabled={guardando || !canSave} style={{
               background: guardando ? 'var(--ts)' : canSave ? 'var(--ac)' : 'var(--bo)',
               color: canSave || guardando ? '#fff' : 'var(--ts)',
               border: 'none', borderRadius: '10px', padding: '13px 30px',
