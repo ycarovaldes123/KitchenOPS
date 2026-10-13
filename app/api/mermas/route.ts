@@ -139,6 +139,51 @@ async function prepararPlatos(
   });
 }
 
+// Línea agregada "PLATO PREPARADO: ..." que va en detalle_mermas (la que suma en reportes y costos).
+function lineasPlatosPreparados(platos: PlatoPreparado[]) {
+  return platos.map(plato => ({
+    codigo_producto: null,
+    nombre_producto: `PLATO PREPARADO: ${plato.nombre_plato}`,
+    cantidad: plato.cantidad,
+    unidad_medida: 'UN',
+    motivo: plato.motivo,
+    costo_unitario: plato.costo_unitario,
+    costo_total: plato.costo_total,
+  }));
+}
+
+// Detalle del plato e insumos consumidos (detalle_mermas_platos / detalle_mermas_platos_insumos).
+async function insertarDetallePlatos(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  mermaId: string,
+  platos: PlatoPreparado[],
+): Promise<string | null> {
+  for (const plato of platos) {
+    const { data: platoRow, error: platoErr } = await supabase
+      .from('detalle_mermas_platos')
+      .insert({
+        merma_id: mermaId,
+        carta_id: plato.carta_id,
+        nombre_plato: plato.nombre_plato,
+        cantidad: plato.cantidad,
+        motivo: plato.motivo,
+        costo_unitario: plato.costo_unitario,
+        costo_total: plato.costo_total,
+        observacion: plato.observacion,
+      })
+      .select('id')
+      .single();
+    if (platoErr) return `${platoErr.message}. Ejecuta scripts/supabase_mermas_platos.sql en Supabase.`;
+
+    const insumoRows = plato.insumos.map(insumo => ({ detalle_merma_plato_id: platoRow.id, ...insumo }));
+    if (insumoRows.length) {
+      const { error: insErr } = await supabase.from('detalle_mermas_platos_insumos').insert(insumoRows);
+      if (insErr) return insErr.message;
+    }
+  }
+  return null;
+}
+
 export async function GET(req: NextRequest) {
   const s = await getSessionRol();
   if (!s.ok) return s.response;
@@ -187,15 +232,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Error preparando platos' }, { status: 500 });
   }
 
-  const detallePlatos = platosPreparados.map(plato => ({
-    codigo_producto: null,
-    nombre_producto: `PLATO PREPARADO: ${plato.nombre_plato}`,
-    cantidad: plato.cantidad,
-    unidad_medida: 'UN',
-    motivo: plato.motivo,
-    costo_unitario: plato.costo_unitario,
-    costo_total: plato.costo_total,
-  }));
+  const detallePlatos = lineasPlatosPreparados(platosPreparados);
   const detalleFinal = [...detalleProductos, ...detallePlatos];
 
   if (!detalleFinal.length)
@@ -216,41 +253,10 @@ export async function POST(req: NextRequest) {
   }
 
   if (platosPreparados.length) {
-    for (const plato of platosPreparados) {
-      const { data: platoRow, error: platoErr } = await supabase
-        .from('detalle_mermas_platos')
-        .insert({
-        merma_id: mer.id,
-        carta_id: plato.carta_id,
-        nombre_plato: plato.nombre_plato,
-        cantidad: plato.cantidad,
-        motivo: plato.motivo,
-        costo_unitario: plato.costo_unitario,
-        costo_total: plato.costo_total,
-        observacion: plato.observacion,
-        })
-        .select('id')
-        .single();
-
-      if (platoErr) {
-        await supabase.from('mermas').delete().eq('id', mer.id);
-        return NextResponse.json({ error: `${platoErr.message}. Ejecuta scripts/supabase_mermas_platos.sql en Supabase.` }, { status: 500 });
-      }
-
-      const insumoRows = plato.insumos.map(insumo => ({
-        detalle_merma_plato_id: platoRow.id,
-        ...insumo,
-      }));
-
-      if (insumoRows.length) {
-        const { error: insErr } = await supabase
-          .from('detalle_mermas_platos_insumos')
-          .insert(insumoRows);
-        if (insErr) {
-          await supabase.from('mermas').delete().eq('id', mer.id);
-          return NextResponse.json({ error: insErr.message }, { status: 500 });
-        }
-      }
+    const platoErr = await insertarDetallePlatos(supabase, mer.id, platosPreparados);
+    if (platoErr) {
+      await supabase.from('mermas').delete().eq('id', mer.id);
+      return NextResponse.json({ error: platoErr }, { status: 500 });
     }
   }
 
@@ -266,13 +272,14 @@ export async function PATCH(req: NextRequest) {
   if (!s.ok) return s.response;
 
   const supabase = await createClient();
-  const { merma_id, fecha, detalle, delete_ids } = await req.json();
+  const { merma_id, fecha, detalle, delete_ids, platos } = await req.json();
 
   const hasDetalle = Array.isArray(detalle) && detalle.length > 0;
   const hasDeletes = Array.isArray(delete_ids) && delete_ids.length > 0;
   const hasFecha = typeof fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fecha);
+  const hasPlatos = Array.isArray(platos) && platos.length > 0;
 
-  if (!merma_id || (!hasDetalle && !hasDeletes && !hasFecha))
+  if (!merma_id || (!hasDetalle && !hasDeletes && !hasFecha && !hasPlatos))
     return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 });
 
   if (hasFecha) {
@@ -356,6 +363,24 @@ export async function PATCH(req: NextRequest) {
       } catch (e) {
         return NextResponse.json({ error: e instanceof Error ? e.message : 'Error insertando nuevas lineas' }, { status: 500 });
       }
+    }
+  }
+
+  // Plato preparado agregado desde Historial: misma expansion a insumos que al registrar la merma.
+  if (hasPlatos) {
+    let preparados: PlatoPreparado[];
+    try {
+      preparados = await prepararPlatos(supabase, platos);
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : 'Error preparando platos' }, { status: 500 });
+    }
+    if (preparados.length) {
+      const { error } = await supabase
+        .from('detalle_mermas')
+        .insert(lineasPlatosPreparados(preparados).map(d => ({ ...d, merma_id })));
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      const platoErr = await insertarDetallePlatos(supabase, merma_id, preparados);
+      if (platoErr) return NextResponse.json({ error: platoErr }, { status: 500 });
     }
   }
 

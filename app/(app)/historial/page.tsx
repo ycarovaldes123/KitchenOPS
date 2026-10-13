@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { calcCostoProduccionPP, calcTotalPP, formatCLP, formatPct, calcMerma } from '@/lib/calculos';
 import { useRol } from '@/components/RolProvider';
 import NavIcon from '@/components/layout/NavIcon';
-import { MOTIVO_MERMA_COLOR, normalizeMotivoMerma } from '@/lib/mermas';
+import { MOTIVOS_MERMA_PLATO, MOTIVO_MERMA_COLOR, normalizeMotivoMerma } from '@/lib/mermas';
 import './historial.css';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -522,9 +522,9 @@ function MovCard({ id, fecha, createdAt, open, editando, isAdmin, principal, eti
   );
 }
 
-function EditBar({ conFecha, editFecha, setEditFecha, addLabel, onAdd, onSave, onCancel, saving, extra }: {
+function EditBar({ conFecha, editFecha, setEditFecha, addLabel, onAdd, onAddPlato, onSave, onCancel, saving, extra }: {
   conFecha: boolean; editFecha: string; setEditFecha: (v: string) => void; addLabel: string;
-  onAdd: () => void; onSave: () => void; onCancel: () => void; saving: boolean; extra?: React.ReactNode;
+  onAdd: () => void; onAddPlato?: () => void; onSave: () => void; onCancel: () => void; saving: boolean; extra?: React.ReactNode;
 }) {
   return (
     <div className="hst-edit-bar">
@@ -536,6 +536,7 @@ function EditBar({ conFecha, editFecha, setEditFecha, addLabel, onAdd, onSave, o
       )}
       {extra}
       <button type="button" className="hst-btn-sec" onClick={onAdd} disabled={saving}>+ {addLabel}</button>
+      {onAddPlato && <button type="button" className="hst-btn-sec" onClick={onAddPlato} disabled={saving}>+ Añadir plato</button>}
       <button type="button" className="hst-btn-ok" onClick={onSave} disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</button>
       <button type="button" className="hst-btn-sec" onClick={onCancel}>Cancelar</button>
     </div>
@@ -1679,23 +1680,43 @@ function TablaMermas({ datos, isAdmin, onRefresh, verCostos, productos, porDia, 
   const [editFecha, setEditFecha] = useState('');
   const [editValues, setEditValues] = useState<Record<string, number>>({});
   const [newRows, setNewRows] = useState<Array<{ localId: string; codigo_producto: string; cantidad: number; motivo: string }>>([]);
+  // Platos preparados agregados al editar: el backend los expande a insumos igual que en /mermas.
+  const [newPlatos, setNewPlatos] = useState<Array<{ localId: string; carta_id: string; cantidad: number; motivo: string }>>([]);
+  const [cartaPlatos, setCartaPlatos] = useState<Array<{ id: string; nombre: string; categoria: string; costo_neto: number }> | null>(null);
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState('');
   const productosMap = new Map(productos.map(p => [p.codigo as string, p]));
+  const cartaMap = new Map((cartaPlatos ?? []).map(p => [p.id, p]));
 
   const toggle = (id: string) => {
     setExpanded(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-    if (editingId === id) { setEditingId(null); setEditValues({}); setEditFecha(''); setNewRows([]); setDeletedIds(new Set()); setSaveErr(''); }
+    if (editingId === id) { setEditingId(null); setEditValues({}); setEditFecha(''); setNewRows([]); setNewPlatos([]); setDeletedIds(new Set()); setSaveErr(''); }
   };
   const startEdit = (id: string, det: Record<string, unknown>[]) => {
     const vals: Record<string, number> = {};
     det.forEach(d => { vals[d.id as string] = d.cantidad as number; });
     const fechaActual = String(datos.find(m => (m.id as string) === id)?.fecha ?? '');
-    setEditingId(id); setEditValues(vals); setEditFecha(fechaActual); setNewRows([]); setDeletedIds(new Set()); setSaveErr('');
+    setEditingId(id); setEditValues(vals); setEditFecha(fechaActual); setNewRows([]); setNewPlatos([]); setDeletedIds(new Set()); setSaveErr('');
   };
-  const cancelEdit = () => { setEditingId(null); setEditValues({}); setEditFecha(''); setNewRows([]); setDeletedIds(new Set()); setSaveErr(''); };
+  const cancelEdit = () => { setEditingId(null); setEditValues({}); setEditFecha(''); setNewRows([]); setNewPlatos([]); setDeletedIds(new Set()); setSaveErr(''); };
   const addRow = () => setNewRows(rows => [...rows, { localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`, codigo_producto: '', cantidad: 1, motivo: '' }]);
+  const addPlato = () => {
+    setNewPlatos(rows => [...rows, { localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`, carta_id: '', cantidad: 1, motivo: '' }]);
+    if (cartaPlatos) return;
+    fetch('/api/carta')
+      .then(r => r.json())
+      .then(data => {
+        if (!Array.isArray(data)) throw new Error(data.error ?? 'Error cargando la carta');
+        setCartaPlatos(data.map((p: Record<string, unknown>) => ({ id: p.id as string, nombre: p.nombre as string, categoria: p.categoria as string, costo_neto: Number(p.costo_neto) || 0 })));
+      })
+      .catch(e => setSaveErr(e instanceof Error ? e.message : 'Error cargando la carta'));
+  };
+  const platoOptions = useMemo(() => (cartaPlatos ?? []).map(p => ({
+    value: p.id,
+    label: p.nombre,
+    searchText: [p.nombre, p.categoria].filter(Boolean).join(' '),
+  })), [cartaPlatos]);
   const removeDetalle = (id: string) => {
     setDeletedIds(prev => {
       const next = new Set(prev);
@@ -1728,9 +1749,12 @@ function TablaMermas({ datos, isAdmin, onRefresh, verCostos, productos, porDia, 
           costo_total: Math.round(cantidad * costoUnitario),
         };
       }).filter(r => r.codigo_producto);
-      const res = await fetch('/api/mermas', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ merma_id: mermaId, fecha: isAdmin ? editFecha : undefined, delete_ids: [...deletedIds], detalle: [...detalle, ...nuevos] }) });
+      const platos = newPlatos
+        .filter(p => p.carta_id && p.cantidad > 0)
+        .map(p => ({ carta_id: p.carta_id, cantidad: p.cantidad, motivo: normalizeMotivoMerma(p.motivo) }));
+      const res = await fetch('/api/mermas', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ merma_id: mermaId, fecha: isAdmin ? editFecha : undefined, delete_ids: [...deletedIds], detalle: [...detalle, ...nuevos], platos }) });
       if (!res.ok) { const j = await res.json(); throw new Error(j.error); }
-      setEditingId(null); setEditValues({}); setEditFecha(''); setNewRows([]); setDeletedIds(new Set()); onRefresh();
+      setEditingId(null); setEditValues({}); setEditFecha(''); setNewRows([]); setNewPlatos([]); setDeletedIds(new Set()); onRefresh();
     } catch (e: unknown) { setSaveErr(e instanceof Error ? e.message : 'Error guardando'); }
     finally { setSaving(false); }
   };
@@ -1785,7 +1809,7 @@ function TablaMermas({ datos, isAdmin, onRefresh, verCostos, productos, porDia, 
                 >
                   {editando && (
                     <EditBar conFecha={isAdmin} editFecha={editFecha} setEditFecha={setEditFecha} addLabel="Añadir producto"
-                      onAdd={addRow} onSave={() => saveEditMer(id, det)} onCancel={cancelEdit} saving={saving} />
+                      onAdd={addRow} onAddPlato={addPlato} onSave={() => saveEditMer(id, det)} onCancel={cancelEdit} saving={saving} />
                   )}
                   {saveErr && editando && <p className="hst-err">{saveErr}</p>}
                   {filtrado && <FiltradoNota q={busqueda?.q ?? ''} visibles={detMostrar.length + platosMostrar.length} total={det.length + platos.length} unidad="líneas" />}
@@ -1822,6 +1846,31 @@ function TablaMermas({ datos, isAdmin, onRefresh, verCostos, productos, porDia, 
                               onCantidad={v => setNewRows(rows => rows.map(x => x.localId === row.localId ? { ...x, cantidad: v } : x))}
                               costo={verCostos ? (p ? Math.round(qty * (Number(p.costo_promedio) || 0)) : 0) : null}
                               onQuitar={() => setNewRows(v => v.filter(x => x.localId !== row.localId))}
+                            />
+                          );
+                        })}
+                        {editando && newPlatos.map(row => {
+                          const plato = row.carta_id ? cartaMap.get(row.carta_id) : undefined;
+                          return (
+                            <NuevaLinea
+                              key={row.localId}
+                              picker={<SearchablePicker value={row.carta_id} options={platoOptions} placeholder={cartaPlatos ? 'Buscar plato de la carta' : 'Cargando carta...'} width="100%"
+                                onChange={value => setNewPlatos(v => v.map(x => x.localId === row.localId ? { ...x, carta_id: value } : x))} />}
+                              sub={
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                  {plato ? 'Plato preparado: descuenta sus insumos' : 'Nuevo plato: elige el plato'}
+                                  <select value={row.motivo} aria-label="Motivo de la merma del plato"
+                                    onChange={e => setNewPlatos(v => v.map(x => x.localId === row.localId ? { ...x, motivo: e.target.value } : x))}
+                                    style={{ fontSize: '11px', border: '1px solid var(--bo)', borderRadius: '6px', padding: '1px 4px', background: 'var(--sf)', color: 'var(--tx)' }}>
+                                    <option value="">Motivo...</option>
+                                    {MOTIVOS_MERMA_PLATO.map(m => <option key={m} value={m}>{m}</option>)}
+                                  </select>
+                                </span>
+                              }
+                              cantidad={row.cantidad} unidad="plato(s)"
+                              onCantidad={v => setNewPlatos(rows => rows.map(x => x.localId === row.localId ? { ...x, cantidad: v } : x))}
+                              costo={verCostos ? (plato ? Math.round(plato.costo_neto * row.cantidad) : 0) : null}
+                              onQuitar={() => setNewPlatos(v => v.filter(x => x.localId !== row.localId))}
                             />
                           );
                         })}
