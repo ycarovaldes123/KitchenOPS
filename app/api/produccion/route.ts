@@ -141,14 +141,16 @@ export async function PATCH(req: NextRequest) {
   if (!s.ok) return s.response;
 
   const supabase = await createClient();
-  const { produccion_id, fecha, detalle, rendimiento, delete_ids } = await req.json();
+  const { produccion_id, fecha, detalle, rendimiento, rendimiento_nuevo, delete_ids } = await req.json();
 
   const hasDetalle = Array.isArray(detalle) && detalle.length > 0;
   const hasRendimiento = Array.isArray(rendimiento) && rendimiento.length > 0;
   const hasDeletes = Array.isArray(delete_ids) && delete_ids.length > 0;
   const hasFecha = typeof fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fecha);
 
-  if (!produccion_id || (!hasDetalle && !hasRendimiento && !hasDeletes && !hasFecha))
+  const hasRendNuevo = Array.isArray(rendimiento_nuevo) && rendimiento_nuevo.length > 0;
+
+  if (!produccion_id || (!hasDetalle && !hasRendimiento && !hasDeletes && !hasFecha && !hasRendNuevo))
     return NextResponse.json({ error: 'Datos invalidos' }, { status: 400 });
 
   if (hasFecha) {
@@ -317,6 +319,33 @@ export async function PATCH(req: NextRequest) {
         .eq('produccion_id', produccion_id);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     }
+  }
+
+  // Rendimientos agregados desde Historial: toman fecha y responsable del informe.
+  if (hasRendNuevo) {
+    const nuevosRend = rendimiento_nuevo as { verdura?: string; kg_utilizados?: number; rendimiento_kg?: number }[];
+    for (const r of nuevosRend) {
+      const kg = Number(r.kg_utilizados), rk = Number(r.rendimiento_kg);
+      if (!String(r.verdura ?? '').trim() || !Number.isFinite(kg) || kg <= 0 || !Number.isFinite(rk) || rk <= 0)
+        return NextResponse.json({ error: 'Valores de rendimiento invalidos' }, { status: 400 });
+      if (rk > kg)
+        return NextResponse.json({ error: 'El rendimiento no puede ser mayor que los kilos utilizados' }, { status: 400 });
+    }
+    const { data: prod, error: prodErr } = await supabase
+      .from('produccion')
+      .select('fecha,responsable_nombre')
+      .eq('id', produccion_id)
+      .single();
+    if (prodErr) return NextResponse.json({ error: prodErr.message }, { status: 500 });
+    const { error } = await supabase.from('rendimiento').insert(nuevosRend.map(r => ({
+      produccion_id,
+      fecha: prod.fecha,
+      verdura: String(r.verdura).trim(),
+      kg_utilizados: Number(r.kg_utilizados),
+      rendimiento_kg: Number(r.rendimiento_kg),
+      responsable_nombre: prod.responsable_nombre,
+    })));
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

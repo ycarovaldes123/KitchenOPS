@@ -323,6 +323,8 @@ function SearchablePicker({
 }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
+  // Opción marcada con teclado: Tab/Enter la eligen, flechas la mueven
+  const [activo, setActivo] = useState(0);
   const selectedLabel = options.find(opt => opt.value === value)?.label ?? '';
   const displayValue = open ? query : selectedLabel;
 
@@ -334,6 +336,24 @@ function SearchablePicker({
     return base.slice(0, 12);
   }, [options, query]);
 
+  const elegir = (opt: SearchOption) => {
+    onChange(opt.value);
+    setQuery(opt.label);
+    setOpen(false);
+  };
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!open || matches.length === 0) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActivo(i => Math.min(i + 1, matches.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActivo(i => Math.max(i - 1, 0)); }
+    else if (e.key === 'Enter') { e.preventDefault(); elegir(matches[Math.min(activo, matches.length - 1)]); }
+    else if (e.key === 'Tab') {
+      // Tab elige la opción marcada si se escribió algo distinto a lo ya seleccionado; el foco sigue al siguiente campo
+      if (query.trim() && query !== selectedLabel) elegir(matches[Math.min(activo, matches.length - 1)]);
+      else setOpen(false);
+    }
+    else if (e.key === 'Escape') setOpen(false);
+  };
+
   return (
     <div style={{ position: 'relative', width }}>
       <input
@@ -342,13 +362,16 @@ function SearchablePicker({
         placeholder={placeholder}
         onFocus={() => {
           setQuery(selectedLabel);
+          setActivo(0);
           setOpen(true);
         }}
         onBlur={() => window.setTimeout(() => setOpen(false), 120)}
         onChange={e => {
           setQuery(e.target.value);
+          setActivo(0);
           setOpen(true);
         }}
+        onKeyDown={onKeyDown}
         style={{
           width: '100%',
           padding: '4px 8px',
@@ -380,16 +403,14 @@ function SearchablePicker({
               Sin coincidencias
             </div>
           ) : (
-            matches.map(opt => (
+            matches.map((opt, i) => (
               <button
                 key={opt.value}
                 type="button"
+                tabIndex={-1}
                 onMouseDown={e => e.preventDefault()}
-                onClick={() => {
-                  onChange(opt.value);
-                  setQuery(opt.label);
-                  setOpen(false);
-                }}
+                onMouseEnter={() => setActivo(i)}
+                onClick={() => elegir(opt)}
                 style={{
                   display: 'block',
                   width: '100%',
@@ -397,7 +418,7 @@ function SearchablePicker({
                   padding: '9px 12px',
                   border: 'none',
                   borderBottom: '1px solid var(--bo)',
-                  background: 'transparent',
+                  background: i === activo ? 'var(--sf2, #FFF0E9)' : 'transparent',
                   color: 'var(--tx)',
                   cursor: 'pointer',
                 }}
@@ -523,17 +544,18 @@ function EditBar({ conFecha, editFecha, setEditFecha, addLabel, onAdd, onSave, o
   );
 }
 
-// Línea de producto: código - nombre | Ingresado (cantidad + unidad, o casilla al editar) | Costo
-function LineaProducto({ nombre, sub, cantidad, unidad, editando, onCantidad, costo, onQuitar }: {
-  nombre: string; sub?: React.ReactNode; cantidad: number; unidad: string;
+// Línea de producto: código - nombre | Motivo (mermas) | Ingresado (cantidad + unidad, o casilla al editar) | Costo
+function LineaProducto({ nombre, sub, motivo, cantidad, unidad, editando, onCantidad, costo, onQuitar }: {
+  nombre: string; sub?: React.ReactNode; motivo?: React.ReactNode; cantidad: number; unidad: string;
   editando: boolean; onCantidad: (v: number) => void; costo: number | null; onQuitar?: () => void;
 }) {
   return (
-    <div className={`hst-pp hst-linea${editando ? ' is-edit' : ''}${costo == null ? ' sin-costo' : ''}`}>
+    <div className={`hst-pp hst-linea${motivo !== undefined ? ' con-motivo' : ''}${editando ? ' is-edit' : ''}${costo == null ? ' sin-costo' : ''}`}>
       <div className="hst-pp-nombre">
         <b title={nombre}>{nombre}</b>
         {sub && <small>{sub}</small>}
       </div>
+      {motivo !== undefined && <div className="hst-pp-motivo">{motivo}</div>}
       <div className="hst-pp-ing">
         {editando ? (
           <span className="hst-pp-input">
@@ -628,19 +650,20 @@ const textoLinea = (d: Record<string, unknown>) => `${d.codigo_producto ?? ''} $
 
 // ─── TablaProduccion ────────────────────────────────────────────────────────
 
-function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps, porDia, busqueda }: { datos: Record<string, unknown>[]; canEdit: boolean; isAdmin: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[]; pps: Record<string, unknown>[]; porDia?: PorDia; busqueda?: ResultadoBusqueda | null }) {
+function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps, verduras, porDia, busqueda }: { datos: Record<string, unknown>[]; canEdit: boolean; isAdmin: boolean; onRefresh: () => void; verCostos: boolean; productos: Record<string, unknown>[]; pps: Record<string, unknown>[]; verduras: Record<string, unknown>[]; porDia?: PorDia; busqueda?: ResultadoBusqueda | null }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, number>>({});
   const [editRendValues, setEditRendValues] = useState<Record<string, { kg_utilizados: number; rendimiento_kg: number }>>({});
   const [newRows, setNewRows] = useState<Array<{ localId: string; pp_id: string; cantidad: number }>>([]);
+  const [newRendRows, setNewRendRows] = useState<Array<{ localId: string; verdura: string; kg_utilizados: number; rendimiento_kg: number }>>([]);
   const [editFecha, setEditFecha] = useState('');
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState('');
   const toggle = (id: string) => {
     setExpanded(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-    if (editingId === id) { setEditingId(null); setEditValues({}); setEditRendValues({}); setNewRows([]); setEditFecha(''); setDeletedIds(new Set()); setSaveErr(''); }
+    if (editingId === id) { setEditingId(null); setEditValues({}); setEditRendValues({}); setNewRows([]); setNewRendRows([]); setEditFecha(''); setDeletedIds(new Set()); setSaveErr(''); }
   };
   const startEdit = (id: string, det: Record<string, unknown>[]) => {
     const vals: Record<string, number> = {};
@@ -653,11 +676,17 @@ function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps,
       };
     });
     const fechaActual = String(datos.find(p => (p.id as string) === id)?.fecha ?? '');
-    setEditingId(id); setEditValues(vals); setEditRendValues(rendVals); setNewRows([]); setEditFecha(fechaActual); setDeletedIds(new Set()); setSaveErr('');
+    setEditingId(id); setEditValues(vals); setEditRendValues(rendVals); setNewRows([]); setNewRendRows([]); setEditFecha(fechaActual); setDeletedIds(new Set()); setSaveErr('');
   };
-  const cancelEdit = () => { setEditingId(null); setEditValues({}); setEditRendValues({}); setNewRows([]); setEditFecha(''); setDeletedIds(new Set()); setSaveErr(''); };
+  const cancelEdit = () => { setEditingId(null); setEditValues({}); setEditRendValues({}); setNewRows([]); setNewRendRows([]); setEditFecha(''); setDeletedIds(new Set()); setSaveErr(''); };
   const addRow = () => {
     setNewRows(rows => [...rows, { localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`, pp_id: '', cantidad: 1 }]);
+  };
+  const addRendRow = () => {
+    setNewRendRows(rows => [...rows, { localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`, verdura: '', kg_utilizados: 0, rendimiento_kg: 0 }]);
+  };
+  const updateRendRow = (localId: string, campo: 'verdura' | 'kg_utilizados' | 'rendimiento_kg', valor: string | number) => {
+    setNewRendRows(rows => rows.map(r => r.localId === localId ? { ...r, [campo]: valor } : r));
   };
   const removeDetalle = (id: string) => {
     setDeletedIds(prev => {
@@ -674,6 +703,13 @@ function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps,
     searchText: [pp.id, pp.nombre, pp.codigo_producto, pp.tipo_pp].filter(Boolean).join(' '),
   })), [pps]);
   const saveEditProd = async (prodId: string, det: Record<string, unknown>[], rend: Record<string, unknown>[]) => {
+    const rendimientoNuevo = newRendRows.filter(r => r.verdura || r.kg_utilizados || r.rendimiento_kg);
+    if (rendimientoNuevo.some(r => !r.verdura || !(r.kg_utilizados > 0) || !(r.rendimiento_kg > 0))) {
+      setSaveErr('Completa verdura, KG utilizados y KG rendidos en cada rendimiento nuevo.'); return;
+    }
+    if (rendimientoNuevo.some(r => r.rendimiento_kg > r.kg_utilizados)) {
+      setSaveErr('El rendimiento no puede ser mayor que los kilos utilizados.'); return;
+    }
     setSaving(true); setSaveErr('');
     try {
       const detalle = det
@@ -707,9 +743,9 @@ function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps,
         kg_utilizados: editRendValues[r.id as string]?.kg_utilizados ?? (r.kg_utilizados as number),
         rendimiento_kg: editRendValues[r.id as string]?.rendimiento_kg ?? (r.rendimiento_kg as number),
       }));
-      const res = await fetch('/api/produccion', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ produccion_id: prodId, fecha: isAdmin ? editFecha : undefined, delete_ids: [...deletedIds], detalle: [...detalle, ...nuevos], rendimiento }) });
+      const res = await fetch('/api/produccion', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ produccion_id: prodId, fecha: isAdmin ? editFecha : undefined, delete_ids: [...deletedIds], detalle: [...detalle, ...nuevos], rendimiento, rendimiento_nuevo: rendimientoNuevo.map(r => ({ verdura: r.verdura, kg_utilizados: r.kg_utilizados, rendimiento_kg: r.rendimiento_kg })) }) });
       if (!res.ok) { const j = await res.json(); throw new Error(j.error); }
-      setEditingId(null); setEditValues({}); setEditRendValues({}); setNewRows([]); setEditFecha(''); setDeletedIds(new Set()); onRefresh();
+      setEditingId(null); setEditValues({}); setEditRendValues({}); setNewRows([]); setNewRendRows([]); setEditFecha(''); setDeletedIds(new Set()); onRefresh();
     } catch (e: unknown) { setSaveErr(e instanceof Error ? e.message : 'Error guardando'); }
     finally { setSaving(false); }
   };
@@ -854,6 +890,7 @@ function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps,
                             </label>
                           )}
                           <button type="button" className="hst-btn-sec" onClick={addRow} disabled={saving}>+ Añadir PP</button>
+                          <button type="button" className="hst-btn-sec" onClick={addRendRow} disabled={saving}>+ Añadir rendimiento</button>
                           <button type="button" className="hst-btn-ok" onClick={() => saveEditProd(id, det, rend)} disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</button>
                           <button type="button" className="hst-btn-sec" onClick={cancelEdit}>Cancelar</button>
                         </div>
@@ -865,7 +902,7 @@ function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps,
                           Mostrando solo lo que coincide con «{busqueda?.q}»: {detMostrar.length} de {det.length} PP{rend.length ? ` · ${rendMostrar.length} de ${rend.length} verduras` : ''}
                         </p>
                       )}
-                      <div className={`hst-mov-grid${rendMostrar.length ? '' : ' is-single'}`}>
+                      <div className={`hst-mov-grid${rendMostrar.length || (editando && newRendRows.length) ? '' : ' is-single'}`}>
                         <div>
                           <h4 className="hst-sec-title"><span className="hst-prod-ico"><NavIcon name="cooking-pot" size={14} /></span>Producción PP</h4>
                           {detMostrar.length === 0 && !editando && <p className="hst-muted">{filtrado ? 'Ningún PP coincide con la búsqueda.' : 'Sin PP registrados.'}</p>}
@@ -968,7 +1005,7 @@ function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps,
                           )}
                         </div>
 
-                        {rendMostrar.length > 0 && (
+                        {(rendMostrar.length > 0 || (editando && newRendRows.length > 0)) && (
                           <div className="hst-rend">
                             <h4 className="hst-sec-title"><span className="hst-leaf"><NavIcon name="leaf" size={14} /></span>Rendimiento verduras</h4>
                             <table>
@@ -995,6 +1032,25 @@ function TablaProduccion({ datos, isAdmin, onRefresh, verCostos, productos, pps,
                                         ) : `${fmtNum(r.rendimiento_kg as number)} kg`}
                                       </td>
                                       <td><span className={`hst-merma is-${m.estado}`}>{formatPct(m.mermaPct)}</span></td>
+                                    </tr>
+                                  );
+                                })}
+                                {editando && newRendRows.map(r => {
+                                  const m = calcMerma(r.kg_utilizados, r.rendimiento_kg);
+                                  return (
+                                    <tr key={r.localId} className="is-new">
+                                      <td>
+                                        <select value={r.verdura} aria-label="Verdura del nuevo rendimiento" onChange={e => updateRendRow(r.localId, 'verdura', e.target.value)}>
+                                          <option value="">Seleccionar...</option>
+                                          {verduras.map(v => <option key={v.id as string} value={v.nombre as string}>{v.nombre as string}</option>)}
+                                        </select>
+                                      </td>
+                                      <td><input type="number" min={0} step="any" value={r.kg_utilizados || ''} placeholder="0" aria-label="KG utilizados" onChange={e => updateRendRow(r.localId, 'kg_utilizados', parseFloat(e.target.value) || 0)} /></td>
+                                      <td><input type="number" min={0} step="any" value={r.rendimiento_kg || ''} placeholder="0" aria-label="KG rendidos" onChange={e => updateRendRow(r.localId, 'rendimiento_kg', parseFloat(e.target.value) || 0)} /></td>
+                                      <td className="hst-rend-nuevo-merma">
+                                        <span className={`hst-merma is-${m.estado}`}>{r.kg_utilizados > 0 ? formatPct(m.mermaPct) : '—'}</span>
+                                        <button type="button" className="hst-quitar" title="Quitar rendimiento" aria-label="Quitar rendimiento" onClick={() => setNewRendRows(v => v.filter(x => x.localId !== r.localId))}>×</button>
+                                      </td>
                                     </tr>
                                   );
                                 })}
@@ -1723,7 +1779,7 @@ function TablaMermas({ datos, isAdmin, onRefresh, verCostos, productos, porDia, 
                           const motivo = normalizeMotivoMerma(d.motivo);
                           return (
                             <LineaProducto
-                              key={d.id as string} nombre={nombreLinea(d)} sub={motivo ? <MotivoChip motivo={motivo} /> : undefined}
+                              key={d.id as string} nombre={nombreLinea(d)} motivo={motivo ? <MotivoChip motivo={motivo} /> : null}
                               cantidad={qty} unidad={unidadLinea(d)} editando={editando}
                               onCantidad={v => setEditValues(x => ({ ...x, [d.id as string]: v }))}
                               costo={verCostos ? (editando ? Math.round(qty * cu) : Number(d.costo_total) || 0) : null}
@@ -1855,7 +1911,7 @@ export default function HistorialPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [summary, setSummary] = useState<HistorialSummary | null>(null);
-  const [maestros, setMaestros] = useState<{ productos: Record<string, unknown>[]; pps: Record<string, unknown>[] }>({ productos: [], pps: [] });
+  const [maestros, setMaestros] = useState<{ productos: Record<string, unknown>[]; pps: Record<string, unknown>[]; verduras: Record<string, unknown>[] }>({ productos: [], pps: [], verduras: [] });
   const [responsable, setResponsable] = useState('');
   const [responsables, setResponsables] = useState<string[]>([]);
   const [resultadoBusqueda, setResultadoBusqueda] = useState<ResultadoBusqueda | null>(null);
@@ -1905,10 +1961,10 @@ export default function HistorialPage() {
       .then(data => {
         if (!alive) return;
         if (data.error) throw new Error(data.error);
-        setMaestros({ productos: data.productos ?? [], pps: data.pps ?? [] });
+        setMaestros({ productos: data.productos ?? [], pps: data.pps ?? [], verduras: data.verduras ?? [] });
       })
       .catch(() => {
-        if (alive) setMaestros({ productos: [], pps: [] });
+        if (alive) setMaestros({ productos: [], pps: [], verduras: [] });
       });
     return () => { alive = false; };
   }, []);
@@ -2035,7 +2091,7 @@ export default function HistorialPage() {
           </div>
         ) : (
           <>
-            {tab === 'produccion' && <TablaProduccion datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} pps={maestros.pps} porDia={summary?.por_dia} busqueda={resultadoBusqueda} />}
+            {tab === 'produccion' && <TablaProduccion datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} pps={maestros.pps} verduras={maestros.verduras} porDia={summary?.por_dia} busqueda={resultadoBusqueda} />}
             {tab === 'colacion'   && <TablaColacion   datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} porDia={summary?.por_dia} busqueda={resultadoBusqueda} />}
             {tab === 'frutas'     && <TablaFrutas     datos={datos} canEdit={canEdit} isAdmin={isAdmin} onRefresh={refresh} verCostos={verCostos} productos={maestros.productos} porDia={summary?.por_dia} busqueda={resultadoBusqueda} />}
             {tab === 'inventario' && <TablaInventario datos={datos} isAdmin={isAdmin} onRefresh={refresh} productos={maestros.productos} porDia={summary?.por_dia} busqueda={resultadoBusqueda} />}
