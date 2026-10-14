@@ -154,6 +154,23 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     export:     NADA,
     maestros:   NADA,
   },
+
+  // Operaciones: en Costos solo consulta la carta y cambia el precio carta (editar = solo precio).
+  operaciones: {
+    dashboard:  NADA,
+    produccion: NADA,
+    colacion:   NADA,
+    frutas:     NADA,
+    inventario: NADA,
+    controlCarnicos: NADA,
+    mermas:     NADA,
+    historial:  NADA,
+    ventas:     NADA,
+    kpis:       NADA,
+    costos:     { ...NADA, ver: true, editar: true, verCostos: true },
+    export:     NADA,
+    maestros:   NADA,
+  },
 };
 
 export function puedeAcceder(rol: RolType, modulo: Modulo): boolean {

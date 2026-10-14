@@ -16,23 +16,13 @@ type IngredientePayload = {
   unidad_medida?: string | null;
   precio_unitario?: number | null;
   pp_id?: string | null;
+  precio_manual?: boolean;
 };
 
-const CARTA_SELECT_WITH_TIPO: string = `
-      *,
-      carta_ingredientes (
-        id, nombre, cantidad, unidad_medida, precio_unitario, costo_total,
-        codigo_producto, pp_id
-      )
-    `;
+// carta_ingredientes(*): incluye precio_manual cuando la columna existe (scripts/supabase_carta_precio_manual.sql).
+const CARTA_SELECT_WITH_TIPO: string = '*, carta_ingredientes (*)';
 
-const CARTA_SELECT_WITHOUT_TIPO: string = `
-      *,
-      carta_ingredientes (
-        id, nombre, cantidad, unidad_medida, precio_unitario, costo_total,
-        codigo_producto, pp_id
-      )
-    `;
+const CARTA_SELECT_WITHOUT_TIPO: string = '*, carta_ingredientes (*)';
 
 function isMissingTipoCartaColumn(error: { message?: string } | null | undefined) {
   const message = (error?.message ?? '').toLowerCase();
@@ -65,6 +55,9 @@ async function validarCategoria(supabase: Awaited<ReturnType<typeof createClient
 // El CHECK de la BD aun no acepta las cartas nuevas: indicar el script pendiente.
 function mensajeError(error: { message?: string }) {
   const message = error.message ?? 'Error guardando plato';
+  if (message.includes('precio_manual')) {
+    return 'Para guardar precios unitarios manuales falta ejecutar scripts/supabase_carta_precio_manual.sql en Supabase.';
+  }
   if (message.includes('carta_tipo_carta_check')) {
     return 'La base de datos aún no acepta este tipo de carta. Falta ejecutar scripts/supabase_carta_tipos_bebestibles_pedidosya.sql en Supabase.';
   }
@@ -123,13 +116,19 @@ async function prepararIngredientes(
   if (error) throw new Error(error.message);
 
   const prodMap = new Map((productos ?? []).map(p => [p.codigo, p]));
+  // precio_manual solo se envia si alguna linea lo usa: asi guardar sigue funcionando aunque
+  // la columna aun no exista en la BD.
+  const hayManual = rows.some(i => i.precio_manual === true);
 
   return rows.map(i => {
     const prod = i.codigo_producto ? prodMap.get(i.codigo_producto) : null;
     const unidad = i.unidad_medida || prod?.unidad_medida || null;
-    const precioUnitario = prod
-      ? precioUnitarioPorUnidad(unidad ?? prod.unidad_medida, prod.unidad_medida, prod.costo_promedio ?? 0)
-      : (i.precio_unitario ?? 0);
+    const manual = i.precio_manual === true && i.precio_unitario != null && Number.isFinite(i.precio_unitario) && i.precio_unitario >= 0;
+    const precioUnitario = manual
+      ? i.precio_unitario as number
+      : prod
+        ? precioUnitarioPorUnidad(unidad ?? prod.unidad_medida, prod.unidad_medida, prod.costo_promedio ?? 0)
+        : (i.precio_unitario ?? 0);
 
     return {
       carta_id: cartaId,
@@ -140,6 +139,7 @@ async function prepararIngredientes(
       unidad_medida: unidad,
       precio_unitario: precioUnitario,
       costo_total: i.cantidad * precioUnitario,
+      ...(hayManual ? { precio_manual: manual } : {}),
     };
   });
 }
@@ -155,10 +155,10 @@ type CartaRow = {
   activo: boolean;
   foto_url: string | null;
   updated_at: string;
-  carta_ingredientes?: { id: string; nombre: string | null; cantidad: number; unidad_medida: string | null; precio_unitario: number | null; costo_total: number | null; codigo_producto: string | null; pp_id: string | null; }[] | null;
+  carta_ingredientes?: { id: string; nombre: string | null; cantidad: number; unidad_medida: string | null; precio_unitario: number | null; costo_total: number | null; codigo_producto: string | null; pp_id: string | null; precio_manual?: boolean; }[] | null;
 };
 
-const ING_COLS = 'id, nombre, cantidad, unidad_medida, precio_unitario, costo_total, codigo_producto, pp_id';
+const ING_COLS = '*';
 
 function conCostos(p: CartaRow) {
   const costo_neto  = (p.carta_ingredientes ?? []).reduce((s: number, i: { costo_total: number | null }) => s + (i.costo_total ?? 0), 0);
@@ -179,7 +179,7 @@ async function reemplazarIngredientes(
   let nuevos: NonNullable<CartaRow['carta_ingredientes']> = [];
   if (ingRows.length) {
     const { data, error } = await supabase.from('carta_ingredientes').insert(ingRows).select(ING_COLS);
-    if (error) throw new Error(error.message);
+    if (error) throw new Error(mensajeError(error));
     nuevos = data ?? [];
   }
   if (borrarAnteriores) {
@@ -194,7 +194,7 @@ async function reemplazarIngredientes(
 // GET /api/carta — platos activos con costos calculados; ?todos=1 incluye los inactivos
 export async function GET(req: NextRequest) {
   // cocina: acceso de solo lectura a la pestaña Carta de Costos
-  const s = await requireRol(['admin', 'finanzas', 'jefatura', 'cocina', 'gerencia']);
+  const s = await requireRol(['admin', 'finanzas', 'jefatura', 'cocina', 'gerencia', 'operaciones']);
   if (!s.ok) return s.response;
 
   const supabase = await createClient();

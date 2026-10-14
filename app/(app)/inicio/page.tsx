@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/utils/supabase/server';
-import { RMAP, ROL_LABEL, NAV_ITEMS, RUTAS_ROL, NOMBRE_POR_EMAIL, type NavItem } from '@/lib/roles';
+import { rolDeUsuario, ROL_LABEL, NAV_ITEMS, RUTAS_ROL, NOMBRE_POR_EMAIL, type NavItem } from '@/lib/roles';
 import { headers } from 'next/headers';
 import InicioGrid from '@/components/InicioGrid';
 import { ALERTAS_HREF, conModuloAlertas } from '@/lib/alertas/acceso';
@@ -12,7 +12,7 @@ export default async function InicioPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  const rol = RMAP[user.email ?? ''];
+  const rol = rolDeUsuario(user);
   if (!rol) redirect('/login?error=unauthorized');
 
   // Mismos modulos que la barra de navegacion: cada rol ve solo los suyos.

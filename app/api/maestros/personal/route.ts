@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/utils/supabase/server';
 import { requireRol } from '@/lib/auth-server';
 import { auditLog } from '@/lib/audit';
+import { esRol } from '@/lib/roles';
+import { guardarCuenta, mapaCuentas, validarPassword } from '@/lib/cuentas-acceso';
 import {
   AREAS, NIVELES, TABLAS_ACTIVIDAD, aPersona, columnaFaltante, inicialesDe, normalizarPermisos, rolDesdeArea,
   type Area, type NivelAcceso, type ResponsableRow,
@@ -33,10 +35,21 @@ export async function GET() {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const rows = (data ?? []) as ResponsableRow[];
-  const ultima = await ultimaActividad(supabase, rows.map(r => r.id));
+  const [ultima, cuentas] = await Promise.all([
+    ultimaActividad(supabase, rows.map(r => r.id)),
+    mapaCuentas(supabase).catch(() => new Map()),
+  ]);
   const columnasListas = rows.length === 0 || 'nivel_acceso' in rows[0];
+  const porEmail = new Map<string, number>();
+  for (const r of rows) if (r.email) porEmail.set(r.email.toLowerCase(), (porEmail.get(r.email.toLowerCase()) ?? 0) + 1);
 
-  return NextResponse.json({ personas: rows.map(r => aPersona(r, ultima)), columnasListas });
+  return NextResponse.json({
+    personas: rows.map(r => {
+      const email = r.email?.toLowerCase() ?? '';
+      return aPersona(r, ultima, email ? cuentas.get(email) ?? null : null, porEmail.get(email) ?? 1);
+    }),
+    columnasListas,
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -52,7 +65,23 @@ export async function POST(req: NextRequest) {
   const nivel = NIVELES.some(n => n.value === body.nivel_acceso) ? body.nivel_acceso as NivelAcceso : 'operativo';
   const email = String(body.email ?? '').trim().toLowerCase() || null;
 
-  const { data: existentes } = await supabase.from('responsables').select('nombre,iniciales');
+  // Cuenta de ingreso opcional (solo admin): contraseña + perfil del sistema.
+  const password = typeof body.password === 'string' ? body.password : '';
+  const perfil = esRol(body.perfil) ? body.perfil : null;
+  if (password) {
+    if (!email) return NextResponse.json({ error: 'Para crear la cuenta de acceso ingresa el email.' }, { status: 400 });
+    const errPass = validarPassword(password);
+    if (errPass) return NextResponse.json({ error: errPass }, { status: 400 });
+  }
+
+  const { data: existentes } = await supabase.from('responsables').select('nombre,iniciales,email');
+  const comparten = email ? (existentes ?? []).filter(r => (r.email ?? '').toLowerCase() === email).length + 1 : 1;
+  if (password && comparten > 1 && body.confirmar_compartida !== true) {
+    return NextResponse.json({
+      error: `El email ${email} ya lo usan otras ${comparten - 1} persona(s): cambiar la contraseña la cambia para todas.`,
+      compartida: true,
+    }, { status: 409 });
+  }
   if ((existentes ?? []).some(r => r.nombre === nombre)) {
     return NextResponse.json({ error: 'Ya existe una persona con ese nombre' }, { status: 409 });
   }
@@ -79,5 +108,26 @@ export async function POST(req: NextRequest) {
     registro_id: data.id, datos_nuevos: nuevo,
   });
 
-  return NextResponse.json(aPersona(data as ResponsableRow, new Map()), { status: 201 });
+  let cuenta = null;
+  if (email) {
+    try {
+      if (password) {
+        const r = await guardarCuenta(supabase, email, { password, perfil });
+        cuenta = r.cuenta;
+        await auditLog(supabase, {
+          usuario_email: s.email, rol_usuario: s.rol, accion: r.creada ? 'crear_cuenta_acceso' : 'cambiar_password',
+          tabla: 'auth.users', registro_id: r.cuenta.id, datos_nuevos: { email, perfil: r.cuenta.rol },
+        });
+      } else {
+        cuenta = (await mapaCuentas(supabase)).get(email) ?? null;
+      }
+    } catch (e) {
+      return NextResponse.json({
+        error: `La persona se guardó, pero no se pudo crear la cuenta de acceso: ${e instanceof Error ? e.message : 'error desconocido'}`,
+        persona: aPersona(data as ResponsableRow, new Map(), null, comparten),
+      }, { status: 500 });
+    }
+  }
+
+  return NextResponse.json(aPersona(data as ResponsableRow, new Map(), cuenta, comparten), { status: 201 });
 }

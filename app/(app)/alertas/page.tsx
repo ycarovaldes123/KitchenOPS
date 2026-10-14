@@ -1,7 +1,7 @@
 import { headers } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/utils/supabase/server';
-import { RMAP } from '@/lib/roles';
+import { rolDeUsuario } from '@/lib/roles';
 import { alertasHabilitadas } from '@/lib/alertas/acceso';
 import AlertasModulo from '@/components/alertas/AlertasModulo';
 import '../maestros/recetas-pp.css';
@@ -18,7 +18,7 @@ export default async function AlertasPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
-  if (!alertasHabilitadas(host, RMAP[user.email ?? ''])) notFound();
+  if (!alertasHabilitadas(host, rolDeUsuario(user))) notFound();
 
   return <AlertasModulo />;
 }

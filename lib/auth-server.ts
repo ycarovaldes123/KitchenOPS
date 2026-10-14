@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
-import { RMAP, type RolType } from '@/lib/roles';
+import { rolDeUsuario, type RolType } from '@/lib/roles';
 
 export type SessionOk  = { ok: true;  email: string; rol: RolType };
 export type SessionErr = { ok: false; response: NextResponse };
@@ -14,7 +14,7 @@ export async function getSessionRol(): Promise<SessionResult> {
     return { ok: false, response: NextResponse.json({ error: 'No autenticado' }, { status: 401 }) };
   }
 
-  const rol = RMAP[user.email ?? ''];
+  const rol = rolDeUsuario(user);
   if (!rol) {
     return { ok: false, response: NextResponse.json({ error: 'Sin acceso' }, { status: 403 }) };
   }

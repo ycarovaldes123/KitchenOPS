@@ -24,6 +24,7 @@ interface Ingrediente {
   costo_total: number | null;
   codigo_producto: string | null;
   pp_id: string | null;
+  precio_manual?: boolean;
 }
 
 interface PlatoEditable {
@@ -58,6 +59,8 @@ interface IngredienteForm {
   cantidad: string;
   unidad_medida: string;
   precio_unitario: string;
+  /** precio_unitario escrito a mano: no se reemplaza por el costo del maestro. */
+  precio_manual: boolean;
 }
 
 interface Props {
@@ -145,6 +148,7 @@ function emptyRow(): IngredienteForm {
     cantidad: '',
     unidad_medida: '',
     precio_unitario: '',
+    precio_manual: false,
   };
 }
 
@@ -157,6 +161,7 @@ function rowFromIngrediente(ing: Ingrediente): IngredienteForm {
     cantidad: ing.cantidad?.toString() ?? '',
     unidad_medida: ing.unidad_medida ?? '',
     precio_unitario: ing.precio_unitario?.toString() ?? '',
+    precio_manual: !!ing.precio_manual,
   };
 }
 
@@ -251,6 +256,8 @@ export default function PlatoEditor({
   const [ingredientes, setIngredientes] = useState<IngredienteForm[]>(
     source?.carta_ingredientes?.length ? source.carta_ingredientes.map(rowFromIngrediente) : [emptyRow()],
   );
+  // "Editar P. unitario": desbloquea el precio unitario de todas las lineas para escribirlo a mano.
+  const [editarPU, setEditarPU] = useState(false);
   // Fila recien agregada: su buscador recibe el foco al montarse.
   const [filaNueva, setFilaNueva] = useState<string | null>(null);
   const ingsRef = useRef<HTMLDivElement>(null);
@@ -322,13 +329,18 @@ export default function PlatoEditor({
   const filas = useMemo(() => ingredientes.map(row => {
     const producto = row.codigo_producto ? productoMap.get(row.codigo_producto) : undefined;
     const cantidad = parseCantidad(row.cantidad);
-    const precio = producto
-      ? precioUnitarioPorUnidad(row.unidad_medida, producto)
-      : row.precio_unitario === '' ? null : Number(row.precio_unitario);
-    const sinCosto = !!row.codigo_producto && !(Number(producto?.costo_promedio) > 0) && !(producto == null && (precio ?? 0) > 0);
+    const precioMaestro = producto ? precioUnitarioPorUnidad(row.unidad_medida, producto) : null;
+    const precio = row.precio_manual
+      ? (row.precio_unitario === '' ? null : Number(row.precio_unitario))
+      : producto
+        ? precioMaestro
+        : row.precio_unitario === '' ? null : Number(row.precio_unitario);
+    const sinCosto = row.precio_manual
+      ? !(Number(row.precio_unitario) > 0)
+      : !!row.codigo_producto && !(Number(producto?.costo_promedio) > 0) && !(producto == null && (precio ?? 0) > 0);
     const costo = Number.isFinite(cantidad) && cantidad > 0 && precio != null && Number.isFinite(precio) ? cantidad * precio : 0;
     const umIncompatible = !!producto && !unidadCompatible(row.unidad_medida, producto.unidad_medida ?? '');
-    return { row, producto, precio, costo, sinCosto, umIncompatible };
+    return { row, producto, precio, precioMaestro, costo, sinCosto, umIncompatible };
   }), [ingredientes, productoMap]);
 
   const costoNeto = filas.reduce((sum, f) => sum + f.costo, 0);
@@ -353,7 +365,7 @@ export default function PlatoEditor({
   function handleProductoChange(localId: string, codigo: string) {
     const producto = productoMap.get(codigo);
     if (!producto) {
-      updateRow(localId, { codigo_producto: '', pp_id: null, nombre: '', unidad_medida: '', precio_unitario: '' });
+      updateRow(localId, { codigo_producto: '', pp_id: null, nombre: '', unidad_medida: '', precio_unitario: '', precio_manual: false });
       return;
     }
     const unidad = normalizarUM(producto.unidad_medida);
@@ -364,16 +376,35 @@ export default function PlatoEditor({
       nombre: producto.nombre,
       unidad_medida: unidad,
       precio_unitario: precio == null ? '' : String(precio),
+      precio_manual: false,
     });
+  }
+
+  // Precio unitario a mano (por la U/M de la linea). Vacio vuelve al precio del maestro.
+  function handlePrecioManual(localId: string, valor: string) {
+    if (valor.trim() === '') {
+      volverPrecioMaestro(localId);
+      return;
+    }
+    updateRow(localId, { precio_unitario: valor, precio_manual: true });
+  }
+
+  function volverPrecioMaestro(localId: string) {
+    const row = ingredientes.find(r => r.localId === localId);
+    const producto = row?.codigo_producto ? productoMap.get(row.codigo_producto) : undefined;
+    const precio = precioUnitarioPorUnidad(row?.unidad_medida ?? '', producto);
+    updateRow(localId, { precio_manual: false, precio_unitario: precio == null ? row?.precio_unitario ?? '' : String(precio) });
   }
 
   function handleUnidadChange(localId: string, unidad: string) {
     const row = ingredientes.find(r => r.localId === localId);
     const producto = row?.codigo_producto ? productoMap.get(row.codigo_producto) : undefined;
     const precio = precioUnitarioPorUnidad(unidad, producto);
+    // Un precio manual era por la unidad anterior: al cambiar la U/M vuelve al del maestro.
     updateRow(localId, {
       unidad_medida: unidad,
       precio_unitario: producto && precio != null ? String(precio) : row?.precio_unitario ?? '',
+      precio_manual: false,
     });
   }
 
@@ -410,6 +441,7 @@ export default function PlatoEditor({
       const etiqueta = f.producto?.nombre ?? f.row.nombre ?? f.row.codigo_producto;
       if (f.row.cantidad.trim() === '' || !Number.isFinite(cantidad) || cantidad <= 0) return `Ingresa una cantidad válida para ${etiqueta}.`;
       if (f.producto && !f.row.unidad_medida) return `Falta la unidad de medida de ${etiqueta}.`;
+      if (f.row.precio_manual && !(Number(f.row.precio_unitario) >= 0)) return `El precio unitario manual de ${etiqueta} no es válido.`;
     }
     return null;
   }
@@ -452,6 +484,7 @@ export default function PlatoEditor({
             cantidad: parseCantidad(row.cantidad),
             unidad_medida: row.unidad_medida || null,
             precio_unitario: row.precio_unitario === '' ? null : Number(row.precio_unitario),
+            precio_manual: row.precio_manual,
           })),
       };
 
@@ -590,6 +623,15 @@ export default function PlatoEditor({
 
           <div className="ck-block__title" style={{ marginTop: '22px' }}>
             <span>Receta ({lineasReceta})</span>
+            <button
+              type="button"
+              className={`ck-btn ck-btn--sm${editarPU ? ' is-on' : ''}`}
+              onClick={() => setEditarPU(v => !v)}
+              aria-pressed={editarPU}
+              title={editarPU ? 'Volver a bloquear los precios unitarios' : 'Desbloquear los precios unitarios para escribirlos a mano'}
+            >
+              <NavIcon name={editarPU ? 'check' : 'pencil'} size={13} /> {editarPU ? 'Listo P. unitario' : 'Editar P. unitario'}
+            </button>
             <button type="button" className="ck-btn ck-btn--sm" style={{ color: 'var(--ac)', borderColor: 'var(--bo-ac)' }} onClick={agregarFila}>
               <NavIcon name="plus" size={14} /> Producto
             </button>
@@ -600,7 +642,7 @@ export default function PlatoEditor({
               <span>Código</span><span>Ingrediente</span><span>Cantidad</span><span>U/M</span>
               <span className="num">Precio unit.</span><span className="num">Costo</span><span />
             </div>
-            {filas.map(({ row, producto, precio, costo, sinCosto, umIncompatible }) => {
+            {filas.map(({ row, producto, precio, precioMaestro, costo, sinCosto, umIncompatible }) => {
               const unidadProducto = normalizarUM(producto?.unidad_medida);
               const opcionesUM = producto ? [...unidadesPara(unidadProducto)] : [];
               const umActual = normalizarUM(row.unidad_medida);
@@ -654,9 +696,28 @@ export default function PlatoEditor({
                   </label>
                   <div className="ck-ing__cell num">
                     <span className="ck-ing__lbl">Precio unit.</span>
-                    <span className={`ck-ing__static${sinCosto ? ' is-warn' : ''}`}>
-                      {!row.codigo_producto && !huerfano ? '—' : sinCosto ? 'Sin costo' : precio != null ? formatPrecioUnit(precio) : '—'}
-                    </span>
+                    {editarPU && (row.codigo_producto || huerfano) ? (
+                      <span className="ck-pu">
+                        <input
+                          type="number" min={0} step="any" inputMode="decimal"
+                          className={`ck-input ck-input--sm${row.precio_manual ? ' is-manual' : ''}`}
+                          value={row.precio_manual ? row.precio_unitario : precio != null ? String(Math.round(precio * 1000) / 1000) : ''}
+                          onChange={e => handlePrecioManual(row.localId, e.target.value)}
+                          aria-label={`Precio unitario de ${producto?.nombre ?? row.nombre}`}
+                          title={precioMaestro != null ? `Maestro: ${formatPrecioUnit(precioMaestro)} por ${row.unidad_medida || 'unidad'}` : undefined}
+                        />
+                        {row.precio_manual && (
+                          <button type="button" className="ck-pu__reset" tabIndex={-1} onClick={() => volverPrecioMaestro(row.localId)} title="Volver al precio del maestro" aria-label="Volver al precio del maestro">
+                            <NavIcon name="rotate-ccw" size={12} />
+                          </button>
+                        )}
+                      </span>
+                    ) : (
+                      <span className={`ck-ing__static${sinCosto ? ' is-warn' : ''}`}>
+                        {row.precio_manual && <span className="ck-tag ck-tag--manual" title="Precio unitario ingresado a mano">Manual</span>}
+                        {!row.codigo_producto && !huerfano ? '—' : sinCosto ? 'Sin costo' : precio != null ? formatPrecioUnit(precio) : '—'}
+                      </span>
+                    )}
                   </div>
                   <div className="ck-ing__cell num">
                     <span className="ck-ing__lbl">Costo</span>

@@ -223,3 +223,11 @@
   .per-form-grid .is-wide { grid-column: auto; }
   .per-btn-primary { width: 100%; }
 }
+
+/* Acceso al sistema (contraseña y perfil) */
+.per-cuenta { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--bo); }
+.per-cuenta h4 { margin: 0 0 10px; }
+.per-pass { position: relative; display: flex; }
+.per-pass input { flex: 1; padding-right: 40px; }
+.per-pass-ver { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--ts); cursor: pointer; border-radius: 6px; }
+.per-pass-ver:hover { color: var(--ac); }

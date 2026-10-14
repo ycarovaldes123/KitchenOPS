@@ -14,6 +14,8 @@ export interface Ingrediente {
   costo_total: number | null;
   codigo_producto: string | null;
   pp_id: string | null;
+  /** Precio unitario escrito a mano (no viene del maestro de productos). */
+  precio_manual?: boolean;
 }
 
 export interface Plato {

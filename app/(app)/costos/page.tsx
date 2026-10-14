@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { formatCLP } from '@/lib/calculos';
+import { calcMargen, formatCLP, semaforo } from '@/lib/calculos';
 import NavIcon from '@/components/layout/NavIcon';
 import Semaforo, { SEMAFORO } from '@/components/costos/Semaforo';
 import PlatoConsulta from '@/components/costos/PlatoConsulta';
@@ -139,7 +139,9 @@ export default function CostosPage() {
   const isAdmin = rol === 'admin';
   const canManage = rol === 'admin' || rol === 'finanzas';
   // Cocina y Gerencia entran a Costos solo en modo consulta y solo a la pestaña Carta.
-  const puedeVerConsumo = rol !== 'cocina' && rol !== 'gerencia';
+  const puedeVerConsumo = rol !== 'cocina' && rol !== 'gerencia' && rol !== 'operaciones';
+  // Operaciones: solo cambia el precio carta desde la ficha (sin Editar, Copiar, Nuevo ni Eliminar).
+  const soloPrecio = rol === 'operaciones';
   const [platos, setPlatos] = useState<Plato[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -345,6 +347,26 @@ export default function CostosPage() {
       const sinEl = prev.filter(p => p.id !== guardado.id);
       return [...sinEl, guardado].sort((a, b) => a.categoria.localeCompare(b.categoria) || a.nombre.localeCompare(b.nombre));
     });
+  }
+
+  async function guardarPrecio(plato: Plato, precio: number | null): Promise<string | null> {
+    try {
+      const res = await fetch('/api/carta/precio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: plato.id, precio_carta: precio }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return data.error ?? 'No se pudo guardar el precio';
+      // Mismas formulas que el servidor (lib/calculos): el margen se actualiza sin recargar.
+      setPlatos(prev => prev.map(p => p.id === plato.id
+        ? { ...p, precio_carta: precio, margen_pct: calcMargen(p.costo_neto, precio), semaforo: semaforo(p.costo_neto, precio) }
+        : p));
+      setAviso({ texto: precio == null ? `Precio de ${plato.nombre} eliminado` : `Precio de ${plato.nombre} actualizado a ${formatCLP(precio)}` });
+      return null;
+    } catch {
+      return 'No se pudo guardar el precio. Revisa la conexión.';
+    }
   }
 
   function cerrarDfEditor() {
@@ -713,6 +735,7 @@ export default function CostosPage() {
           onCopy={isAdmin ? () => abrirPanel({ modo: 'copiar', platoId: plato.id }) : undefined}
           onToggleActivo={isAdmin ? () => void toggleActivo(plato) : undefined}
           cambiandoEstado={cambiandoEstado === plato.id}
+          onGuardarPrecio={soloPrecio ? precio => guardarPrecio(plato, precio) : undefined}
         />
       );
     }

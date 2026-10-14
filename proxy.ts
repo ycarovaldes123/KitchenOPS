@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { updateSession } from '@/utils/supabase/middleware';
-import { RMAP, RUTAS_ROL, RUTA_INICIO, RUTA_INICIO_COMUN } from '@/lib/roles';
+import { rolDeUsuario, RUTAS_ROL, RUTA_INICIO, RUTA_INICIO_COMUN } from '@/lib/roles';
 import { ALERTAS_HREF, alertasHabilitadas } from '@/lib/alertas/acceso';
 
 const PUBLIC_PATHS = ['/login', '/auth', '/logout'];
@@ -22,7 +22,7 @@ export async function proxy(req: NextRequest) {
   // Public paths — redirect already-authed users a la pantalla Inicio
   if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) {
     if (user) {
-      const rol = RMAP[user.email ?? ''];
+      const rol = rolDeUsuario(user);
       if (rol) return NextResponse.redirect(new URL(RUTA_INICIO_COMUN, req.url));
     }
     return supabaseResponse;
@@ -34,7 +34,7 @@ export async function proxy(req: NextRequest) {
   }
 
   // Authenticated but no role in RMAP
-  const rol = RMAP[user.email ?? ''];
+  const rol = rolDeUsuario(user);
   if (!rol) {
     return NextResponse.redirect(new URL('/login?error=unauthorized', req.url));
   }

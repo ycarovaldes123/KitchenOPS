@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { formatCLP, formatPct } from '@/lib/calculos';
 import { formatCantidad } from '@/lib/costo-receta-pp';
 import NavIcon from '@/components/layout/NavIcon';
@@ -13,10 +14,88 @@ interface Props {
   /** Solo admin: alterna Activo/Inactivo sin entrar a Editar. */
   onToggleActivo?: () => void;
   cambiandoEstado?: boolean;
+  /** Rol Operaciones: cambia o elimina (null) solo el precio carta. Devuelve un mensaje de error o null si guardo. */
+  onGuardarPrecio?: (precio: number | null) => Promise<string | null>;
+}
+
+function PrecioEditable({ precio, onGuardar }: { precio: number | null; onGuardar: (precio: number | null) => Promise<string | null> }) {
+  const [editando, setEditando] = useState(false);
+  const [valor, setValor] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState('');
+
+  function abrir() {
+    setValor(precio != null ? String(precio) : '');
+    setError('');
+    setEditando(true);
+  }
+
+  async function guardar() {
+    if (guardando) return;
+    const n = Number(valor);
+    if (valor.trim() === '' || !Number.isInteger(n) || n <= 0) {
+      setError('Ingresa un precio entero mayor a 0');
+      return;
+    }
+    setGuardando(true);
+    const err = await onGuardar(n);
+    setGuardando(false);
+    if (err) setError(err);
+    else setEditando(false);
+  }
+
+  async function eliminar() {
+    if (guardando || precio == null) return;
+    if (!window.confirm('¿Eliminar el precio carta de este plato? Quedará sin precio y sin margen hasta que se ingrese uno nuevo.')) return;
+    setGuardando(true);
+    const err = await onGuardar(null);
+    setGuardando(false);
+    if (err) setError(err);
+    else setEditando(false);
+  }
+
+  if (!editando) {
+    return (
+      <div className="ck-precio__acciones ck-precio__btn">
+        <button type="button" className="ck-btn ck-btn--sm" onClick={abrir}>
+          <NavIcon name="pencil" size={13} /> {precio == null ? 'Agregar precio' : 'Editar precio'}
+        </button>
+        {precio != null && (
+          <button type="button" className="ck-btn ck-btn--sm ck-btn--danger" onClick={() => void eliminar()} disabled={guardando} title="Eliminar precio carta">
+            <NavIcon name="trash" size={13} />
+          </button>
+        )}
+        {error && <p className="ck-precio__error">{error}</p>}
+      </div>
+    );
+  }
+  return (
+    <div className="ck-precio">
+      <input
+        type="number" min={1} step={1} inputMode="numeric" autoFocus
+        className="ck-input ck-input--sm"
+        value={valor}
+        onChange={e => { setValor(e.target.value); setError(''); }}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { e.preventDefault(); void guardar(); }
+          if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setEditando(false); }
+        }}
+        aria-label="Nuevo precio carta"
+        disabled={guardando}
+      />
+      <div className="ck-precio__acciones">
+        <button type="button" className="ck-btn ck-btn--sm" onClick={() => setEditando(false)} disabled={guardando}>Cancelar</button>
+        <button type="button" className="ck-btn ck-btn--sm ck-btn--primary" onClick={() => void guardar()} disabled={guardando}>
+          <NavIcon name="save" size={13} /> {guardando ? 'Guardando...' : 'Guardar'}
+        </button>
+      </div>
+      {error && <p className="ck-precio__error">{error}</p>}
+    </div>
+  );
 }
 
 // Modo consulta del panel lateral: es lo primero que se ve al elegir un plato; editar es una accion explicita.
-export default function PlatoConsulta({ plato, onEdit, onCopy, onToggleActivo, cambiandoEstado = false }: Props) {
+export default function PlatoConsulta({ plato, onEdit, onCopy, onToggleActivo, cambiandoEstado = false, onGuardarPrecio }: Props) {
   const ings = plato.carta_ingredientes ?? [];
   const sem = SEMAFORO[plato.semaforo];
 
@@ -70,6 +149,7 @@ export default function PlatoConsulta({ plato, onEdit, onCopy, onToggleActivo, c
             <p className="ck-cost__label">Precio carta</p>
             <p className="ck-cost__value">{formatCLP(plato.precio_carta)}</p>
             <p className="ck-cost__sub">con IVA</p>
+            {onGuardarPrecio && <PrecioEditable key={plato.id} precio={plato.precio_carta} onGuardar={onGuardarPrecio} />}
           </div>
           <div className="ck-cost">
             <p className="ck-cost__label">Costo bruto</p>
@@ -107,7 +187,10 @@ export default function PlatoConsulta({ plato, onEdit, onCopy, onToggleActivo, c
                       {esIngredientePP(ing) && <span className="ck-tag ck-tag--pp" style={{ marginLeft: '6px' }}>PP</span>}
                     </td>
                     <td className="num muted">{formatCantidad(ing.cantidad)} {ing.unidad_medida ?? ''}</td>
-                    <td className="num muted">{ing.precio_unitario != null ? formatCLP(ing.precio_unitario) : '—'}</td>
+                    <td className="num muted">
+                      {ing.precio_manual && <span className="ck-tag ck-tag--manual" title="Precio unitario ingresado a mano">Manual</span>}
+                      {ing.precio_unitario != null ? formatCLP(ing.precio_unitario) : '—'}
+                    </td>
                     <td className="num" style={{ fontWeight: 600 }}>{ing.costo_total != null ? formatCLP(ing.costo_total) : '—'}</td>
                   </tr>
                 ))}

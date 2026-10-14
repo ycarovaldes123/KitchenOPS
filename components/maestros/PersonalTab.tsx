@@ -6,7 +6,10 @@ import {
   AREAS, MODULOS_PERMISO, NIVELES, normalizarPermisos, permisosPorEmail,
   type Area, type NivelAcceso, type PermisosPersona, type PersonaAdmin,
 } from '@/lib/personal';
+import { RMAP, ROLES, ROL_LABEL, type RolType } from '@/lib/roles';
 import '@/app/(app)/maestros/personal.css';
+
+const PASSWORD_MIN = 8;
 
 type FormState = {
   id: string | null;
@@ -16,6 +19,12 @@ type FormState = {
   area: Area | '';
   nivel_acceso: NivelAcceso;
   permisos: PermisosPersona;
+  /** Contraseña nueva (vacia = no cambiar). */
+  password: string;
+  verPassword: boolean;
+  perfil: RolType | '';
+  cuentaExiste: boolean;
+  compartenEmail: number;
 };
 
 const AREA_MAP = new Map(AREAS.map(a => [a.value, a]));
@@ -202,12 +211,16 @@ export default function PersonalTab({ canEdit }: { canEdit: boolean }) {
     setForm({
       id: p.id, nombre: nombreVisible(p.nombre), iniciales: p.iniciales ?? '', email: p.email ?? '',
       area: p.area ?? '', nivel_acceso: p.nivel_acceso, permisos: { ...p.permisos },
+      password: '', verPassword: false, perfil: p.perfil ?? '', cuentaExiste: p.cuenta_existe, compartenEmail: p.comparten_email,
     });
   }
 
   function abrirNuevo() {
     setFormError('');
-    setForm({ id: null, nombre: '', iniciales: '', email: '', area: 'cocina', nivel_acceso: 'operativo', permisos: normalizarPermisos({}) });
+    setForm({
+      id: null, nombre: '', iniciales: '', email: '', area: 'cocina', nivel_acceso: 'operativo', permisos: normalizarPermisos({}),
+      password: '', verPassword: false, perfil: '', cuentaExiste: false, compartenEmail: 1,
+    });
   }
 
   function setPermiso(modulo: string, campo: 'ver' | 'editar', valor: boolean) {
@@ -222,20 +235,35 @@ export default function PersonalTab({ canEdit }: { canEdit: boolean }) {
     });
   }
 
-  async function guardar() {
+  async function guardar(confirmarCompartida = false) {
     if (!form) return;
     if (!form.nombre.trim()) { setFormError('El nombre es requerido'); return; }
+    const emailForm = form.email.trim().toLowerCase();
+    const perfilFijo = !!RMAP[emailForm];
+    if (form.password) {
+      if (!emailForm) { setFormError('Para la contraseña ingresa el email de la cuenta.'); return; }
+      if (form.password.length < PASSWORD_MIN) { setFormError(`La contraseña debe tener al menos ${PASSWORD_MIN} caracteres.`); return; }
+      if (!form.cuentaExiste && !perfilFijo && !form.perfil) { setFormError('Elige el perfil de acceso al sistema.'); return; }
+    }
     setSaving(true);
     setFormError('');
     const body = {
       nombre: form.nombre, iniciales: form.iniciales, email: form.email,
       area: form.area || null, nivel_acceso: form.nivel_acceso, permisos: form.permisos,
+      password: form.password || undefined,
+      perfil: !perfilFijo && form.perfil ? form.perfil : undefined,
+      confirmar_compartida: confirmarCompartida || undefined,
     };
     try {
       const r = await fetch(form.id ? `/api/maestros/personal/${form.id}` : '/api/maestros/personal', {
         method: form.id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       const d = await r.json();
+      if (r.status === 409 && d.compartida) {
+        setSaving(false);
+        if (window.confirm(`${d.error}\n\n¿Cambiar la contraseña de todas formas?`)) void guardar(true);
+        return;
+      }
       if (!r.ok) throw new Error(d.error ?? 'Error al guardar');
       if (form.id) reemplazar(d);
       else { setPersonas(prev => [...prev, d].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))); setSelId(d.id); }
@@ -389,6 +417,12 @@ export default function PersonalTab({ canEdit }: { canEdit: boolean }) {
                 <div><dt><NavIcon name="shield" size={16} strokeWidth={1.9} /> Acceso</dt><dd>{NIVEL_MAP.get(sel.nivel_acceso)?.label}</dd></div>
                 <div><dt><NavIcon name="calendar" size={16} strokeWidth={1.9} /> Última actividad</dt><dd>{formatoActividad(sel.ultima_actividad)}</dd></div>
                 {sel.email && <div><dt><NavIcon name="mail" size={16} strokeWidth={1.9} /> Cuenta</dt><dd className="per-email">{sel.email}</dd></div>}
+                {sel.email && (
+                  <div>
+                    <dt><NavIcon name="shield" size={16} strokeWidth={1.9} /> Ingreso</dt>
+                    <dd>{sel.cuenta_existe ? (sel.perfil ? `Perfil ${ROL_LABEL[sel.perfil]}` : 'Cuenta sin perfil') : 'Sin contraseña'}</dd>
+                  </div>
+                )}
               </dl>
 
               <div className="per-permisos">
@@ -498,6 +532,45 @@ export default function PersonalTab({ canEdit }: { canEdit: boolean }) {
                 </label>
               </div>
 
+              <div className="per-cuenta">
+                <h4>Acceso al sistema</h4>
+                <div className="per-form-grid">
+                  <label className="per-field is-wide">
+                    <span>{form.cuentaExiste ? 'Nueva contraseña' : 'Contraseña'}</span>
+                    <div className="per-pass">
+                      <input
+                        type={form.verPassword ? 'text' : 'password'}
+                        value={form.password}
+                        autoComplete="new-password"
+                        onChange={e => setForm({ ...form, password: e.target.value })}
+                        placeholder={form.cuentaExiste ? 'Dejar vacío para no cambiarla' : `Mínimo ${PASSWORD_MIN} caracteres`}
+                      />
+                      <button type="button" className="per-pass-ver" onClick={() => setForm({ ...form, verPassword: !form.verPassword })}
+                        aria-label={form.verPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}>
+                        <NavIcon name="eye" size={16} />
+                      </button>
+                    </div>
+                  </label>
+                  <label className="per-field">
+                    <span>Perfil del sistema</span>
+                    {RMAP[form.email.trim().toLowerCase()] ? (
+                      <input value={ROL_LABEL[RMAP[form.email.trim().toLowerCase()]]} disabled title="Definido en el código (lib/roles.ts)" />
+                    ) : (
+                      <select value={form.perfil} onChange={e => setForm({ ...form, perfil: e.target.value as RolType | '' })}>
+                        <option value="">Elegir perfil...</option>
+                        {ROLES.map(r => <option key={r} value={r}>{ROL_LABEL[r]}</option>)}
+                      </select>
+                    )}
+                  </label>
+                </div>
+                <p className="per-muted per-nota">
+                  {form.cuentaExiste
+                    ? 'La persona ya tiene cuenta. Escribe una contraseña solo si quieres cambiarla.'
+                    : 'Con email + contraseña se crea la cuenta para ingresar a KitchenOps. El perfil define los módulos a los que entra.'}
+                  {form.compartenEmail > 1 && <> <strong>Este email lo comparten {form.compartenEmail} personas:</strong> cambiar la contraseña la cambia para todas.</>}
+                </p>
+              </div>
+
               <div className="per-permisos is-edit">
                 <div className="per-permisos-head">
                   <h4>Permisos por módulo</h4>
@@ -530,7 +603,7 @@ export default function PersonalTab({ canEdit }: { canEdit: boolean }) {
 
             <div className="per-modal-foot">
               <button type="button" className="per-btn-outline" onClick={() => setForm(null)}>Cancelar</button>
-              <button type="button" className="per-btn-primary" onClick={guardar} disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</button>
+              <button type="button" className="per-btn-primary" onClick={() => void guardar()} disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</button>
             </div>
           </div>
         </div>

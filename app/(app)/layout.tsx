@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { createClient } from '@/utils/supabase/server';
-import { RMAP, ROL_LABEL, NAV_ITEMS, RUTAS_ROL, type NavItem } from '@/lib/roles';
+import { rolDeUsuario, ROL_LABEL, NAV_ITEMS, RUTAS_ROL, type NavItem } from '@/lib/roles';
 import Sidebar      from '@/components/layout/Sidebar';
 import TopBar       from '@/components/layout/TopBar';
 import BottomNav    from '@/components/layout/BottomNav';
@@ -14,7 +14,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   if (!user) redirect('/login');
 
-  const rol = RMAP[user.email ?? ''];
+  const rol = rolDeUsuario(user);
   if (!rol) redirect('/login?error=unauthorized');
 
   const navItems  = conModuloAlertas(

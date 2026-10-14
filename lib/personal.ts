@@ -6,7 +6,7 @@ import { PERMISOS, type Modulo } from '@/lib/permissions';
 export const TABLAS_ACTIVIDAD = ['produccion', 'mermas', 'colacion', 'frutas', 'inventarios', 'carnicos_movimientos', 'carnicos_inventarios'];
 
 // ── Rol = area o funcion laboral (no da acceso por si mismo) ──
-export type Area = 'cocina' | 'finanzas' | 'jefatura' | 'economato' | 'pasteleria' | 'bodega' | 'gerencia';
+export type Area = 'cocina' | 'finanzas' | 'jefatura' | 'economato' | 'pasteleria' | 'bodega' | 'gerencia' | 'operaciones';
 
 export const AREAS: { value: Area; label: string; color: string; bg: string }[] = [
   { value: 'cocina',     label: 'Cocina',     color: '#C2410C', bg: '#FFF0E9' },
@@ -16,6 +16,7 @@ export const AREAS: { value: Area; label: string; color: string; bg: string }[] 
   { value: 'pasteleria', label: 'Pastelería', color: '#A21CAF', bg: '#FAF0FC' },
   { value: 'bodega',     label: 'Bodega',     color: '#92400E', bg: '#FEF3C7' },
   { value: 'gerencia',   label: 'Gerencia',   color: '#475569', bg: '#F1F5F9' },
+  { value: 'operaciones', label: 'Operaciones', color: '#4338CA', bg: '#EEF2FF' },
 ];
 
 // ── Acceso = nivel dentro de KitchenOps ──
@@ -62,9 +63,9 @@ export function normalizarPermisos(raw: unknown): PermisosPersona {
   return out;
 }
 
-/** Permisos que hoy entrega el email de la persona (lib/roles.ts + lib/permissions.ts). */
-export function permisosPorEmail(email: string | null | undefined): PermisosPersona {
-  const rol = RMAP[email ?? ''] as RolType | undefined;
+/** Permisos que entrega el perfil de la cuenta (lista fija por email o perfil asignado en Personal). */
+export function permisosPorEmail(email: string | null | undefined, perfil?: RolType | null): PermisosPersona {
+  const rol = (RMAP[email ?? ''] ?? perfil ?? undefined) as RolType | undefined;
   const out: PermisosPersona = {};
   for (const m of MODULOS_PERMISO) {
     const p = rol ? PERMISOS[rol][m.key] : null;
@@ -112,6 +113,14 @@ export interface PersonaAdmin {
   permisos: PermisosPersona;
   permisos_personalizados: boolean;
   con_acceso: boolean;
+  /** Existe una cuenta de ingreso (Supabase Auth) para su email. */
+  cuenta_existe: boolean;
+  /** Perfil del sistema con el que ingresa (define los modulos reales). */
+  perfil: RolType | null;
+  /** El perfil viene de la lista fija del codigo (lib/roles.ts) y no se cambia desde Personal. */
+  perfil_fijo: boolean;
+  /** Cantidad de personas que comparten este email (p. ej. la cuenta de cocina). */
+  comparten_email: number;
   ultima_actividad: string | null;
 }
 
@@ -131,7 +140,10 @@ export function inicialesDe(nombre: string) {
   return ((partes[0]?.[0] ?? '') + (partes.length > 1 ? partes[partes.length - 1][0] : partes[0]?.[1] ?? '')).toUpperCase();
 }
 
-export function aPersona(r: ResponsableRow, ultima: Map<string, string>): PersonaAdmin {
+export interface CuentaResumen { rol: RolType | null; fijo: boolean }
+
+export function aPersona(r: ResponsableRow, ultima: Map<string, string>, cuenta?: CuentaResumen | null, compartenEmail = 1): PersonaAdmin {
+  const perfil = RMAP[r.email ?? ''] ?? cuenta?.rol ?? null;
   const area = (AREAS.some(a => a.value === r.area) ? r.area : areaDesdeRol(r.rol)) as Area | null;
   const nivel = (NIVELES.some(n => n.value === r.nivel_acceso) ? r.nivel_acceso : nivelPorEmail(r.email)) as NivelAcceso;
   const personalizados = r.permisos != null && typeof r.permisos === 'object';
@@ -139,9 +151,13 @@ export function aPersona(r: ResponsableRow, ultima: Map<string, string>): Person
     id: r.id, nombre: r.nombre, email: r.email, rol: r.rol, activo: r.activo,
     color_hex: r.color_hex, iniciales: r.iniciales,
     area, nivel_acceso: nivel,
-    permisos: personalizados ? normalizarPermisos(r.permisos) : permisosPorEmail(r.email),
+    permisos: personalizados ? normalizarPermisos(r.permisos) : permisosPorEmail(r.email, perfil),
     permisos_personalizados: personalizados,
-    con_acceso: tieneAccesoSistema(r.email),
+    con_acceso: !!perfil && (!!cuenta || tieneAccesoSistema(r.email)),
+    cuenta_existe: !!cuenta,
+    perfil,
+    perfil_fijo: !!RMAP[r.email ?? ''],
+    comparten_email: compartenEmail,
     ultima_actividad: ultima.get(r.id) ?? null,
   };
 }

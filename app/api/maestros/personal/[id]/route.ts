@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/utils/supabase/server';
 import { requireRol } from '@/lib/auth-server';
 import { auditLog } from '@/lib/audit';
+import { esRol } from '@/lib/roles';
+import { guardarCuenta, mapaCuentas, validarPassword } from '@/lib/cuentas-acceso';
 import {
   AREAS, NIVELES, TABLAS_ACTIVIDAD, aPersona, columnaFaltante, normalizarPermisos, type ResponsableRow,
 } from '@/lib/personal';
@@ -47,6 +49,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   if (body.permisos !== undefined) updates.permisos = normalizarPermisos(body.permisos);
 
+  // Cuenta de ingreso (solo admin): contraseña nueva y/o perfil del sistema.
+  const password = typeof body.password === 'string' ? body.password : '';
+  const perfil = esRol(body.perfil) ? body.perfil : null;
+  const emailFinal = String((updates.email !== undefined ? updates.email : anterior.email) ?? '').toLowerCase();
+  if ((password || perfil) && !emailFinal) {
+    return NextResponse.json({ error: 'Para la cuenta de acceso ingresa el email.' }, { status: 400 });
+  }
+  if (password) {
+    const errPass = validarPassword(password);
+    if (errPass) return NextResponse.json({ error: errPass }, { status: 400 });
+  }
+  let comparten = 1;
+  if (emailFinal) {
+    const { data: mismos } = await supabase.from('responsables').select('id').ilike('email', emailFinal).neq('id', id);
+    comparten = (mismos?.length ?? 0) + 1;
+  }
+  if (password && comparten > 1 && body.confirmar_compartida !== true) {
+    return NextResponse.json({
+      error: `El email ${emailFinal} lo usan ${comparten} personas: cambiar la contraseña la cambia para todas.`,
+      compartida: true,
+    }, { status: 409 });
+  }
+
   const { data, error } = await supabase.from('responsables').update(updates).eq('id', id).select().single();
   if (error) {
     const msg = columnaFaltante(error) ? 'Falta ejecutar scripts/supabase_personal_permisos.sql en Supabase' : error.message;
@@ -62,7 +87,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     datos_anteriores: anterior, datos_nuevos: updates,
   });
 
-  return NextResponse.json(aPersona(data as ResponsableRow, new Map()));
+  let cuenta = null;
+  if (emailFinal) {
+    try {
+      const cuentas = await mapaCuentas(supabase);
+      // Solo se toca la cuenta si se pidio: contraseña nueva, o perfil distinto en una cuenta existente.
+      if (password || (perfil && cuentas.has(emailFinal))) {
+        const r = await guardarCuenta(supabase, emailFinal, { password: password || undefined, perfil });
+        cuenta = r.cuenta;
+        await auditLog(supabase, {
+          usuario_email: s.email, rol_usuario: s.rol,
+          accion: r.creada ? 'crear_cuenta_acceso' : password ? 'cambiar_password' : 'cambiar_perfil_acceso',
+          tabla: 'auth.users', registro_id: r.cuenta.id, datos_nuevos: { email: emailFinal, perfil: r.cuenta.rol },
+        });
+      } else {
+        cuenta = cuentas.get(emailFinal) ?? null;
+      }
+    } catch (e) {
+      return NextResponse.json({
+        error: `Los datos se guardaron, pero no se pudo actualizar la cuenta de acceso: ${e instanceof Error ? e.message : 'error desconocido'}`,
+      }, { status: 500 });
+    }
+  }
+
+  return NextResponse.json(aPersona(data as ResponsableRow, new Map(), cuenta, comparten));
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
