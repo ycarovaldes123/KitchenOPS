@@ -338,6 +338,15 @@ export default function CostosPage() {
     setDfEditor({ modo: 'nuevo', prefill: prefillDesdeVenta(v) });
   }
 
+  // Inserta o reemplaza el plato guardado con lo que devolvio el servidor; si no vino, recarga la carta.
+  function aplicarGuardado(guardado?: Plato) {
+    if (!guardado) { void cargarCarta(); return; }
+    setPlatos(prev => {
+      const sinEl = prev.filter(p => p.id !== guardado.id);
+      return [...sinEl, guardado].sort((a, b) => a.categoria.localeCompare(b.categoria) || a.nombre.localeCompare(b.nombre));
+    });
+  }
+
   function cerrarDfEditor() {
     if (window.confirm('¿Cerrar la ficha? Se pierden los cambios sin guardar.')) setDfEditor(null);
   }
@@ -642,8 +651,8 @@ export default function CostosPage() {
   function renderDfEditor(estado: EditorDefontana) {
     const plato = estado.modo === 'editar' ? platos.find(p => p.id === estado.platoId) ?? null : null;
     if (estado.modo === 'editar' && !plato) return null;
-    const alGuardar = (mensaje: string) => {
-      void cargarCarta();
+    const alGuardar = (mensaje: string, guardado?: Plato) => {
+      aplicarGuardado(guardado);
       setDfRefresh(n => n + 1);
       setDfEditor(null);
       setAviso({ texto: mensaje });
@@ -662,7 +671,7 @@ export default function CostosPage() {
                 prefill={estado.prefill}
                 validarToteatUnico
                 onCancel={cerrarDfEditor}
-                onSaved={() => alGuardar(`Plato creado y asociado al código Toteat ${estado.prefill.codigo_toteat}`)}
+                onSaved={(_id, guardado) => alGuardar(`Plato creado y asociado al código Toteat ${estado.prefill.codigo_toteat}`, guardado)}
                 onAbrirExistente={id => setDfEditor({ modo: 'editar', platoId: id })}
               />
             ) : (
@@ -670,7 +679,7 @@ export default function CostosPage() {
                 key={`df-editar-${plato!.id}`}
                 plato={plato}
                 onCancel={cerrarDfEditor}
-                onSaved={() => alGuardar(`Plato ${plato!.nombre} actualizado`)}
+                onSaved={(_id, guardado) => alGuardar(`Plato ${plato!.nombre} actualizado`, guardado)}
                 canDelete={isAdmin}
                 onDeleted={() => alGuardar(`Plato ${plato!.nombre} desactivado`)}
               />
@@ -689,7 +698,7 @@ export default function CostosPage() {
           plato={null}
           defaultTipoCarta={cartaFiltro === 'all' ? 'ANTIGUA' : cartaFiltro}
           onCancel={() => abrirPanel(null)}
-          onSaved={id => { void cargarCarta(); setAviso({ texto: 'Plato creado' }); abrirPanel(id ? { modo: 'consulta', platoId: id } : null); }}
+          onSaved={(id, guardado) => { aplicarGuardado(guardado); setAviso({ texto: 'Plato creado' }); abrirPanel(id ? { modo: 'consulta', platoId: id } : null); }}
         />
       );
     }
@@ -714,7 +723,7 @@ export default function CostosPage() {
         plato={plato}
         forceCreate={copia}
         onCancel={() => abrirPanel({ modo: 'consulta', platoId: plato.id })}
-        onSaved={id => { void cargarCarta(); setAviso({ texto: copia ? 'Copia del plato creada' : 'Cambios guardados' }); abrirPanel({ modo: 'consulta', platoId: id ?? plato.id }); }}
+        onSaved={(id, guardado) => { aplicarGuardado(guardado); setAviso({ texto: copia ? 'Copia del plato creada' : 'Cambios guardados' }); abrirPanel({ modo: 'consulta', platoId: id ?? plato.id }); }}
         canDelete={isAdmin && !copia}
         onDeleted={() => { void cargarCarta(); setAviso({ texto: `${plato.nombre} eliminado de la carta (queda en Inactivos)` }); abrirPanel(null); }}
       />

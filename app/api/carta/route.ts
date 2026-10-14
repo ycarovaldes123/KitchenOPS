@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { semaforo, calcMargen } from '@/lib/calculos';
 import { requireRol } from '@/lib/auth-server';
@@ -144,6 +144,53 @@ async function prepararIngredientes(
   });
 }
 
+type CartaRow = {
+  id: string;
+  cod_softland: string | null;
+  codigo_toteat?: string | null;
+  nombre: string;
+  categoria: string;
+  tipo_carta?: string | null;
+  precio_carta: number | null;
+  activo: boolean;
+  foto_url: string | null;
+  updated_at: string;
+  carta_ingredientes?: { id: string; nombre: string | null; cantidad: number; unidad_medida: string | null; precio_unitario: number | null; costo_total: number | null; codigo_producto: string | null; pp_id: string | null; }[] | null;
+};
+
+const ING_COLS = 'id, nombre, cantidad, unidad_medida, precio_unitario, costo_total, codigo_producto, pp_id';
+
+function conCostos(p: CartaRow) {
+  const costo_neto  = (p.carta_ingredientes ?? []).reduce((s: number, i: { costo_total: number | null }) => s + (i.costo_total ?? 0), 0);
+  const costo_bruto = costo_neto * 1.19;
+  const margen_pct  = calcMargen(costo_neto, p.precio_carta);
+  const color       = semaforo(costo_neto, p.precio_carta);
+  return { ...p, tipo_carta: p.tipo_carta ?? 'ANTIGUA', costo_neto, costo_bruto: Math.round(costo_bruto), margen_pct, semaforo: color };
+}
+
+// Reemplaza la receta: inserta las lineas nuevas y recien entonces borra las anteriores
+// (si el insert falla, la receta anterior queda intacta).
+async function reemplazarIngredientes(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  cartaId: string,
+  ingRows: Awaited<ReturnType<typeof prepararIngredientes>>,
+  borrarAnteriores: boolean,
+) {
+  let nuevos: NonNullable<CartaRow['carta_ingredientes']> = [];
+  if (ingRows.length) {
+    const { data, error } = await supabase.from('carta_ingredientes').insert(ingRows).select(ING_COLS);
+    if (error) throw new Error(error.message);
+    nuevos = data ?? [];
+  }
+  if (borrarAnteriores) {
+    let del = supabase.from('carta_ingredientes').delete().eq('carta_id', cartaId);
+    if (nuevos.length) del = del.not('id', 'in', `(${nuevos.map(i => i.id).join(',')})`);
+    const { error } = await del;
+    if (error) throw new Error(error.message);
+  }
+  return nuevos;
+}
+
 // GET /api/carta — platos activos con costos calculados; ?todos=1 incluye los inactivos
 export async function GET(req: NextRequest) {
   // cocina: acceso de solo lectura a la pestaña Carta de Costos
@@ -169,29 +216,7 @@ export async function GET(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  type CartaRow = {
-    id: string;
-    cod_softland: string | null;
-    codigo_toteat?: string | null;
-    nombre: string;
-    categoria: string;
-    tipo_carta?: string | null;
-    precio_carta: number | null;
-    activo: boolean;
-    foto_url: string | null;
-    updated_at: string;
-    carta_ingredientes?: { id: string; nombre: string | null; cantidad: number; unidad_medida: string | null; precio_unitario: number | null; costo_total: number | null; codigo_producto: string | null; pp_id: string | null; }[] | null;
-  };
-
-  const resultado = ((platos ?? []) as unknown as CartaRow[]).map((p) => {
-    const costo_neto   = (p.carta_ingredientes ?? []).reduce((s: number, i: { costo_total: number | null }) => s + (i.costo_total ?? 0), 0);
-    const costo_bruto  = costo_neto * 1.19;
-    const margen_pct   = calcMargen(costo_neto, p.precio_carta);
-    const color        = semaforo(costo_neto, p.precio_carta);
-    return { ...p, tipo_carta: p.tipo_carta ?? 'ANTIGUA', costo_neto, costo_bruto: Math.round(costo_bruto), margen_pct, semaforo: color };
-  });
-
-  return NextResponse.json(resultado);
+  return NextResponse.json(((platos ?? []) as unknown as CartaRow[]).map(conCostos));
 }
 
 export async function POST(req: NextRequest) {
@@ -244,54 +269,60 @@ export async function POST(req: NextRequest) {
   };
   const rowSinTipo = baseRow;
 
-  let { data: plato, error: platoErr } = await supabase
-    .from('carta')
-    .insert(cartaTipoCartaColumnExists === false ? rowSinTipo : rowConTipo)
-    .select('id')
-    .single();
+  const insertarPlato = async () => {
+    let { data: plato, error: platoErr } = await supabase
+      .from('carta')
+      .insert(cartaTipoCartaColumnExists === false ? rowSinTipo : rowConTipo)
+      .select('*')
+      .single();
 
-  if (platoErr && cartaTipoCartaColumnExists !== false && isMissingTipoCartaColumn(platoErr)) {
-    cartaTipoCartaColumnExists = false;
-    ({ data: plato, error: platoErr } = await supabase
-      .from('carta')
-      .insert(rowSinTipo)
-      .select('id')
-      .single());
-  }
-  if (platoErr && isMissingCodigoToteatColumn(platoErr)) {
-    const baseSinCodigo = sinCodigoToteat(baseRow);
-    const rowConTipoSinCodigo = { ...baseSinCodigo, tipo_carta: tipoCartaValor };
-    cartaTipoCartaColumnExists = cartaTipoCartaColumnExists === false ? false : cartaTipoCartaColumnExists;
-    ({ data: plato, error: platoErr } = await supabase
-      .from('carta')
-      .insert(cartaTipoCartaColumnExists === false ? baseSinCodigo : rowConTipoSinCodigo)
-      .select('id')
-      .single());
-  }
+    if (platoErr && cartaTipoCartaColumnExists !== false && isMissingTipoCartaColumn(platoErr)) {
+      cartaTipoCartaColumnExists = false;
+      ({ data: plato, error: platoErr } = await supabase
+        .from('carta')
+        .insert(rowSinTipo)
+        .select('*')
+        .single());
+    }
+    if (platoErr && isMissingCodigoToteatColumn(platoErr)) {
+      const baseSinCodigo = sinCodigoToteat(baseRow);
+      const rowConTipoSinCodigo = { ...baseSinCodigo, tipo_carta: tipoCartaValor };
+      ({ data: plato, error: platoErr } = await supabase
+        .from('carta')
+        .insert(cartaTipoCartaColumnExists === false ? baseSinCodigo : rowConTipoSinCodigo)
+        .select('*')
+        .single());
+    }
+    return { plato: plato as CartaRow | null, platoErr };
+  };
+
+  // Precios desde el maestro en paralelo con el alta del plato (carta_id se asigna despues).
+  const [{ plato, platoErr }, preparados] = await Promise.all([
+    insertarPlato(),
+    prepararIngredientes(supabase, '', ingredientes).then(rows => ({ rows }), (e: unknown) => ({ error: e instanceof Error ? e.message : 'Error preparando ingredientes' })),
+  ]);
 
   if (platoErr) return NextResponse.json({ error: mensajeError(platoErr) }, { status: 500 });
   if (!plato) return NextResponse.json({ error: 'No se pudo crear el plato' }, { status: 500 });
+  if ('error' in preparados) return NextResponse.json({ error: preparados.error }, { status: 500 });
 
+  let ingredientesGuardados: NonNullable<CartaRow['carta_ingredientes']>;
   try {
-    const ingRows = await prepararIngredientes(supabase, plato.id, ingredientes);
-    if (ingRows.length) {
-      const { error: ingErr } = await supabase.from('carta_ingredientes').insert(ingRows);
-      if (ingErr) return NextResponse.json({ error: ingErr.message }, { status: 500 });
-    }
+    ingredientesGuardados = await reemplazarIngredientes(supabase, plato.id, preparados.rows.map(r => ({ ...r, carta_id: plato.id })), false);
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'Error preparando ingredientes' }, { status: 500 });
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Error guardando ingredientes' }, { status: 500 });
   }
 
-  await auditLog(supabase, {
+  after(() => auditLog(supabase, {
     usuario_email: s.email,
     rol_usuario: s.rol,
     accion: 'crear_plato_carta',
     tabla: 'carta',
     registro_id: plato.id,
     datos_nuevos: { nombre, categoria, tipo_carta: tipoCartaValor, codigo_toteat: codigo_toteat?.trim() || null, ingredientes: ingredientes?.length ?? 0 },
-  });
+  }));
 
-  return NextResponse.json({ id: plato.id }, { status: 201 });
+  return NextResponse.json({ id: plato.id, plato: conCostos({ ...plato, carta_ingredientes: ingredientesGuardados }) }, { status: 201 });
 }
 
 export async function PATCH(req: NextRequest) {
@@ -331,51 +362,63 @@ export async function PATCH(req: NextRequest) {
   };
   const rowSinTipo = baseRow;
 
-  let { error: platoErr } = await supabase
-    .from('carta')
-    .update(cartaTipoCartaColumnExists === false ? rowSinTipo : rowConTipo)
-    .eq('id', id);
+  const actualizarPlato = async () => {
+    let { data: plato, error: platoErr } = await supabase
+      .from('carta')
+      .update(cartaTipoCartaColumnExists === false ? rowSinTipo : rowConTipo)
+      .eq('id', id)
+      .select('*')
+      .single();
 
-  if (platoErr && cartaTipoCartaColumnExists !== false && isMissingTipoCartaColumn(platoErr)) {
-    cartaTipoCartaColumnExists = false;
-    ({ error: platoErr } = await supabase
-      .from('carta')
-      .update(rowSinTipo)
-      .eq('id', id));
-  }
-  if (platoErr && isMissingCodigoToteatColumn(platoErr)) {
-    const baseSinCodigo = sinCodigoToteat(baseRow);
-    const rowConTipoSinCodigo = { ...baseSinCodigo, tipo_carta: tipoCartaValor };
-    ({ error: platoErr } = await supabase
-      .from('carta')
-      .update(cartaTipoCartaColumnExists === false ? baseSinCodigo : rowConTipoSinCodigo)
-      .eq('id', id));
-  }
+    if (platoErr && cartaTipoCartaColumnExists !== false && isMissingTipoCartaColumn(platoErr)) {
+      cartaTipoCartaColumnExists = false;
+      ({ data: plato, error: platoErr } = await supabase
+        .from('carta')
+        .update(rowSinTipo)
+        .eq('id', id)
+        .select('*')
+        .single());
+    }
+    if (platoErr && isMissingCodigoToteatColumn(platoErr)) {
+      const baseSinCodigo = sinCodigoToteat(baseRow);
+      const rowConTipoSinCodigo = { ...baseSinCodigo, tipo_carta: tipoCartaValor };
+      ({ data: plato, error: platoErr } = await supabase
+        .from('carta')
+        .update(cartaTipoCartaColumnExists === false ? baseSinCodigo : rowConTipoSinCodigo)
+        .eq('id', id)
+        .select('*')
+        .single());
+    }
+    return { plato: plato as CartaRow | null, platoErr };
+  };
+
+  // Datos del plato y precios desde el maestro en paralelo; luego la receta (insert + borrado de la anterior).
+  const [{ plato, platoErr }, preparados] = await Promise.all([
+    actualizarPlato(),
+    prepararIngredientes(supabase, id, ingredientes).then(rows => ({ rows }), (e: unknown) => ({ error: e instanceof Error ? e.message : 'Error preparando ingredientes' })),
+  ]);
 
   if (platoErr) return NextResponse.json({ error: mensajeError(platoErr) }, { status: 500 });
+  if (!plato) return NextResponse.json({ error: 'Plato no encontrado' }, { status: 404 });
+  if ('error' in preparados) return NextResponse.json({ error: preparados.error }, { status: 500 });
 
+  let ingredientesGuardados: NonNullable<CartaRow['carta_ingredientes']>;
   try {
-    const ingRows = await prepararIngredientes(supabase, id, ingredientes);
-    const { error: delErr } = await supabase.from('carta_ingredientes').delete().eq('carta_id', id);
-    if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
-    if (ingRows.length) {
-      const { error: ingErr } = await supabase.from('carta_ingredientes').insert(ingRows);
-      if (ingErr) return NextResponse.json({ error: ingErr.message }, { status: 500 });
-    }
+    ingredientesGuardados = await reemplazarIngredientes(supabase, id, preparados.rows, true);
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'Error preparando ingredientes' }, { status: 500 });
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Error guardando ingredientes' }, { status: 500 });
   }
 
-  await auditLog(supabase, {
+  after(() => auditLog(supabase, {
     usuario_email: s.email,
     rol_usuario: s.rol,
     accion: 'editar_plato_carta',
     tabla: 'carta',
     registro_id: id,
     datos_nuevos: { nombre, categoria, tipo_carta: tipoCartaValor, codigo_toteat: codigo_toteat?.trim() || null, activo, ingredientes: ingredientes?.length ?? 0 },
-  });
+  }));
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, plato: conCostos({ ...plato, carta_ingredientes: ingredientesGuardados }) });
 }
 
 export async function DELETE(req: NextRequest) {

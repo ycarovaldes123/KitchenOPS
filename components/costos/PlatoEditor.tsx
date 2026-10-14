@@ -6,7 +6,7 @@ import NavIcon from '@/components/layout/NavIcon';
 import { CATEGORIAS_CARTA, NOMBRE_TIPO_CARTA, TIPOS_CARTA, esTipoCarta, type TipoCarta } from '@/lib/carta';
 import ProductSearchSelect from './ProductSearchSelect';
 import SelectBuscable from './SelectBuscable';
-import { PlatoFoto } from './shared';
+import { PlatoFoto, type Plato } from './shared';
 
 interface ProductoMaestro {
   codigo: string;
@@ -69,7 +69,8 @@ interface Props {
   /** Rechaza crear el plato si el codigo Toteat ya esta asociado a otro (alta desde Defontana). */
   validarToteatUnico?: boolean;
   onCancel: () => void;
-  onSaved: (id?: string) => void;
+  /** plato: version guardada con costos recalculados (evita recargar toda la carta). */
+  onSaved: (id?: string, plato?: Plato) => void;
   canDelete?: boolean;
   onDeleted?: () => void;
   /** El servidor detecto un plato existente con el mismo codigo Toteat. */
@@ -464,7 +465,7 @@ export default function PlatoEditor({
         if (data.plato_existente) setPlatoExistente(data.plato_existente);
         throw new Error(data.error ?? 'Error guardando plato');
       }
-      onSaved(plato && !forceCreate ? plato.id : data.id);
+      onSaved(plato && !forceCreate ? plato.id : data.id, data.plato as Plato | undefined);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error guardando plato');
     } finally {
