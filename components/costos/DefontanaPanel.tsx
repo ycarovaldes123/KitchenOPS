@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import NavIcon from '@/components/layout/NavIcon';
 import { formatCantidad } from '@/lib/costo-receta-pp';
 import { formatCLP } from '@/lib/calculos';
@@ -24,7 +24,7 @@ interface PlatoDefontana {
 
 type VinculoVenta = 'con_receta' | 'sin_receta' | 'sin_plato';
 
-interface VentaProducto {
+export interface VentaProducto {
   codigo: string;
   nombre: string;
   categoria: string | null;
@@ -82,7 +82,14 @@ function EstadoChip({ estado }: { estado: EstadoDefontana }) {
   );
 }
 
-export default function DefontanaPanel() {
+interface Props {
+  /** Cambia al guardar un plato desde aqui: se recalcula el mismo periodo sin perder filtros. */
+  refreshKey?: number;
+  /** Admin/finanzas: "+" crea un plato desde una venta sin plato; "Completar" abre el plato sin receta. */
+  onCrearPlato?: (venta: VentaProducto) => void;
+}
+
+export default function DefontanaPanel({ refreshKey = 0, onCrearPlato }: Props) {
   const [desde, setDesde] = useState(() => `${hoyChile().slice(0, 8)}01`);
   const [hasta, setHasta] = useState(hoyChile);
   const [data, setData] = useState<DefontanaResponse | null>(null);
@@ -95,6 +102,7 @@ export default function DefontanaPanel() {
   const [kpiFiltro, setKpiFiltro] = useState<KpiFiltro | null>(null);
   const [detalle, setDetalle] = useState<PlatoDefontana | null>(null);
   const [vista, setVista] = useState<'platos' | 'ventas'>('platos');
+  const ultimoRango = useRef<[string, string] | null>(null);
 
   const consultar = useCallback(async (d: string, h: string) => {
     if (d > h) {
@@ -107,6 +115,7 @@ export default function DefontanaPanel() {
       const res = await fetch(`/api/carta/defontana?desde=${d}&hasta=${h}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Error cargando Defontana');
+      ultimoRango.current = [d, h];
       setData(json);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error cargando Defontana');
@@ -119,6 +128,11 @@ export default function DefontanaPanel() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial del periodo por defecto (mes en curso)
     void consultar(`${hoyChile().slice(0, 8)}01`, hoyChile());
   }, [consultar]);
+
+  useEffect(() => {
+    if (!refreshKey || !ultimoRango.current) return;
+    void consultar(...ultimoRango.current);
+  }, [refreshKey, consultar]);
 
   const categorias = useMemo(
     () => Array.from(new Set((data?.platos ?? []).map(p => p.categoria))).sort(),
@@ -183,7 +197,7 @@ export default function DefontanaPanel() {
       {vista === 'ventas' ? (
         loading && !data
           ? <div className="ck-empty">Leyendo ventas Toteat...</div>
-          : <VentasDefontana ventas={data?.ventas ?? []} loading={loading} />
+          : <VentasDefontana ventas={data?.ventas ?? []} loading={loading} onCrearPlato={onCrearPlato} />
       ) : (<>
       <div className="ck-kpis ck-kpis--5">
         {([
@@ -439,7 +453,7 @@ const VINCULOS: Record<VinculoVenta, { label: string; clase: string; ayuda: stri
 };
 
 /** Todo lo vendido en Toteat que entra a Defontana, enlazado por código con los platos de la carta. */
-function VentasDefontana({ ventas, loading }: { ventas: VentaProducto[]; loading: boolean }) {
+function VentasDefontana({ ventas, loading, onCrearPlato }: { ventas: VentaProducto[]; loading: boolean; onCrearPlato?: (venta: VentaProducto) => void }) {
   const [busqueda, setBusqueda] = useState('');
   const [grupo, setGrupo] = useState<GrupoVentaDefontana | 'all'>('all');
   const [vinculo, setVinculo] = useState<VinculoVenta | 'faltan' | null>(null);
@@ -531,9 +545,32 @@ function VentasDefontana({ ventas, loading }: { ventas: VentaProducto[]; loading
                         : <span className="muted">—</span>}
                     </td>
                     <td>
-                      <span className={`ck-status ${VINCULOS[v.vinculo].clase}`} title={VINCULOS[v.vinculo].ayuda}>
-                        <span className="ck-dot" style={{ background: 'currentColor' }} />
-                        {VINCULOS[v.vinculo].label}
+                      <span className="ck-df-accion">
+                        <span className={`ck-status ${VINCULOS[v.vinculo].clase}`} title={VINCULOS[v.vinculo].ayuda}>
+                          <span className="ck-dot" style={{ background: 'currentColor' }} />
+                          {VINCULOS[v.vinculo].label}
+                        </span>
+                        {onCrearPlato && v.vinculo === 'sin_plato' && (
+                          <button
+                            type="button"
+                            className="ck-btn ck-btn--add"
+                            onClick={() => onCrearPlato(v)}
+                            title={`Crear plato para ${v.codigo} · ${v.nombre}`}
+                            aria-label={`Crear plato para ${v.nombre}`}
+                          >
+                            <NavIcon name="plus" size={16} />
+                          </button>
+                        )}
+                        {onCrearPlato && v.vinculo === 'sin_receta' && (
+                          <button
+                            type="button"
+                            className="ck-btn ck-btn--sm"
+                            onClick={() => onCrearPlato(v)}
+                            title="Abrir el plato existente para completar su receta"
+                          >
+                            <NavIcon name="pencil" size={13} /> Completar receta
+                          </button>
+                        )}
                       </span>
                     </td>
                   </tr>

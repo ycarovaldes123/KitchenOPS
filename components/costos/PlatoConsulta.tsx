@@ -10,10 +10,13 @@ interface Props {
   plato:   Plato;
   onEdit?: () => void;
   onCopy?: () => void;
+  /** Solo admin: alterna Activo/Inactivo sin entrar a Editar. */
+  onToggleActivo?: () => void;
+  cambiandoEstado?: boolean;
 }
 
 // Modo consulta del panel lateral: es lo primero que se ve al elegir un plato; editar es una accion explicita.
-export default function PlatoConsulta({ plato, onEdit, onCopy }: Props) {
+export default function PlatoConsulta({ plato, onEdit, onCopy, onToggleActivo, cambiandoEstado = false }: Props) {
   const ings = plato.carta_ingredientes ?? [];
   const sem = SEMAFORO[plato.semaforo];
 
@@ -42,6 +45,21 @@ export default function PlatoConsulta({ plato, onEdit, onCopy }: Props) {
             <button type="button" className="ck-btn ck-btn--copy" onClick={onCopy}>
               <NavIcon name="copy" size={15} /> Copiar
             </button>
+          )}
+          {onToggleActivo ? (
+            <button
+              type="button"
+              className={`ck-btn ck-btn--estado ${plato.activo ? 'is-activo' : 'is-inactivo'}`}
+              onClick={onToggleActivo}
+              disabled={cambiandoEstado}
+              aria-pressed={plato.activo}
+              title={plato.activo ? 'Plato habilitado: clic para desactivarlo' : 'Plato desactivado: clic para reactivarlo'}
+            >
+              <span className="ck-btn__dot" />
+              {cambiandoEstado ? 'Guardando...' : plato.activo ? 'Activo' : 'Inactivo'}
+            </button>
+          ) : !plato.activo && (
+            <span className="ck-tag ck-tag--inactivo">Inactivo</span>
           )}
           <span style={{ flex: 1 }} />
           <Semaforo color={plato.semaforo} margen={plato.margen_pct} />
@@ -73,6 +91,7 @@ export default function PlatoConsulta({ plato, onEdit, onCopy }: Props) {
             <table className="ck-table ck-table--compact">
               <thead>
                 <tr>
+                  <th>Código</th>
                   <th>Ingrediente</th>
                   <th className="num">Cantidad</th>
                   <th className="num">Costo unit.</th>
@@ -82,6 +101,7 @@ export default function PlatoConsulta({ plato, onEdit, onCopy }: Props) {
               <tbody>
                 {ings.map(ing => (
                   <tr key={ing.id}>
+                    <td><span className="ck-code">{ing.codigo_producto ?? '—'}</span></td>
                     <td>
                       {ing.nombre ?? '—'}
                       {esIngredientePP(ing) && <span className="ck-tag ck-tag--pp" style={{ marginLeft: '6px' }}>PP</span>}
@@ -94,7 +114,7 @@ export default function PlatoConsulta({ plato, onEdit, onCopy }: Props) {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={3} style={{ borderTop: '1px solid var(--bo)', fontSize: '11px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                  <td colSpan={4} style={{ borderTop: '1px solid var(--bo)', fontSize: '11px', fontWeight: 700, color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
                     Costo neto total
                   </td>
                   <td className="num" style={{ borderTop: '1px solid var(--bo)', fontSize: '14px', fontWeight: 700, fontFamily: 'Syne, sans-serif' }}>

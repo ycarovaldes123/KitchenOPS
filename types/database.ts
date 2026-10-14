@@ -22,9 +22,11 @@ export type MotivoMerma   =
   // Históricos (registros anteriores):
   | 'Daño físico' | 'Sobra producción' | 'Contaminación'
   | 'Otro' | 'Cliente no recibe' | 'Caida' | 'Pelo / contaminacion';
-export type CategoriaCarta = 'PICADAS' | 'CLÁSICOS' | 'SANDWICH & BURGERS' | 'ENSALADAS' | 'POSTRES' | 'CATERING';
+// carta.categoria es texto: lista ofrecida en lib/carta.ts (CATEGORIAS_CARTA); platos antiguos pueden tener otra.
+export type CategoriaCarta = string;
 export type ColorSemaforo = 'green' | 'yellow' | 'red' | 'gray';
-export type TipoCarta = 'ANTIGUA' | 'NUEVA';
+export type { TipoCarta } from '@/lib/carta';
+import type { TipoCarta } from '@/lib/carta';
 
 // ─── Maestros ────────────────────────────────────────────────
 

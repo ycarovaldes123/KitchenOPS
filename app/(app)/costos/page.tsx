@@ -6,20 +6,25 @@ import { formatCLP } from '@/lib/calculos';
 import NavIcon from '@/components/layout/NavIcon';
 import Semaforo, { SEMAFORO } from '@/components/costos/Semaforo';
 import PlatoConsulta from '@/components/costos/PlatoConsulta';
-import PlatoEditor from '@/components/costos/PlatoEditor';
+import PlatoEditor, { type PrefillPlato } from '@/components/costos/PlatoEditor';
 import ConsumoVentasPanel from '@/components/costos/ConsumoVentasPanel';
-import DefontanaPanel from '@/components/costos/DefontanaPanel';
+import DefontanaPanel, { type VentaProducto } from '@/components/costos/DefontanaPanel';
 import { CartaTag, NOMBRE_CARTA, PlatoFoto, type Ingrediente, type Plato } from '@/components/costos/shared';
 import { useRol } from '@/components/RolProvider';
+import { CATEGORIAS_CARTA, TIPOS_CARTA, type TipoCarta } from '@/lib/carta';
+import { normalizarCodigoToteat } from '@/lib/defontana-consumo';
 import type { ColorSemaforo } from '@/types/database';
 import '@/components/costos/costos.css';
 
-const COLORES: { value: ColorSemaforo | 'all'; label: string }[] = [
+// Todos y los colores consideran solo platos activos; Inactivos muestra exclusivamente los desactivados.
+type FiltroEstado = ColorSemaforo | 'all' | 'inactivos';
+const COLORES: { value: FiltroEstado; label: string }[] = [
   { value: 'all', label: 'Todos' },
   { value: 'green', label: 'Óptimo' },
   { value: 'yellow', label: 'Medio' },
   { value: 'red', label: 'Bajo' },
   { value: 'gray', label: 'Sin datos' },
+  { value: 'inactivos', label: 'Inactivos' },
 ];
 
 const KPI_CLASE: Record<ColorSemaforo, string> = {
@@ -30,7 +35,7 @@ const KPI_CLASE: Record<ColorSemaforo, string> = {
 };
 
 type Vista = 'lista' | 'mosaico';
-type FiltroCarta = 'all' | 'ANTIGUA' | 'NUEVA';
+type FiltroCarta = 'all' | TipoCarta;
 type SeccionCostos = 'carta' | 'defontana' | 'consumo';
 // Panel lateral derecho: consulta primero; editar/nuevo/copiar usan el mismo panel.
 // Abrir/cerrar el panel o cambiar de modo cambia el numero de columnas del mosaico: con la
@@ -45,6 +50,28 @@ function usarTransicionVista() {
 type PanelPlato =
   | { modo: 'consulta' | 'editar' | 'copiar'; platoId: string }
   | { modo: 'nuevo' };
+
+// Editor abierto desde Defontana → Ventas Toteat (modal sobre la pestaña, sin perder fechas ni filtros).
+type EditorDefontana =
+  | { modo: 'nuevo'; prefill: PrefillPlato }
+  | { modo: 'editar'; platoId: string };
+
+type Aviso = { texto: string; error?: boolean };
+
+// Precarga solo con datos reales de la venta: codigo, nombre, precio promedio vendido (con IVA)
+// y, para Cafeteria/Jugos, su categoria y la carta Bebestibles. En Alimentos la categoria se elige.
+function prefillDesdeVenta(v: VentaProducto): PrefillPlato {
+  const precio = v.vendidos > 0 && v.monto > 0 ? Math.round(v.monto / v.vendidos) : null;
+  const bebestible = v.grupo === 'cafeteria' || v.grupo === 'jugos';
+  return {
+    codigo_toteat: v.codigo,
+    nombre: v.nombre.trim().toUpperCase(),
+    categoria: v.grupo === 'cafeteria' ? 'CAFETERÍA' : v.grupo === 'jugos' ? 'JUGOS NATURALES' : undefined,
+    tipo_carta: bebestible ? 'BEBESTIBLES' : 'NUEVA',
+    precio_carta: precio,
+    precio_ayuda: precio ? 'Sugerido: precio promedio vendido en Toteat en el período' : undefined,
+  };
+}
 
 function normalizeSearch(value: unknown) {
   return String(value ?? '')
@@ -78,7 +105,7 @@ function PlatoCard({ p, selected, onClick, productoQuery }: { p: Plato; selected
   const sem = SEMAFORO[p.semaforo];
 
   return (
-    <button type="button" onClick={onClick} className={`ck-card${selected ? ' is-selected' : ''}`} aria-pressed={selected} data-vt={`ck-card-${p.id}`}>
+    <button type="button" onClick={onClick} className={`ck-card${selected ? ' is-selected' : ''}${p.activo ? '' : ' is-inactive'}`} aria-pressed={selected} data-vt={`ck-card-${p.id}`}>
       <div className="ck-card__img">
         <PlatoFoto src={p.foto_url} alt={p.nombre} />
         <span className="ck-card__pct" style={{ color: sem.color }}>
@@ -118,7 +145,7 @@ export default function CostosPage() {
   const [error, setError] = useState('');
   const [catFiltro, setCatFiltro] = useState('all');
   const [cartaFiltro, setCartaFiltro] = useState<FiltroCarta>('all');
-  const [semFiltro, setSemFiltro] = useState<ColorSemaforo | 'all'>('all');
+  const [semFiltro, setSemFiltro] = useState<FiltroEstado>('all');
   const [productoBusqueda, setProductoBusqueda] = useState('');
   const [verFiltros, setVerFiltros] = useState(false);
   const [soloSinToteat, setSoloSinToteat] = useState(false);
@@ -129,10 +156,21 @@ export default function CostosPage() {
   const [seccion, setSeccion] = useState<SeccionCostos>('carta');
   // Al entrar a Costos siempre parte en vista Mosaico.
   const [vista, setVista] = useState<Vista>('mosaico');
+  const [cambiandoEstado, setCambiandoEstado] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<Aviso | null>(null);
+  const [dfEditor, setDfEditor] = useState<EditorDefontana | null>(null);
+  const [dfRefresh, setDfRefresh] = useState(0);
 
+  useEffect(() => {
+    if (!aviso) return;
+    const t = window.setTimeout(() => setAviso(null), aviso.error ? 5000 : 2600);
+    return () => window.clearTimeout(t);
+  }, [aviso]);
+
+  // Se cargan activos e inactivos: el filtro Inactivos y el boton Activo/Inactivo trabajan sin recargar.
   const cargarCarta = useCallback(() => {
     setError('');
-    return fetch('/api/carta')
+    return fetch('/api/carta?todos=1')
       .then(r => r.json())
       .then(data => {
         if (data.error) throw new Error(data.error);
@@ -143,7 +181,7 @@ export default function CostosPage() {
 
   useEffect(() => {
     let alive = true;
-    fetch('/api/carta')
+    fetch('/api/carta?todos=1')
       .then(r => r.json())
       .then(data => {
         if (!alive) return;
@@ -227,15 +265,21 @@ export default function CostosPage() {
     };
   }, [panel]);
 
-  const categorias = useMemo(() => Array.from(new Set(platos.map(p => p.categoria))).sort(), [platos]);
+  const categorias = useMemo(
+    () => Array.from(new Set([...CATEGORIAS_CARTA, ...platos.map(p => p.categoria)])).sort((a, b) => a.localeCompare(b, 'es')),
+    [platos],
+  );
+  const activos = useMemo(() => platos.filter(p => p.activo), [platos]);
+  const totalInactivos = platos.length - activos.length;
 
   const productoQuery = useMemo(() => normalizeSearch(productoBusqueda), [productoBusqueda]);
 
   const filtrados = useMemo(() => (
     platos.filter(p =>
+      (semFiltro === 'inactivos' ? !p.activo : p.activo) &&
       (cartaFiltro === 'all' || (p.tipo_carta ?? 'ANTIGUA') === cartaFiltro) &&
       (catFiltro === 'all' || p.categoria === catFiltro) &&
-      (semFiltro === 'all' || p.semaforo === semFiltro) &&
+      (semFiltro === 'all' || semFiltro === 'inactivos' || p.semaforo === semFiltro) &&
       (!soloSinToteat || !(p.codigo_toteat ?? '').trim()) &&
       (!soloSinFoto || !p.foto_url) &&
       (!productoQuery || platoMatches(p, productoQuery) || matchingIngredientes(p, productoQuery).length > 0),
@@ -254,12 +298,57 @@ export default function CostosPage() {
 
   const resumen = useMemo(() => {
     const cuenta: Record<ColorSemaforo, number> = { green: 0, yellow: 0, red: 0, gray: 0 };
-    for (const p of platos) cuenta[p.semaforo] += 1;
+    for (const p of activos) cuenta[p.semaforo] += 1;
     return cuenta;
-  }, [platos]);
+  }, [activos]);
+
+  // Activo/Inactivo desde la ficha: cambio optimista, se revierte si el servidor no lo guarda.
+  async function toggleActivo(plato: Plato) {
+    if (cambiandoEstado) return;
+    const nuevo = !plato.activo;
+    if (!nuevo && !window.confirm(`¿Desactivar "${plato.nombre}"? Dejará de aparecer en la carta activa (y en Consumo ventas / Defontana), pero conserva su receta y costos. Podrás reactivarlo desde Inactivos.`)) return;
+    setCambiandoEstado(plato.id);
+    setPlatos(prev => prev.map(p => p.id === plato.id ? { ...p, activo: nuevo } : p));
+    try {
+      const res = await fetch('/api/carta/activo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: plato.id, activo: nuevo }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? 'No se pudo guardar el cambio');
+      setAviso({ texto: nuevo ? `${plato.nombre} activado` : `${plato.nombre} desactivado` });
+    } catch (e) {
+      setPlatos(prev => prev.map(p => p.id === plato.id ? { ...p, activo: plato.activo } : p));
+      setAviso({ texto: e instanceof Error ? e.message : 'No se pudo guardar el cambio', error: true });
+    } finally {
+      setCambiandoEstado(null);
+    }
+  }
+
+  // "+" / "Completar" en Ventas Toteat: nunca se crea un segundo plato para un codigo ya asociado.
+  function crearDesdeVenta(v: VentaProducto) {
+    const codigo = normalizarCodigoToteat(v.codigo);
+    const existente = platos.find(p => normalizarCodigoToteat(p.codigo_toteat) === codigo);
+    if (existente) {
+      if (!existente.activo && !window.confirm(`El código Toteat ${codigo} ya pertenece a "${existente.nombre}", que está inactivo. ¿Abrirlo para revisarlo o reactivarlo en vez de crear otro plato?`)) return;
+      setDfEditor({ modo: 'editar', platoId: existente.id });
+      return;
+    }
+    setDfEditor({ modo: 'nuevo', prefill: prefillDesdeVenta(v) });
+  }
+
+  function cerrarDfEditor() {
+    if (window.confirm('¿Cerrar la ficha? Se pierden los cambios sin guardar.')) setDfEditor(null);
+  }
 
   const filtrosExtra = Number(soloSinToteat) + Number(soloSinFoto);
   const hayFiltros = !!productoBusqueda || cartaFiltro !== 'all' || catFiltro !== 'all' || semFiltro !== 'all' || filtrosExtra > 0;
+  const toast = aviso && (
+    <div className={`ck-toast${aviso.error ? ' ck-toast--error' : ''}`} role={aviso.error ? 'alert' : 'status'}>
+      <NavIcon name={aviso.error ? 'circle-alert' : 'circle-check'} size={16} /> {aviso.texto}
+    </div>
+  );
 
   function limpiarFiltros() {
     setProductoBusqueda('');
@@ -297,7 +386,7 @@ export default function CostosPage() {
           <span className="ck-title__icon"><NavIcon name="chef-hat" size={26} strokeWidth={1.9} /></span>
           <div>
             <h1>COSTOS</h1>
-            <p>Gestión de costos por plato — {platos.length} platos activos</p>
+            <p>Gestión de costos por plato — {activos.length} platos activos{totalInactivos ? ` · ${totalInactivos} inactivos` : ''}</p>
           </div>
         </div>
         {seccion === 'carta' && (
@@ -340,7 +429,10 @@ export default function CostosPage() {
       {seccion === 'consumo' && puedeVerConsumo ? (
         <ConsumoVentasPanel />
       ) : seccion === 'defontana' && puedeVerConsumo ? (
-        <DefontanaPanel />
+        <DefontanaPanel
+          refreshKey={dfRefresh}
+          onCrearPlato={canManage ? crearDesdeVenta : undefined}
+        />
       ) : (
       <div ref={layoutRef} className={`ck-layout${panel ? ' has-panel' : ''}${editando ? ' is-editing' : ''}`}>
       <div className="ck-main">
@@ -383,8 +475,7 @@ export default function CostosPage() {
 
         <select className="ck-select" value={cartaFiltro} onChange={e => setCartaFiltro(e.target.value as FiltroCarta)} aria-label="Carta">
           <option value="all">{NOMBRE_CARTA.all}</option>
-          <option value="NUEVA">{NOMBRE_CARTA.NUEVA}</option>
-          <option value="ANTIGUA">{NOMBRE_CARTA.ANTIGUA}</option>
+          {TIPOS_CARTA.map(t => <option key={t} value={t}>{NOMBRE_CARTA[t]}</option>)}
         </select>
 
         <select className="ck-select" value={catFiltro} onChange={e => setCatFiltro(e.target.value)} aria-label="Categoría">
@@ -417,8 +508,11 @@ export default function CostosPage() {
             className={`ck-chip${semFiltro === c.value ? ' is-on' : ''}`}
             aria-pressed={semFiltro === c.value}
           >
-            {c.value !== 'all' && <span className="ck-dot" style={{ background: SEMAFORO[c.value].color }} />}
+            {c.value === 'inactivos'
+              ? <span className="ck-dot" style={{ background: 'transparent', border: '1.5px solid #8A847D' }} />
+              : c.value !== 'all' && <span className="ck-dot" style={{ background: SEMAFORO[c.value].color }} />}
             {c.label}
+            {c.value === 'inactivos' && totalInactivos > 0 && <span style={{ opacity: 0.7, fontWeight: 500 }}>({totalInactivos})</span>}
           </button>
         ))}
         {hayFiltros && (
@@ -441,11 +535,13 @@ export default function CostosPage() {
         </div>
       )}
 
-      <p className="ck-section-title">{NOMBRE_CARTA[cartaFiltro]} · {filtrados.length} plato{filtrados.length !== 1 ? 's' : ''}</p>
+      <p className="ck-section-title">
+        {NOMBRE_CARTA[cartaFiltro]}{semFiltro === 'inactivos' ? ' · Inactivos' : ''} · {filtrados.length} plato{filtrados.length !== 1 ? 's' : ''}
+      </p>
 
       {filtrados.length === 0 && (
         <div className="ck-empty">
-          {productoQuery ? 'No hay platos con ese nombre, código o producto.' : 'No hay platos que coincidan con los filtros.'}
+          {productoQuery ? 'No hay platos con ese nombre, código o producto.' : semFiltro === 'inactivos' ? 'No hay platos inactivos con estos filtros.' : 'No hay platos que coincidan con los filtros.'}
         </div>
       )}
 
@@ -469,11 +565,21 @@ export default function CostosPage() {
                 {items.map(p => {
                   const matches = matchingIngredientes(p, productoQuery);
                   return (
-                    <tr key={p.id} onClick={() => abrirPlato(p)} className={seleccionado === p.id ? 'is-selected' : undefined}>
+                    <tr
+                      key={p.id}
+                      onClick={() => abrirPlato(p)}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirPlato(p); } }}
+                      tabIndex={0}
+                      aria-selected={seleccionado === p.id}
+                      className={[seleccionado === p.id ? 'is-selected' : '', p.activo ? '' : 'is-inactive'].filter(Boolean).join(' ') || undefined}
+                    >
                       <td style={{ padding: '8px 8px 8px 14px' }}>
                         <div className="ck-thumb"><PlatoFoto src={p.foto_url} alt={p.nombre} iconSize={18} className="ck-thumb" /></div>
                       </td>
-                      <td style={{ fontWeight: 600 }}>{p.nombre}</td>
+                      <td className="ck-row-name" style={{ fontWeight: 600 }}>
+                        {p.nombre}
+                        {!p.activo && <span className="ck-tag ck-tag--inactivo" style={{ marginLeft: '8px' }}>Inactivo</span>}
+                      </td>
                       {productoQuery && (
                         <td style={{ maxWidth: '260px' }}>
                           <div className="ck-card__match">
@@ -527,8 +633,53 @@ export default function CostosPage() {
       </aside>
       </div>
       )}
+
+      {dfEditor && renderDfEditor(dfEditor)}
+      {toast}
     </div>
   );
+
+  function renderDfEditor(estado: EditorDefontana) {
+    const plato = estado.modo === 'editar' ? platos.find(p => p.id === estado.platoId) ?? null : null;
+    if (estado.modo === 'editar' && !plato) return null;
+    const alGuardar = (mensaje: string) => {
+      void cargarCarta();
+      setDfRefresh(n => n + 1);
+      setDfEditor(null);
+      setAviso({ texto: mensaje });
+    };
+    return (
+      <div className="ck-overlay ck" onMouseDown={e => { if (e.target === e.currentTarget) cerrarDfEditor(); }}>
+        <div className="ck-modal ck-modal--editor" role="dialog" aria-modal="true" aria-label={estado.modo === 'nuevo' ? 'Nuevo plato' : 'Editar plato'}>
+          <div className="ck-side__box">
+            <button type="button" className="ck-close" onClick={cerrarDfEditor} aria-label="Cerrar">
+              <NavIcon name="x" size={18} />
+            </button>
+            {estado.modo === 'nuevo' ? (
+              <PlatoEditor
+                key={`df-nuevo-${estado.prefill.codigo_toteat}`}
+                plato={null}
+                prefill={estado.prefill}
+                validarToteatUnico
+                onCancel={cerrarDfEditor}
+                onSaved={() => alGuardar(`Plato creado y asociado al código Toteat ${estado.prefill.codigo_toteat}`)}
+                onAbrirExistente={id => setDfEditor({ modo: 'editar', platoId: id })}
+              />
+            ) : (
+              <PlatoEditor
+                key={`df-editar-${plato!.id}`}
+                plato={plato}
+                onCancel={cerrarDfEditor}
+                onSaved={() => alGuardar(`Plato ${plato!.nombre} actualizado`)}
+                canDelete={isAdmin}
+                onDeleted={() => alGuardar(`Plato ${plato!.nombre} desactivado`)}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   function renderPanel(estado: PanelPlato) {
     if (estado.modo === 'nuevo') {
@@ -536,9 +687,9 @@ export default function CostosPage() {
         <PlatoEditor
           key="nuevo"
           plato={null}
-          defaultTipoCarta={cartaFiltro === 'NUEVA' ? 'NUEVA' : 'ANTIGUA'}
+          defaultTipoCarta={cartaFiltro === 'all' ? 'ANTIGUA' : cartaFiltro}
           onCancel={() => abrirPanel(null)}
-          onSaved={id => { void cargarCarta(); abrirPanel(id ? { modo: 'consulta', platoId: id } : null); }}
+          onSaved={id => { void cargarCarta(); setAviso({ texto: 'Plato creado' }); abrirPanel(id ? { modo: 'consulta', platoId: id } : null); }}
         />
       );
     }
@@ -551,6 +702,8 @@ export default function CostosPage() {
           plato={plato}
           onEdit={canManage ? () => abrirPanel({ modo: 'editar', platoId: plato.id }) : undefined}
           onCopy={isAdmin ? () => abrirPanel({ modo: 'copiar', platoId: plato.id }) : undefined}
+          onToggleActivo={isAdmin ? () => void toggleActivo(plato) : undefined}
+          cambiandoEstado={cambiandoEstado === plato.id}
         />
       );
     }
@@ -561,9 +714,9 @@ export default function CostosPage() {
         plato={plato}
         forceCreate={copia}
         onCancel={() => abrirPanel({ modo: 'consulta', platoId: plato.id })}
-        onSaved={id => { void cargarCarta(); abrirPanel({ modo: 'consulta', platoId: id ?? plato.id }); }}
+        onSaved={id => { void cargarCarta(); setAviso({ texto: copia ? 'Copia del plato creada' : 'Cambios guardados' }); abrirPanel({ modo: 'consulta', platoId: id ?? plato.id }); }}
         canDelete={isAdmin && !copia}
-        onDeleted={() => { void cargarCarta(); abrirPanel(null); }}
+        onDeleted={() => { void cargarCarta(); setAviso({ texto: `${plato.nombre} eliminado de la carta (queda en Inactivos)` }); abrirPanel(null); }}
       />
     );
   }

@@ -3,7 +3,8 @@ import { createClient } from '@/utils/supabase/server';
 import { semaforo, calcMargen } from '@/lib/calculos';
 import { requireRol } from '@/lib/auth-server';
 import { auditLog } from '@/lib/audit';
-import { TIPOS_CARTA } from '@/lib/carta';
+import { CATEGORIAS_CARTA, esTipoCarta } from '@/lib/carta';
+import { normalizarCodigoToteat } from '@/lib/defontana-consumo';
 
 let cartaTipoCartaColumnExists: boolean | null = null;
 
@@ -49,6 +50,25 @@ function isMissingCodigoToteatColumn(error: { message?: string } | null | undefi
     message.includes('column') ||
     message.includes('could not find')
   );
+}
+
+// La categoria debe ser de la lista oficial o una que ya exista en la carta (platos antiguos):
+// evita crear categorias nuevas por un error de tipeo.
+async function validarCategoria(supabase: Awaited<ReturnType<typeof createClient>>, categoria: string) {
+  const valor = categoria.trim().toUpperCase();
+  if ((CATEGORIAS_CARTA as readonly string[]).includes(valor)) return null;
+  const { data, error } = await supabase.from('carta').select('id').eq('categoria', valor).limit(1);
+  if (error) return error.message;
+  return data?.length ? null : `La categoría "${valor}" no existe. Elige una de la lista.`;
+}
+
+// El CHECK de la BD aun no acepta las cartas nuevas: indicar el script pendiente.
+function mensajeError(error: { message?: string }) {
+  const message = error.message ?? 'Error guardando plato';
+  if (message.includes('carta_tipo_carta_check')) {
+    return 'La base de datos aún no acepta este tipo de carta. Falta ejecutar scripts/supabase_carta_tipos_bebestibles_pedidosya.sql en Supabase.';
+  }
+  return message;
 }
 
 function sinCodigoToteat<T extends { codigo_toteat?: unknown }>(row: T) {
@@ -124,32 +144,27 @@ async function prepararIngredientes(
   });
 }
 
-// GET /api/carta — todos los platos activos con costos calculados
-export async function GET() {
+// GET /api/carta — platos activos con costos calculados; ?todos=1 incluye los inactivos
+export async function GET(req: NextRequest) {
   // cocina: acceso de solo lectura a la pestaña Carta de Costos
   const s = await requireRol(['admin', 'finanzas', 'jefatura', 'cocina', 'gerencia']);
   if (!s.ok) return s.response;
 
   const supabase = await createClient();
   const includeTipoCarta = cartaTipoCartaColumnExists !== false;
+  const todos = new URL(req.url).searchParams.get('todos') === '1';
 
-  const query = supabase
-    .from('carta')
-    .select(includeTipoCarta ? (CARTA_SELECT_WITH_TIPO as string) : (CARTA_SELECT_WITHOUT_TIPO as string))
-    .eq('activo', true)
-    .order('categoria')
-    .order('nombre');
+  const consultar = (select: string) => {
+    let q = supabase.from('carta').select(select);
+    if (!todos) q = q.eq('activo', true);
+    return q.order('categoria').order('nombre');
+  };
 
-  let { data: platos, error } = await query;
+  let { data: platos, error } = await consultar(includeTipoCarta ? CARTA_SELECT_WITH_TIPO : CARTA_SELECT_WITHOUT_TIPO);
 
   if (error && includeTipoCarta && isMissingTipoCartaColumn(error)) {
     cartaTipoCartaColumnExists = false;
-    ({ data: platos, error } = await supabase
-      .from('carta')
-      .select(CARTA_SELECT_WITHOUT_TIPO as string)
-      .eq('activo', true)
-      .order('categoria')
-      .order('nombre'));
+    ({ data: platos, error } = await consultar(CARTA_SELECT_WITHOUT_TIPO));
   }
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -185,13 +200,32 @@ export async function POST(req: NextRequest) {
 
   const supabase = await createClient();
   const body = await req.json();
-  const { cod_softland, codigo_toteat, nombre, categoria, tipo_carta, precio_carta, foto_url, ingredientes } = body;
-  const tipoCartaValor = TIPOS_CARTA.includes(tipo_carta) ? tipo_carta : 'ANTIGUA';
+  const { cod_softland, codigo_toteat, nombre, categoria, tipo_carta, precio_carta, foto_url, ingredientes, validar_toteat_unico } = body;
+  const tipoCartaValor = esTipoCarta(tipo_carta) ? tipo_carta : 'ANTIGUA';
 
   if (!nombre?.trim() || !categoria?.trim())
     return NextResponse.json({ error: 'Nombre y categoria son requeridos' }, { status: 400 });
-  if (tipo_carta && !TIPOS_CARTA.includes(tipo_carta)) {
+  if (tipo_carta && !esTipoCarta(tipo_carta)) {
     return NextResponse.json({ error: 'Tipo de carta inválido' }, { status: 400 });
+  }
+  const errorCategoria = await validarCategoria(supabase, categoria);
+  if (errorCategoria) return NextResponse.json({ error: errorCategoria }, { status: 400 });
+
+  // Alta desde Defontana → Ventas Toteat: no crear un segundo plato para un codigo ya asociado.
+  const codigoToteatNorm = normalizarCodigoToteat(codigo_toteat);
+  if (validar_toteat_unico && codigoToteatNorm) {
+    const { data: existentes, error: dupErr } = await supabase
+      .from('carta')
+      .select('id,nombre,activo,codigo_toteat')
+      .not('codigo_toteat', 'is', null);
+    if (dupErr) return NextResponse.json({ error: dupErr.message }, { status: 500 });
+    const existente = (existentes ?? []).find(p => normalizarCodigoToteat(p.codigo_toteat) === codigoToteatNorm);
+    if (existente) {
+      return NextResponse.json({
+        error: `El código Toteat ${codigoToteatNorm} ya está asociado a "${existente.nombre}"${existente.activo ? '' : ' (inactivo)'}.`,
+        plato_existente: existente.id,
+      }, { status: 409 });
+    }
   }
 
   const baseRow = {
@@ -235,7 +269,7 @@ export async function POST(req: NextRequest) {
       .single());
   }
 
-  if (platoErr) return NextResponse.json({ error: platoErr.message }, { status: 500 });
+  if (platoErr) return NextResponse.json({ error: mensajeError(platoErr) }, { status: 500 });
   if (!plato) return NextResponse.json({ error: 'No se pudo crear el plato' }, { status: 500 });
 
   try {
@@ -267,13 +301,15 @@ export async function PATCH(req: NextRequest) {
   const supabase = await createClient();
   const body = await req.json();
   const { id, cod_softland, codigo_toteat, nombre, categoria, tipo_carta, precio_carta, foto_url, activo, ingredientes } = body;
-  const tipoCartaValor = TIPOS_CARTA.includes(tipo_carta) ? tipo_carta : 'ANTIGUA';
+  const tipoCartaValor = esTipoCarta(tipo_carta) ? tipo_carta : 'ANTIGUA';
 
   if (!id || !nombre?.trim() || !categoria?.trim())
     return NextResponse.json({ error: 'Datos invalidos' }, { status: 400 });
-  if (tipo_carta && !TIPOS_CARTA.includes(tipo_carta)) {
+  if (tipo_carta && !esTipoCarta(tipo_carta)) {
     return NextResponse.json({ error: 'Tipo de carta inválido' }, { status: 400 });
   }
+  const errorCategoria = await validarCategoria(supabase, categoria);
+  if (errorCategoria) return NextResponse.json({ error: errorCategoria }, { status: 400 });
 
   if (activo === false && s.rol !== 'admin') {
     return NextResponse.json({ error: 'Solo admin puede desactivar platos de carta' }, { status: 403 });
@@ -316,7 +352,7 @@ export async function PATCH(req: NextRequest) {
       .eq('id', id));
   }
 
-  if (platoErr) return NextResponse.json({ error: platoErr.message }, { status: 500 });
+  if (platoErr) return NextResponse.json({ error: mensajeError(platoErr) }, { status: 500 });
 
   try {
     const ingRows = await prepararIngredientes(supabase, id, ingredientes);
@@ -336,7 +372,7 @@ export async function PATCH(req: NextRequest) {
     accion: 'editar_plato_carta',
     tabla: 'carta',
     registro_id: id,
-    datos_nuevos: { nombre, categoria, tipo_carta: TIPOS_CARTA.includes(tipo_carta) ? tipo_carta : 'ANTIGUA', codigo_toteat: codigo_toteat?.trim() || null, activo, ingredientes: ingredientes?.length ?? 0 },
+    datos_nuevos: { nombre, categoria, tipo_carta: tipoCartaValor, codigo_toteat: codigo_toteat?.trim() || null, activo, ingredientes: ingredientes?.length ?? 0 },
   });
 
   return NextResponse.json({ ok: true });

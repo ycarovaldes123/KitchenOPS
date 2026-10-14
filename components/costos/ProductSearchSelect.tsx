@@ -18,6 +18,11 @@ interface Props {
   placeholder?: string;
   allowManual?: boolean;
   disabled?: boolean;
+  /** Si se indica: Enter/Tab/clic eligen y luego se llama (p. ej. para pasar a Cantidad). Tab elige solo si se escribio o se navego. */
+  onSeleccionado?: () => void;
+  /** Cerrado, muestra solo el nombre (el codigo se muestra aparte). */
+  soloNombre?: boolean;
+  autoFocus?: boolean;
 }
 
 const MAX_RESULTADOS = 60;
@@ -40,7 +45,7 @@ function productLabel(producto: ProductoMaestro) {
 
 // Puntaje de relevancia: código exacto > código que empieza > nombre que empieza > palabra que empieza > contiene.
 function puntaje(producto: ProductoMaestro, query: string, terms: string[]): number {
-  const codigo = producto.codigo.toLowerCase();
+  const codigo = normalizeText(producto.codigo);
   const nombre = normalizeText(producto.nombre);
   if (codigo === query) return 0;
   if (codigo.startsWith(query)) return 1;
@@ -63,11 +68,16 @@ export default function ProductSearchSelect({
   placeholder = 'Buscar producto...',
   allowManual = true,
   disabled = false,
+  onSeleccionado,
+  soloNombre = false,
+  autoFocus = false,
 }: Props) {
   const selected = value ? productos.find(producto => producto.codigo === value) : undefined;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
+  // Tab solo confirma si el usuario escribio o recorrio la lista (nunca un producto arbitrario).
+  const [navegado, setNavegado] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -104,6 +114,7 @@ export default function ProductSearchSelect({
   function selectProduct(codigo: string) {
     onChange(codigo);
     close();
+    if (codigo) onSeleccionado?.();
   }
 
   function clearSelection() {
@@ -113,7 +124,8 @@ export default function ProductSearchSelect({
     inputRef.current?.focus();
   }
 
-  const displayValue = open ? query : selected ? productLabel(selected) : '';
+  const etiqueta = selected ? (soloNombre ? selected.nombre : productLabel(selected)) : '';
+  const displayValue = open ? query : etiqueta;
 
   return (
     <div ref={rootRef} style={{ position: 'relative', minWidth: 0 }}>
@@ -122,12 +134,14 @@ export default function ProductSearchSelect({
           ref={inputRef}
           value={displayValue}
           disabled={disabled}
-          placeholder={selected ? productLabel(selected) : placeholder}
+          autoFocus={autoFocus}
+          placeholder={selected ? etiqueta : placeholder}
           title={selected ? productLabel(selected) : undefined}
-          onFocus={() => { setActiveIndex(0); setOpen(true); }}
+          onFocus={() => { setActiveIndex(0); setNavegado(false); setOpen(true); }}
           onChange={event => {
             setQuery(event.target.value);
             setActiveIndex(0);
+            setNavegado(true);
             setOpen(true);
           }}
           onKeyDown={event => {
@@ -137,17 +151,26 @@ export default function ProductSearchSelect({
               return;
             }
             if (event.key === 'Tab') {
+              const resaltado = results[activeIndex];
+              const eligio = navegado && (query.trim() !== '' || activeIndex > 0);
+              if (onSeleccionado && open && eligio && resaltado && !event.shiftKey) {
+                event.preventDefault();
+                selectProduct(resaltado.codigo);
+                return;
+              }
               close();
               return;
             }
             if (event.key === 'ArrowDown') {
               event.preventDefault();
+              setNavegado(true);
               setOpen(true);
               setActiveIndex(index => Math.min(index + 1, Math.max(results.length - 1, 0)));
               return;
             }
             if (event.key === 'ArrowUp') {
               event.preventDefault();
+              setNavegado(true);
               setActiveIndex(index => Math.max(index - 1, 0));
               return;
             }
@@ -173,6 +196,7 @@ export default function ProductSearchSelect({
         {(value || query) && !disabled && (
           <button
             type="button"
+            tabIndex={onSeleccionado ? -1 : undefined}
             onClick={clearSelection}
             title="Limpiar producto"
             style={{
@@ -201,7 +225,7 @@ export default function ProductSearchSelect({
               ? `${total} resultado${total !== 1 ? 's' : ''}${total > results.length ? ` · mostrando ${results.length}` : ''}`
               : `${productos.length} productos · escribe nombre o código`}
           </span>
-          <span style={{ whiteSpace: 'nowrap' }}>↑↓ Enter</span>
+          <span style={{ whiteSpace: 'nowrap' }}>{onSeleccionado ? '↑↓ · Enter / Tab elige · Esc' : '↑↓ Enter'}</span>
         </div>
         <div ref={listRef} style={{ maxHeight: '260px', overflowY: 'auto', padding: '4px 0' }}>
           {allowManual && (

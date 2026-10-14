@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import NavIcon from '@/components/layout/NavIcon';
 import type { ColorSemaforo } from '@/types/database';
+import { NOMBRE_TIPO_CARTA, type TipoCarta } from '@/lib/carta';
 
 export interface Ingrediente {
   id: string;
@@ -21,7 +22,7 @@ export interface Plato {
   codigo_toteat?: string | null;
   nombre: string;
   categoria: string;
-  tipo_carta: 'ANTIGUA' | 'NUEVA';
+  tipo_carta: TipoCarta;
   precio_carta: number | null;
   activo: boolean;
   costo_neto: number;
@@ -32,17 +33,20 @@ export interface Plato {
   carta_ingredientes: Ingrediente[];
 }
 
-// En la UI la carta NUEVA se presenta como "Carta actual".
-export const NOMBRE_CARTA: Record<'all' | 'ANTIGUA' | 'NUEVA', string> = {
+export const NOMBRE_CARTA: Record<'all' | TipoCarta, string> = {
   all: 'Todas las cartas',
-  NUEVA: 'Carta actual',
-  ANTIGUA: 'Carta antigua',
+  ...NOMBRE_TIPO_CARTA,
 };
 
-export function CartaTag({ tipo }: { tipo: 'ANTIGUA' | 'NUEVA' }) {
-  return tipo === 'NUEVA'
-    ? <span className="ck-tag ck-tag--actual">Carta actual</span>
-    : <span className="ck-tag ck-tag--antigua">Antigua</span>;
+const CLASE_CARTA: Record<TipoCarta, string> = {
+  NUEVA: 'ck-tag--actual',
+  ANTIGUA: 'ck-tag--antigua',
+  BEBESTIBLES: 'ck-tag--bebestibles',
+  PEDIDOSYA: 'ck-tag--pedidosya',
+};
+
+export function CartaTag({ tipo }: { tipo: TipoCarta }) {
+  return <span className={`ck-tag ${CLASE_CARTA[tipo] ?? 'ck-tag--antigua'}`}>{tipo === 'ANTIGUA' ? 'Antigua' : NOMBRE_TIPO_CARTA[tipo] ?? tipo}</span>;
 }
 
 export function esIngredientePP(ing: Pick<Ingrediente, 'codigo_producto' | 'pp_id'>) {

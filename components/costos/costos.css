@@ -85,7 +85,9 @@
 .ck-card { background: var(--sf); border: 1px solid var(--bo); border-radius: 12px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; text-align: left; padding: 0; font-family: 'DM Sans', sans-serif; transition: border-color var(--dur-ui) ease, transform var(--dur-ui) ease, box-shadow var(--dur-ui) ease; }
 .ck-card { content-visibility: auto; contain-intrinsic-size: auto 250px; } /* no dibuja tarjetas fuera de pantalla */
 .ck-card:hover { border-color: var(--bo-ac); transform: translateY(-2px); box-shadow: var(--sh-card-hover); }
-.ck-card.is-selected { border-color: var(--ac); box-shadow: 0 0 0 1px var(--ac); }
+.ck-card.is-selected { border-color: var(--ac); box-shadow: 0 0 0 2px var(--ac), 0 8px 20px color-mix(in srgb, var(--ac) 18%, transparent); background: #FFF4EC; }
+.ck-card.is-selected .ck-card__name { color: #9A3412; }
+.ck-card.is-inactive .ck-card__img { filter: grayscale(1); opacity: 0.7; }
 .ck-card__img { position: relative; height: 132px; background: var(--ck-gray-bg); flex-shrink: 0; overflow: hidden; }
 .ck-card__img img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .ck-card__pct { position: absolute; top: 8px; right: 8px; height: 22px; display: inline-flex; align-items: center; padding: 0 8px; border-radius: 6px; font-size: 11.5px; font-weight: 700; background: rgba(255,255,255,0.94); }
@@ -100,6 +102,9 @@
 .ck-tag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .ck-tag--actual { background: #EEF3FB; color: #3B5B8F; }
 .ck-tag--antigua { background: var(--ck-gray-bg); color: #6B6560; }
+.ck-tag--bebestibles { background: #E7F6F4; color: #0F766E; }
+.ck-tag--pedidosya { background: #FDECEF; color: #BE123C; }
+.ck-tag--inactivo { background: var(--ck-gray-bg); color: #6B6560; }
 .ck-tag--match { background: #ECFDF5; color: #047857; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .ck-tag--pp { background: var(--al); color: var(--ac); height: 18px; font-size: 10px; padding: 0 6px; }
 
@@ -112,7 +117,12 @@
 .ck-table tbody tr:first-child td { border-top: none; }
 .ck-table--click tbody tr { cursor: pointer; transition: background var(--dur-ui) ease; }
 .ck-table--click tbody tr:hover { background: #FCF8F4; }
-.ck-table tr.is-selected td { background: var(--ck-orange-bg); }
+.ck-table tr.is-selected td { background: #FFE6D2; }
+.ck-table tr.is-selected td:first-child { box-shadow: inset 4px 0 0 var(--ac); }
+.ck-table tr.is-selected .ck-row-name { color: #9A3412; font-weight: 800; }
+.ck-table--click tr:focus-visible { outline: 2px solid var(--ac); outline-offset: -2px; }
+.ck-table tr.is-inactive td { color: var(--ts); }
+.ck-table tr.is-inactive .ck-thumb { filter: grayscale(1); opacity: 0.7; }
 .ck-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .ck-table .muted { color: var(--ts); }
 .ck-thumb { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; display: block; overflow: hidden; }
@@ -220,12 +230,47 @@
 
 .ck-form--side { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 16px; }
 .ck-field--full { grid-column: 1 / -1; }
-.ck-ings { display: grid; gap: 10px; }
-.ck-ing { border: 1px solid var(--bo); border-radius: 10px; padding: 10px 12px; background: #FCFBF9; }
-.ck-ing__top { display: flex; align-items: center; gap: 6px; }
-.ck-ing__grid { display: grid; grid-template-columns: 1fr 0.8fr 1fr 0.9fr; gap: 8px; margin-top: 8px; }
-.ck-ing__grid .ck-field { font-size: 10.5px; }
-.ck-ing__costo { height: 34px; display: flex; align-items: center; justify-content: flex-end; font-size: 13px; font-weight: 700; color: var(--tx); }
+.ck-ings { display: grid; gap: 8px; }
+/* Ingrediente. Panel angosto: codigo + buscador arriba, cantidad/UM/precio/costo abajo. */
+.ck-ing { display: grid; grid-template-columns: 1fr 0.8fr 1fr 0.9fr 30px; gap: 6px 8px; align-items: center; border: 1px solid var(--bo); border-radius: 10px; padding: 8px 10px; background: #FCFBF9; }
+.ck-ing--head { display: none; }
+.ck-ing__code { grid-column: 1; grid-row: 1; height: 32px; display: flex; align-items: center; justify-content: center; padding: 0 8px; border-radius: 6px; background: var(--al); color: var(--ac); font: 700 12px 'Space Grotesk', sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ck-ing__buscar { grid-column: 2 / 5; grid-row: 1; min-width: 0; }
+.ck-ing__buscar.is-wide { grid-column: 1 / 5; }
+.ck-ing__del { grid-column: 5; grid-row: 1; }
+.ck-ing__cell { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-size: 10.5px; font-weight: 600; color: var(--ts); }
+.ck-ing__cell.num { align-items: flex-end; text-align: right; }
+.ck-ing__static { height: 34px; display: flex; align-items: center; font-size: 12.5px; font-weight: 500; color: var(--tx); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ck-ing__static.is-warn { color: #B45309; font-weight: 700; }
+.ck-ing__costo { height: 34px; display: flex; align-items: center; justify-content: flex-end; font-size: 13px; font-weight: 700; color: var(--tx); font-variant-numeric: tabular-nums; }
+.ck-ing__warn { grid-column: 1 / -1; margin: 0; display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: #B45309; }
+.ck-input.is-warn { border-color: #F3B95F; background: #FFFBEB; }
+.ck-field__hint { font-size: 11px; font-weight: 500; color: var(--ts); }
+.ck-side__aviso { margin: -4px 0 10px; display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: #B45309; }
+
+/* Selector con busqueda (Categoria, Tipo de carta) */
+.ck-combo { position: relative; display: flex; align-items: center; height: 40px; border: 1px solid var(--bo); border-radius: 8px; background: var(--sf); cursor: pointer; transition: border-color var(--dur-ui) ease, box-shadow var(--dur-ui) ease; }
+.ck-combo:hover { border-color: var(--bo-ac); }
+.ck-combo.is-open, .ck-combo:focus-within { border-color: var(--ac); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ac) 14%, transparent); }
+.ck-combo.is-disabled { background: #FAF8F5; cursor: not-allowed; }
+.ck-combo__input { flex: 1; min-width: 0; height: 100%; border: none; background: transparent; padding: 0 34px 0 11px; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; color: var(--tx); outline: none; cursor: pointer; text-overflow: ellipsis; }
+.ck-combo.is-open .ck-combo__input { cursor: text; }
+.ck-combo__arrow { position: absolute; right: 10px; display: flex; color: var(--ts); pointer-events: none; transition: transform 150ms ease; }
+.ck-combo.is-open .ck-combo__arrow { transform: rotate(180deg); color: var(--ac); }
+.ck-combo__list { max-height: 280px; overflow-y: auto; padding: 4px 0; }
+.ck-combo__opt { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 12px; font-family: 'DM Sans', sans-serif; font-size: 13px; color: var(--tx); cursor: pointer; }
+.ck-combo__opt.is-active { background: var(--al); }
+.ck-combo__opt.is-selected { font-weight: 700; color: var(--ac); }
+.ck-combo__empty { padding: 14px; text-align: center; font-size: 12px; color: var(--ts); }
+
+/* Foto del plato: miniatura + nombre + boton compacto */
+.ck-foto { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 5px 6px 5px 5px; border: 1px solid var(--bo); border-radius: 8px; background: var(--sf); }
+.ck-foto__thumb { width: 38px; height: 38px; flex-shrink: 0; border-radius: 6px; overflow: hidden; background: var(--ck-gray-bg); }
+.ck-foto__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ck-foto__info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ck-foto__info strong { font-size: 12.5px; font-weight: 600; color: var(--tx); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ck-foto__info span { font-size: 11px; font-weight: 500; color: var(--ts); }
+.ck-foto .ck-icon-btn { color: var(--ts); }
 .ck-side__foot { flex: 0 0 auto; border-top: 1px solid var(--bo); background: #FCFBF9; padding: 12px 22px 14px; }
 .ck-side__totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
 .ck-side__totals div { display: flex; flex-direction: column; gap: 1px; }
@@ -238,11 +283,15 @@
 @container (min-width: 600px) {
   .ck-form--side { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .ck-form--side .ck-field--half { grid-column: span 2; }
-  .ck-ing { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 300px); gap: 12px; align-items: end; padding: 10px 12px; }
-  .ck-ing__grid { margin-top: 0; grid-template-columns: 0.9fr 0.7fr 1fr 0.9fr; }
-  .ck-ing__top { grid-column: 1; grid-row: 1; align-self: end; padding-bottom: 0; }
-  .ck-ing > input { grid-column: 1; grid-row: 2; margin-top: 0 !important; }
-  .ck-ing__grid { grid-column: 2; grid-row: 1; }
+  /* Panel ancho: Codigo | Ingrediente | Cantidad | U/M | Precio unit. | Costo | Eliminar en una fila. */
+  .ck-ing { grid-template-columns: 84px minmax(0, 1fr) 78px 66px 82px 78px 30px; }
+  .ck-ing--head { display: grid; border: none; background: none; padding: 0 11px; font-size: 10.5px; font-weight: 700; color: var(--ts); text-transform: uppercase; letter-spacing: 0.4px; }
+  .ck-ing--head .num { text-align: right; }
+  .ck-ing__buscar { grid-column: 2; }
+  .ck-ing__buscar.is-wide { grid-column: 1 / 3; }
+  .ck-ing__del { grid-column: 7; }
+  .ck-ing__cell { grid-row: 1; }
+  .ck-ing__lbl { display: none; }
 }
 
 /* View Transitions (escritorio): reemplazan a las transiciones CSS de ancho. */
@@ -290,7 +339,6 @@
   .ck-actions { width: 100%; }
   .ck-actions .ck-btn--primary { flex: 1; }
   .ck-select { flex: 1 1 140px; }
-  .ck-ing__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) {
   .ck-layout, .ck-side { transition: none; }
@@ -299,3 +347,24 @@
 
 /* Atajo de teclado dentro de un boton (Guardar · F12). */
 .ck-kbd { margin-left: 2px; padding: 1px 5px; border-radius: 4px; background: rgba(255,255,255,0.22); font: 600 10.5px 'DM Sans', sans-serif; letter-spacing: 0.02em; }
+
+/* Boton Activo / Inactivo de la ficha del plato */
+.ck-btn--estado { gap: 8px; }
+.ck-btn--estado .ck-btn__dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.ck-btn--estado.is-activo { background: var(--ck-green-bg); border-color: #6EC9A6; color: #047857; }
+.ck-btn--estado.is-activo:hover:not(:disabled) { border-color: var(--ck-green); }
+.ck-btn--estado.is-inactivo { background: var(--ck-gray-bg); border-color: #C9C2BA; color: #6B6560; }
+.ck-btn--estado.is-inactivo:hover:not(:disabled) { border-color: #8A847D; }
+.ck-btn--estado:disabled { cursor: progress; }
+
+/* Aviso breve de guardado / error */
+.ck-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 4000; display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 10px; background: #1F2937; color: #fff; font-size: 13px; font-weight: 600; box-shadow: 0 12px 30px rgba(20, 16, 10, 0.25); animation: ck-toast-in 180ms ease-out; }
+.ck-toast--error { background: #B91C1C; }
+@keyframes ck-toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+
+/* Editor de plato abierto desde Defontana: mismo formulario del panel lateral, en modal */
+.ck-modal--editor { max-width: 760px; height: 92vh; }
+.ck-modal--editor .ck-side__box { width: 100%; height: 100%; max-height: none; border: none; border-radius: 0; }
+.ck-df-accion { display: inline-flex; align-items: center; gap: 6px; }
+.ck-btn--add { width: 28px; height: 28px; padding: 0; border-radius: 7px; color: var(--ac); border-color: color-mix(in srgb, var(--ac) 40%, var(--bo)); background: var(--sf); }
+.ck-btn--add:hover:not(:disabled) { background: var(--al); border-color: var(--ac); }
