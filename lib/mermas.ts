@@ -70,3 +70,13 @@ export function isMotivoMermaPlatoActivo(motivo: unknown): boolean {
   const normalizado = normalizeMotivoMerma(motivo);
   return normalizado == null || MOTIVOS_MERMA_PLATO.includes(normalizado);
 }
+
+// Mermas de platos: algunos motivos piden un dato extra (se guarda en detalle_mermas_platos.observacion).
+export interface DetalleMotivoPlato { prefijo: string; label: string; placeholder: string }
+
+export function detalleMotivoPlato(motivo: unknown): DetalleMotivoPlato | null {
+  const m = normalizeMotivoMerma(motivo);
+  if (m === 'Error Garzón') return { prefijo: 'Garzón', label: 'Nombre del garzón', placeholder: 'Nombre del garzón' };
+  if (m === 'Devolución' || m === 'Devolución Cliente') return { prefijo: 'Detalle', label: 'Garzón u otro motivo', placeholder: 'Nombre del garzón u otro motivo' };
+  return null;
+}

@@ -3,7 +3,7 @@ import { notificarAlertasDeRegistro } from '@/lib/alertas/notificar';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol, getSessionRol } from '@/lib/auth-server';
 import { puedeHacer } from '@/lib/permissions';
-import { isMotivoMermaPlatoActivo, isMotivoMermaProductoActivo, normalizeMotivoMerma } from '@/lib/mermas';
+import { detalleMotivoPlato, isMotivoMermaPlatoActivo, isMotivoMermaProductoActivo, normalizeMotivoMerma } from '@/lib/mermas';
 
 type PlatoMermaPayload = {
   carta_id?: string | null;
@@ -77,6 +77,8 @@ async function prepararPlatos(
     .filter(p => p.carta_id && Number.isFinite(p.cantidad) && p.cantidad > 0);
 
   if (!rows.length) return [];
+  const sinDetalle = rows.find(p => detalleMotivoPlato(p.motivo) && !p.observacion);
+  if (sinDetalle) throw new Error(`Falta "${detalleMotivoPlato(sinDetalle.motivo)!.label}" en ${sinDetalle.nombre_plato ?? 'un plato'} (${sinDetalle.motivo}).`);
   if (rows.some(p => !isMotivoMermaPlatoActivo(p.motivo))) {
     throw new Error('Motivo de merma de plato invalido');
   }

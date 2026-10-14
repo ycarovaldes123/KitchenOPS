@@ -7,7 +7,7 @@ import { useRol } from '@/components/RolProvider';
 import { useAdvertenciasGuardado } from '@/components/alertas/AdvertenciasGuardado';
 import { filtrarResponsablesIngreso } from '@/lib/responsables-ingreso';
 import type { Responsable, Producto, MotivoMerma } from '@/types/database';
-import { MOTIVO_MERMA_COLOR, MOTIVOS_MERMA_PLATO, MOTIVOS_MERMA_PRODUCTO } from '@/lib/mermas';
+import { MOTIVO_MERMA_COLOR, MOTIVOS_MERMA_PLATO, MOTIVOS_MERMA_PRODUCTO, detalleMotivoPlato } from '@/lib/mermas';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -38,11 +38,13 @@ interface PlatoRow {
   categoria:      string | null;
   cantidad:       string;
   motivo:         MotivoMerma | '';
+  /** Nombre del garzon (Error Garzon) o garzon/motivo (Devolucion). */
+  detalle:        string;
   costo_unitario: number;
   ingredientes:   number;
 }
 
-type RowStatus = 'ok' | 'pendiente' | 'sin-motivo' | 'sin-costo';
+type RowStatus = 'ok' | 'pendiente' | 'sin-motivo' | 'sin-detalle' | 'sin-costo';
 
 // ─── Utility ────────────────────────────────────────────────────────────────
 
@@ -72,6 +74,7 @@ function getRowStatus(row: MermaRow): RowStatus {
 function getPlatoStatus(row: PlatoRow): RowStatus {
   if (!row.carta_id || !row.cantidad || parseFloat(row.cantidad) === 0) return 'pendiente';
   if (!row.motivo) return 'sin-motivo';
+  if (detalleMotivoPlato(row.motivo) && !row.detalle.trim()) return 'sin-detalle';
   if (row.costo_unitario === 0) return 'sin-costo';
   return 'ok';
 }
@@ -84,6 +87,7 @@ const STATUS_CFG: Record<RowStatus, { label: string; color: string; bg: string }
   ok:          { label: 'OK',           color: '#065F46', bg: '#D1FAE5' },
   pendiente:   { label: 'Incompleto',   color: '#92400E', bg: '#FEF3C7' },
   'sin-motivo':{ label: 'Sin motivo',   color: '#5B21B6', bg: '#EDE9FE' },
+  'sin-detalle':{ label: 'Falta detalle', color: '#9F1239', bg: '#FFE4E6' },
   'sin-costo': { label: 'Sin costo',    color: '#991B1B', bg: '#FEE2E2' },
 };
 
@@ -326,7 +330,7 @@ export default function MermasPage() {
   }
 
   function addPlatoRow() {
-    setPlatoRows(r => [...r, { key: newKey(), carta_id: '', nombre_plato: '', categoria: null, cantidad: '', motivo: '', costo_unitario: 0, ingredientes: 0 }]);
+    setPlatoRows(r => [...r, { key: newKey(), carta_id: '', nombre_plato: '', categoria: null, cantidad: '', motivo: '', detalle: '', costo_unitario: 0, ingredientes: 0 }]);
   }
 
   function selectProducto(key: number, p: Producto) {
@@ -360,8 +364,9 @@ export default function MermasPage() {
     setRows(rows => rows.map(r => r.key !== key ? r : { ...r, [field]: value }));
   }
 
-  function updatePlatoRow(key: number, field: 'cantidad' | 'motivo', value: string) {
-    setPlatoRows(rows => rows.map(r => r.key !== key ? r : { ...r, [field]: value }));
+  function updatePlatoRow(key: number, field: 'cantidad' | 'motivo' | 'detalle', value: string) {
+    // Al cambiar el motivo se limpia el detalle (garzon / motivo de devolucion).
+    setPlatoRows(rows => rows.map(r => r.key !== key ? r : { ...r, [field]: value, ...(field === 'motivo' ? { detalle: '' } : {}) }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -370,6 +375,11 @@ export default function MermasPage() {
     if (soloLectura) return;
     if (!responsableId)      { setErr('Selecciona un responsable antes de guardar.'); return; }
     if (!observacion.trim()) { setErr('La observación es obligatoria.'); return; }
+    const faltaDetalle = platoRows.find(r => r.carta_id && parseFloat(r.cantidad) > 0 && detalleMotivoPlato(r.motivo) && !r.detalle.trim());
+    if (faltaDetalle) {
+      setErr(`Completa "${detalleMotivoPlato(faltaDetalle.motivo)!.label}" en ${faltaDetalle.nombre_plato} (${faltaDetalle.motivo}).`);
+      return;
+    }
 
     const detalle = rows
       .filter(r => r.codigo_producto && parseFloat(r.cantidad) > 0)
@@ -390,7 +400,9 @@ export default function MermasPage() {
         nombre_plato: r.nombre_plato,
         cantidad: parseFloat(r.cantidad),
         motivo: r.motivo || null,
-        observacion: null,
+        observacion: detalleMotivoPlato(r.motivo) && r.detalle.trim()
+          ? `${detalleMotivoPlato(r.motivo)!.prefijo}: ${r.detalle.trim()}`
+          : null,
       }));
 
     if (!detalle.length && !platos.length) { setErr('Agrega al menos un producto o plato con cantidad valida.'); return; }
@@ -430,7 +442,8 @@ export default function MermasPage() {
   const sinCosto     = rows.filter(r => getRowStatus(r) === 'sin-costo').length + platoRows.filter(r => getPlatoStatus(r) === 'sin-costo').length;
   const totalLineasValidas = rowsValidos.length + platosValidos.length;
   const totalLineas = rows.length + platoRows.length;
-  const canSave      = !soloLectura && !!responsableId && !!observacion.trim() && totalLineasValidas > 0;
+  const faltanDetalles = platoRows.some(r => r.carta_id && parseFloat(r.cantidad) > 0 && getPlatoStatus(r) === 'sin-detalle');
+  const canSave      = !soloLectura && !!responsableId && !!observacion.trim() && totalLineasValidas > 0 && !faltanDetalles;
 
   // ── Styles ────────────────────────────────────────────────────────────────
 
@@ -766,6 +779,21 @@ export default function MermasPage() {
                                         {MOTIVOS_PLATO.map(m => <option key={m} value={m}>{m}</option>)}
                                       </select>
                                     )}
+                                    {(() => {
+                                      const extra = detalleMotivoPlato(row.motivo);
+                                      if (!extra) return null;
+                                      const falta = !row.detalle.trim();
+                                      return (
+                                        <input
+                                          type="text" value={row.detalle} autoFocus
+                                          onChange={e => updatePlatoRow(row.key, 'detalle', e.target.value)}
+                                          placeholder={extra.placeholder}
+                                          aria-label={extra.label}
+                                          maxLength={80}
+                                          style={{ ...thinInp, width: '100%', marginTop: '6px', fontSize: '12px', borderColor: falta ? '#FDA4AF' : 'var(--bo)', background: falta ? '#FFF1F2' : 'var(--bg)' }}
+                                        />
+                                      );
+                                    })()}
                                   </td>
                                   {verCostos && (
                                     <td data-label="Costo pérdida" style={{ padding: '9px 12px', fontSize: '13px', whiteSpace: 'nowrap', fontFamily: "'Space Grotesk', sans-serif", fontVariantNumeric: 'tabular-nums', color: costo > 0 ? '#DC2626' : 'var(--ts)', fontWeight: costo > 0 ? 600 : 400 }}>

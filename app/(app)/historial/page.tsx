@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { calcCostoProduccionPP, calcTotalPP, formatCLP, formatPct, calcMerma } from '@/lib/calculos';
 import { useRol } from '@/components/RolProvider';
 import NavIcon from '@/components/layout/NavIcon';
-import { MOTIVOS_MERMA_PLATO, MOTIVO_MERMA_COLOR, normalizeMotivoMerma } from '@/lib/mermas';
+import { MOTIVOS_MERMA_PLATO, MOTIVO_MERMA_COLOR, detalleMotivoPlato, normalizeMotivoMerma } from '@/lib/mermas';
 import './historial.css';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -1681,7 +1681,7 @@ function TablaMermas({ datos, isAdmin, onRefresh, verCostos, productos, porDia, 
   const [editValues, setEditValues] = useState<Record<string, number>>({});
   const [newRows, setNewRows] = useState<Array<{ localId: string; codigo_producto: string; cantidad: number; motivo: string }>>([]);
   // Platos preparados agregados al editar: el backend los expande a insumos igual que en /mermas.
-  const [newPlatos, setNewPlatos] = useState<Array<{ localId: string; carta_id: string; cantidad: number; motivo: string }>>([]);
+  const [newPlatos, setNewPlatos] = useState<Array<{ localId: string; carta_id: string; cantidad: number; motivo: string; detalle: string }>>([]);
   const [cartaPlatos, setCartaPlatos] = useState<Array<{ id: string; nombre: string; categoria: string; costo_neto: number }> | null>(null);
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
@@ -1702,7 +1702,7 @@ function TablaMermas({ datos, isAdmin, onRefresh, verCostos, productos, porDia, 
   const cancelEdit = () => { setEditingId(null); setEditValues({}); setEditFecha(''); setNewRows([]); setNewPlatos([]); setDeletedIds(new Set()); setSaveErr(''); };
   const addRow = () => setNewRows(rows => [...rows, { localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`, codigo_producto: '', cantidad: 1, motivo: '' }]);
   const addPlato = () => {
-    setNewPlatos(rows => [...rows, { localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`, carta_id: '', cantidad: 1, motivo: '' }]);
+    setNewPlatos(rows => [...rows, { localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`, carta_id: '', cantidad: 1, motivo: '', detalle: '' }]);
     if (cartaPlatos) return;
     fetch('/api/carta')
       .then(r => r.json())
@@ -1749,9 +1749,13 @@ function TablaMermas({ datos, isAdmin, onRefresh, verCostos, productos, porDia, 
           costo_total: Math.round(cantidad * costoUnitario),
         };
       }).filter(r => r.codigo_producto);
-      const platos = newPlatos
-        .filter(p => p.carta_id && p.cantidad > 0)
-        .map(p => ({ carta_id: p.carta_id, cantidad: p.cantidad, motivo: normalizeMotivoMerma(p.motivo) }));
+      const platosValidos = newPlatos.filter(p => p.carta_id && p.cantidad > 0);
+      const faltaDetalle = platosValidos.find(p => detalleMotivoPlato(p.motivo) && !p.detalle.trim());
+      if (faltaDetalle) throw new Error(`Completa "${detalleMotivoPlato(faltaDetalle.motivo)!.label}" del plato agregado (${faltaDetalle.motivo}).`);
+      const platos = platosValidos.map(p => {
+        const extra = detalleMotivoPlato(p.motivo);
+        return { carta_id: p.carta_id, cantidad: p.cantidad, motivo: normalizeMotivoMerma(p.motivo), observacion: extra ? `${extra.prefijo}: ${p.detalle.trim()}` : null };
+      });
       const res = await fetch('/api/mermas', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ merma_id: mermaId, fecha: isAdmin ? editFecha : undefined, delete_ids: [...deletedIds], detalle: [...detalle, ...nuevos], platos }) });
       if (!res.ok) { const j = await res.json(); throw new Error(j.error); }
       setEditingId(null); setEditValues({}); setEditFecha(''); setNewRows([]); setNewPlatos([]); setDeletedIds(new Set()); onRefresh();
@@ -1860,11 +1864,20 @@ function TablaMermas({ datos, isAdmin, onRefresh, verCostos, productos, porDia, 
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                   {plato ? 'Plato preparado: descuenta sus insumos' : 'Nuevo plato: elige el plato'}
                                   <select value={row.motivo} aria-label="Motivo de la merma del plato"
-                                    onChange={e => setNewPlatos(v => v.map(x => x.localId === row.localId ? { ...x, motivo: e.target.value } : x))}
+                                    onChange={e => setNewPlatos(v => v.map(x => x.localId === row.localId ? { ...x, motivo: e.target.value, detalle: '' } : x))}
                                     style={{ fontSize: '11px', border: '1px solid var(--bo)', borderRadius: '6px', padding: '1px 4px', background: 'var(--sf)', color: 'var(--tx)' }}>
                                     <option value="">Motivo...</option>
                                     {MOTIVOS_MERMA_PLATO.map(m => <option key={m} value={m}>{m}</option>)}
                                   </select>
+                                  {detalleMotivoPlato(row.motivo) && (
+                                    <input
+                                      type="text" value={row.detalle} maxLength={80}
+                                      placeholder={detalleMotivoPlato(row.motivo)!.placeholder}
+                                      aria-label={detalleMotivoPlato(row.motivo)!.label}
+                                      onChange={e => setNewPlatos(v => v.map(x => x.localId === row.localId ? { ...x, detalle: e.target.value } : x))}
+                                      style={{ fontSize: '11px', border: `1px solid ${row.detalle.trim() ? 'var(--bo)' : '#FDA4AF'}`, borderRadius: '6px', padding: '2px 6px', background: row.detalle.trim() ? 'var(--sf)' : '#FFF1F2', color: 'var(--tx)', minWidth: '160px' }}
+                                    />
+                                  )}
                                 </span>
                               }
                               cantidad={row.cantidad} unidad="plato(s)"
