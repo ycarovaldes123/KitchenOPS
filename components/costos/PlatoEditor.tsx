@@ -221,9 +221,7 @@ async function readJsonResponse(res: Response) {
 }
 
 // Modo edicion del panel lateral de Costos (crear, editar o copiar un plato).
-// Maestro de productos compartido entre aperturas del editor: se recarga como maximo cada 5 min
-// (descargarlo y parsearlo en cada "Editar" trababa la apertura del panel).
-const PRODUCTOS_TTL_MS = 5 * 60 * 1000;
+// Maestro de productos compartido entre aperturas del editor: se muestra al instante y se refresca en segundo plano.
 let productosCache: { data: ProductoMaestro[]; at: number } | null = null;
 
 export default function PlatoEditor({
@@ -262,8 +260,9 @@ export default function PlatoEditor({
   const [filaNueva, setFilaNueva] = useState<string | null>(null);
   const ingsRef = useRef<HTMLDivElement>(null);
 
+  // Siempre se pide el maestro al abrir (el cache solo evita esperar): asi un costo recien
+  // actualizado en Maestros se ve de inmediato en la receta.
   useEffect(() => {
-    if (productosCache && Date.now() - productosCache.at < PRODUCTOS_TTL_MS) return;
     let alive = true;
     fetch('/api/maestros')
       .then(r => r.json())

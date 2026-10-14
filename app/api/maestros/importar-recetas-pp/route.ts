@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { requireRol } from '@/lib/auth-server';
 import { auditLog } from '@/lib/audit';
 import { normalizarNombreProducto } from '@/lib/nombre-producto';
+import { sincronizarCostosCarta } from '@/lib/carta-costo';
 
 // POST /api/maestros/importar-recetas-pp
 // Body: multipart/form-data with field "file" (xlsx)
@@ -308,6 +309,9 @@ export async function POST(req: NextRequest) {
       }
     }
   }
+
+  const carta = await sincronizarCostosCarta(supabase);
+  errores.push(...carta.errores.map(e => `carta: ${e}`));
 
   await auditLog(supabase, {
     usuario_email: s.email,

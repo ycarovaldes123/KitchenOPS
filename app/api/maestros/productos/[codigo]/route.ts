@@ -4,6 +4,7 @@ import { requireRol } from '@/lib/auth-server';
 import { auditLog } from '@/lib/audit';
 import { normalizarNombreProducto } from '@/lib/nombre-producto';
 import { recalcularCostosPP, recetasAfectadasPorProductos } from '@/lib/recalcular-pp';
+import { sincronizarCostosCarta } from '@/lib/carta-costo';
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -175,9 +176,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   // (antes se recalculaban todas las recetas en cada guardado: ~500 escrituras, ~100 s).
   const cambioCosto  = updates.costo_promedio !== undefined && Math.abs((Number(anterior?.costo_promedio) || 0) - (Number(updates.costo_promedio) || 0)) > 1e-6;
   const cambioUnidad = updates.unidad_medida !== undefined && updates.unidad_medida !== anterior?.unidad_medida;
-  const ppResult = cambioCosto || cambioUnidad
-    ? await recalcularCostosPP(supabase, await recetasAfectadasPorProductos(supabase, [codigo]))
+  const afectadas = cambioCosto || cambioUnidad ? await recetasAfectadasPorProductos(supabase, [codigo]) : [];
+  const ppResult = afectadas.length
+    ? await recalcularCostosPP(supabase, afectadas)
     : { recalculadas: 0, errores: [] as string[] };
+  // Sin recetas PP afectadas igual hay que llevar el costo nuevo a los platos (con PP afectadas ya lo hace recalcularCostosPP).
+  if ((cambioCosto || cambioUnidad) && !afectadas.length) {
+    const carta = await sincronizarCostosCarta(supabase);
+    ppResult.errores.push(...carta.errores.map(e => `carta: ${e}`));
+  }
 
   await auditLog(supabase, {
     usuario_email: s.email,

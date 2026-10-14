@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { costoLineaPP } from './costo-receta-pp';
+import { sincronizarCostosCarta } from '@/lib/carta-costo';
 
 // Redondeo a 6 decimales = precisión de las columnas numeric(14,6).
 // No redondear a entero: un PP por GR/CC cuesta fracciones de peso (ej. 0.856 CLP/GR).
@@ -209,5 +210,9 @@ export async function recalcularCostosPP(supabase: SupabaseClient, ids?: string[
 
   // 2) Escribir solo lo que cambió, en paralelo
   const errores = (await enParalelo(escrituras)).filter((e): e is string => !!e);
+
+  // 3) Llevar los costos nuevos (productos y PP) a las recetas de los platos de Costos
+  const carta = await sincronizarCostosCarta(supabase);
+  errores.push(...carta.errores.map(e => `carta: ${e}`));
   return { recalculadas, errores };
 }

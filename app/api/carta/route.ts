@@ -5,6 +5,7 @@ import { requireRol } from '@/lib/auth-server';
 import { auditLog } from '@/lib/audit';
 import { CATEGORIAS_CARTA, esTipoCarta } from '@/lib/carta';
 import { normalizarCodigoToteat } from '@/lib/defontana-consumo';
+import { normalizarUMCarta as normalizarUM, precioUnitarioPorUnidad } from '@/lib/carta-costo';
 
 let cartaTipoCartaColumnExists: boolean | null = null;
 
@@ -70,25 +71,6 @@ function sinCodigoToteat<T extends { codigo_toteat?: unknown }>(row: T) {
   return next;
 }
 
-function normalizarUM(um: string | null | undefined) {
-  const val = (um ?? '').trim().toUpperCase();
-  return val === 'UND' ? 'UN' : val;
-}
-
-function precioUnitarioPorUnidad(
-  unidadIngrediente: string,
-  unidadProducto: string,
-  costoPromedio: number,
-) {
-  const iUM = normalizarUM(unidadIngrediente);
-  const pUM = normalizarUM(unidadProducto);
-  if (iUM === pUM) return costoPromedio;
-  if (iUM === 'GR' && pUM === 'KG') return costoPromedio / 1000;
-  if (iUM === 'CC' && pUM === 'LT') return costoPromedio / 1000;
-  if (iUM === 'KG' && pUM === 'GR') return costoPromedio * 1000;
-  if (iUM === 'LT' && pUM === 'CC') return costoPromedio * 1000;
-  return costoPromedio;
-}
 
 async function prepararIngredientes(
   supabase: Awaited<ReturnType<typeof createClient>>,
