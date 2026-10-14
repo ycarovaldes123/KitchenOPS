@@ -14,6 +14,8 @@ interface Props {
   /** Solo admin: alterna Activo/Inactivo sin entrar a Editar. */
   onToggleActivo?: () => void;
   cambiandoEstado?: boolean;
+  /** Solo admin: "Eliminar plato" desde la ficha (lo saca de la carta; queda en Inactivos). */
+  onEliminar?: () => void;
   /** Rol Operaciones: cambia o elimina (null) solo el precio carta. Devuelve un mensaje de error o null si guardo. */
   onGuardarPrecio?: (precio: number | null) => Promise<string | null>;
 }
@@ -95,7 +97,7 @@ function PrecioEditable({ precio, onGuardar }: { precio: number | null; onGuarda
 }
 
 // Modo consulta del panel lateral: es lo primero que se ve al elegir un plato; editar es una accion explicita.
-export default function PlatoConsulta({ plato, onEdit, onCopy, onToggleActivo, cambiandoEstado = false, onGuardarPrecio }: Props) {
+export default function PlatoConsulta({ plato, onEdit, onCopy, onToggleActivo, cambiandoEstado = false, onEliminar, onGuardarPrecio }: Props) {
   const ings = plato.carta_ingredientes ?? [];
   const sem = SEMAFORO[plato.semaforo];
 
@@ -139,6 +141,11 @@ export default function PlatoConsulta({ plato, onEdit, onCopy, onToggleActivo, c
             </button>
           ) : !plato.activo && (
             <span className="ck-tag ck-tag--inactivo">Inactivo</span>
+          )}
+          {onEliminar && plato.activo && (
+            <button type="button" className="ck-btn ck-btn--danger" onClick={onEliminar} disabled={cambiandoEstado} title="Eliminar plato de la carta">
+              <NavIcon name="trash" size={15} /> Eliminar
+            </button>
           )}
           <span style={{ flex: 1 }} />
           <Semaforo color={plato.semaforo} margen={plato.margen_pct} />

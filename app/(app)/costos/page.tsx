@@ -328,6 +328,29 @@ export default function CostosPage() {
     }
   }
 
+  // Eliminar desde la ficha: mismo efecto que "Eliminar plato" del editor (DELETE = queda inactivo).
+  async function eliminarPlato(plato: Plato) {
+    if (cambiandoEstado) return;
+    if (!window.confirm(`¿Eliminar "${plato.nombre}" de la carta? Deja de aparecer en Costos, pero se conserva con su receta en Inactivos.`)) return;
+    setCambiandoEstado(plato.id);
+    try {
+      const res = await fetch('/api/carta', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: plato.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? 'No se pudo eliminar el plato');
+      setPlatos(prev => prev.map(p => p.id === plato.id ? { ...p, activo: false } : p));
+      abrirPanel(null);
+      setAviso({ texto: `${plato.nombre} eliminado de la carta (queda en Inactivos)` });
+    } catch (e) {
+      setAviso({ texto: e instanceof Error ? e.message : 'No se pudo eliminar el plato', error: true });
+    } finally {
+      setCambiandoEstado(null);
+    }
+  }
+
   // "+" / "Completar" en Ventas Toteat: nunca se crea un segundo plato para un codigo ya asociado.
   function crearDesdeVenta(v: VentaProducto) {
     const codigo = normalizarCodigoToteat(v.codigo);
@@ -734,6 +757,7 @@ export default function CostosPage() {
           onEdit={canManage ? () => abrirPanel({ modo: 'editar', platoId: plato.id }) : undefined}
           onCopy={isAdmin ? () => abrirPanel({ modo: 'copiar', platoId: plato.id }) : undefined}
           onToggleActivo={isAdmin ? () => void toggleActivo(plato) : undefined}
+          onEliminar={isAdmin ? () => void eliminarPlato(plato) : undefined}
           cambiandoEstado={cambiandoEstado === plato.id}
           onGuardarPrecio={soloPrecio ? precio => guardarPrecio(plato, precio) : undefined}
         />
