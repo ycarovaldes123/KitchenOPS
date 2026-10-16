@@ -11,7 +11,8 @@ import { parseRecetaPPBody, generarCodigoReceta, reemplazarIngredientes, recalcu
 //                                         → { accion: "crear", ...receta } create a recipe from the editor
 
 export async function GET(req: NextRequest) {
-  const s = await requireRol(['admin', 'finanzas']);
+  // Cocina puede consultar las recetas (solo lectura); crear/recalcular sigue siendo admin/finanzas.
+  const s = await requireRol(['admin', 'finanzas', 'cocina']);
   if (!s.ok) return s.response;
 
   const supabase = await createClient();

@@ -18,13 +18,15 @@ interface Props {
   receta: PPReceta;
   duplicada: boolean;
   busy: boolean;
+  /** Solo consulta (rol cocina): oculta Editar / Copiar / Activar / Eliminar. */
+  soloLectura?: boolean;
   onEdit: () => void;
   onCopy: () => void;
   onToggle: () => void;
   onDelete: () => void;
 }
 
-export default function RecetaPPFicha({ receta, duplicada, busy, onEdit, onCopy, onToggle, onDelete }: Props) {
+export default function RecetaPPFicha({ receta, duplicada, busy, soloLectura = false, onEdit, onCopy, onToggle, onDelete }: Props) {
   const ingredientes = [...(receta.ingredientes ?? [])].sort((a, b) => a.orden - b.orden);
   const um = receta.unidad_rendimiento;
 
@@ -41,7 +43,7 @@ export default function RecetaPPFicha({ receta, duplicada, busy, onEdit, onCopy,
           {duplicada && <span className="rpp-tag" style={{ marginLeft: 0 }} title="Otra receta activa tiene el mismo nombre o código PP">Posible duplicada</span>}
         </div>
 
-        <div className="rpp-ficha-actions">
+        {!soloLectura && <div className="rpp-ficha-actions">
           <button type="button" className="rpp-btn rpp-btn-sm rpp-btn-accent" onClick={onEdit}>
             <NavIcon name="edit" size={14} /> Editar
           </button>
@@ -55,7 +57,7 @@ export default function RecetaPPFicha({ receta, duplicada, busy, onEdit, onCopy,
           <button type="button" className="rpp-btn rpp-btn-sm rpp-btn-danger" onClick={onDelete} disabled={busy}>
             <NavIcon name="trash" size={14} /> Eliminar
           </button>
-        </div>
+        </div>}
       </header>
 
       <div className="rpp-ficha-body">

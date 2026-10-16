@@ -44,10 +44,13 @@ export default function MaestrosPage() {
   const { rol } = useRol();
   const isAdmin = rol === 'admin';
   const canManageProductos = isAdmin || rol === 'finanzas';
-  const [tab, setTab]           = useState<Tab>('pp');
+  // Cocina solo ve la pestaña Recetas PP y en modo consulta (sin crear/editar/importar/recalcular).
+  const soloLectura = rol === 'cocina';
+  const tabsVisibles: Tab[] = soloLectura ? ['recetas'] : ['pp', 'recetas', 'productos', 'personal'];
+  const [tab, setTab]           = useState<Tab>(soloLectura ? 'recetas' : 'pp');
   const [productos, setProductos] = useState<Producto[]>([]);
   const [pps, setPPs]           = useState<PP[]>([]);
-  const [loading, setLoading]   = useState(true);
+  const [loading, setLoading]   = useState(!soloLectura);
   const [search, setSearch]     = useState('');
   const [ppTipoFiltro, setPPTipoFiltro] = useState<TipoPP | ''>('');
 
@@ -112,7 +115,10 @@ export default function MaestrosPage() {
     return () => document.removeEventListener('keydown', onKey);
   }, [fichaEnDrawer, drawerOpen, recetaModal]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    if (soloLectura) loadRecetas();
+    else load();
+  }, []);
 
   async function load() {
     setLoading(true);
@@ -451,7 +457,7 @@ export default function MaestrosPage() {
           {tab === 'pp' && (
             <button onClick={openNewPP} style={btnPrimary}>+ Nuevo PP</button>
           )}
-          {tab === 'recetas' && (
+          {tab === 'recetas' && !soloLectura && (
             <div className="rpp rpp-actions">
               <input
                 ref={recetasFileRef}
@@ -542,7 +548,7 @@ export default function MaestrosPage() {
         };
         return (
           <div role="tablist" aria-label="Maestros" style={{ display: 'flex', gap: '4px', marginBottom: '24px', boxShadow: 'inset 0 -1px 0 var(--bo)', overflowX: 'auto', scrollbarWidth: 'none' }}>
-            {(['pp', 'recetas', 'productos', 'personal'] as Tab[]).map(t => (
+            {tabsVisibles.map(t => (
               <button
                 key={t}
                 type="button"
@@ -754,11 +760,11 @@ export default function MaestrosPage() {
                   Mostrar inactivas
                   {recetasInactivas > 0 && <span className="rpp-check-count">{recetasInactivas}</span>}
                 </label>
-                <label className="rpp-check">
+                {!soloLectura && <label className="rpp-check">
                   <input type="checkbox" checked={soloDuplicadas} onChange={e => setSoloDuplicadas(e.target.checked)} />
                   Solo posibles duplicadas
                   <span className={`rpp-check-count${duplicadas.size > 0 ? ' is-warn' : ''}`}>{duplicadas.size}</span>
-                </label>
+                </label>}
               </div>
 
               {recetasLoading ? (
@@ -766,7 +772,7 @@ export default function MaestrosPage() {
               ) : recetas.length === 0 ? (
                 <div className="rpp-card rpp-empty">
                   <p style={{ fontSize: '14px', margin: '0 0 8px', color: 'var(--tx)' }}>No hay recetas PP</p>
-                  <p style={{ margin: 0 }}>Usa &quot;Nueva receta&quot; o &quot;Importar recetas PP&quot; (hoja PRODUCCION de Recetas Torobayo Actualizadas.xlsx)</p>
+                  {!soloLectura && <p style={{ margin: 0 }}>Usa &quot;Nueva receta&quot; o &quot;Importar recetas PP&quot; (hoja PRODUCCION de Recetas Torobayo Actualizadas.xlsx)</p>}
                 </div>
               ) : (
                 <div className="rpp-layout">
@@ -802,7 +808,7 @@ export default function MaestrosPage() {
                               <td className="col-code"><span className="rpp-code">{rec.codigo_receta}</span></td>
                               <td>
                                 <span className="rpp-row-name">{rec.nombre}</span>
-                                {duplicadas.has(rec.id) && <span className="rpp-tag" title="Otra receta activa tiene el mismo nombre o código PP">Duplicada</span>}
+                                {!soloLectura && duplicadas.has(rec.id) && <span className="rpp-tag" title="Otra receta activa tiene el mismo nombre o código PP">Duplicada</span>}
                                 <span className="rpp-row-sub">{rec.codigo_receta} · {formatCantidad(rec.rendimiento)} {rec.unidad_rendimiento}</span>
                               </td>
                               <td className="num col-rend"><span className="rpp-num">{formatCantidad(rec.rendimiento)}</span><span className="rpp-num-unit">{rec.unidad_rendimiento}</span></td>
@@ -826,7 +832,8 @@ export default function MaestrosPage() {
                       {selectedReceta ? (
                         <RecetaPPFicha
                           receta={selectedReceta}
-                          duplicada={duplicadas.has(selectedReceta.id)}
+                          duplicada={!soloLectura && duplicadas.has(selectedReceta.id)}
+                          soloLectura={soloLectura}
                           busy={recetaAccion === selectedReceta.id}
                           onEdit={() => setRecetaModal({ edit: selectedReceta })}
                           onCopy={() => setRecetaModal({ copy: selectedReceta })}
@@ -859,7 +866,8 @@ export default function MaestrosPage() {
                     </div>
                     <RecetaPPFicha
                       receta={selectedReceta}
-                      duplicada={duplicadas.has(selectedReceta.id)}
+                      duplicada={!soloLectura && duplicadas.has(selectedReceta.id)}
+                      soloLectura={soloLectura}
                       busy={recetaAccion === selectedReceta.id}
                       onEdit={() => setRecetaModal({ edit: selectedReceta })}
                       onCopy={() => setRecetaModal({ copy: selectedReceta })}
@@ -1068,7 +1076,7 @@ export default function MaestrosPage() {
       )}
 
       {/* ── Modal Receta PP ── */}
-      {recetaModal !== false && (
+      {recetaModal !== false && !soloLectura && (
         <RecetaPPEditorModal
           receta={recetaModal !== 'new' && 'edit' in recetaModal ? recetaModal.edit : null}
           copyFrom={recetaModal !== 'new' && 'copy' in recetaModal ? recetaModal.copy : null}

@@ -133,7 +133,8 @@ export const PERMISOS: Record<RolType, Record<Modulo, PermisoModulo>> = {
     // la pestaña "Consumo ventas" se oculta para este rol en la propia pagina.
     costos:     LECTURA_COSTOS,
     export:     NADA,
-    maestros:   NADA,
+    // Maestros: solo consulta de la pestaña Recetas PP (las demas pestañas se ocultan en la pagina).
+    maestros:   LECTURA_COSTOS,
   },
 
   // Gerente de Operaciones (mdelannoy): solo consulta/visualizacion en Historial, Ventas,
