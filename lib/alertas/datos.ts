@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 export interface DatosSistema {
   produccion: { id: string; fecha: string; responsable_nombre: string | null; observacion: string | null; created_at: string }[];
-  detalleProduccion: { id: string; produccion_id: string; pp_id: string | null; nombre_pp: string | null; tipo_pp: string | null; cantidad: number; gramos_por_pp: number | null; total_producido: number | null; codigo_producto: string | null; costo_unitario: number | null }[];
+  detalleProduccion: { id: string; produccion_id: string; pp_id: string | null; nombre_pp: string | null; tipo_pp: string | null; cantidad: number; gramos_por_pp: number | null; total_producido: number | null; codigo_producto: string | null; costo_unitario: number | null; costo_total: number | null }[];
   rendimiento: { id: string; produccion_id: string | null; fecha: string; verdura: string; kg_utilizados: number; rendimiento_kg: number; responsable_nombre: string | null }[];
   mermas: { id: string; fecha: string; responsable_nombre: string | null; observacion: string | null; created_at: string }[];
   detalleMermas: { id: string; merma_id: string; codigo_producto: string | null; nombre_producto: string | null; cantidad: number; unidad_medida: string | null; motivo: string | null; costo_unitario: number | null }[];
@@ -41,7 +41,7 @@ async function productos(supabase: SupabaseClient): Promise<DatosSistema['produc
 export async function cargarDatosSistema(supabase: SupabaseClient): Promise<DatosSistema> {
   const [produccion, detalleProduccion, rendimiento, mermas, detalleMermas, colacion, detalleColacion, carnicos, prods, pp, recetas] = await Promise.all([
     todas<DatosSistema['produccion'][number]>(supabase, 'produccion', 'id,fecha,responsable_nombre,observacion,created_at'),
-    todas<DatosSistema['detalleProduccion'][number]>(supabase, 'detalle_produccion', 'id,produccion_id,pp_id,nombre_pp,tipo_pp,cantidad,gramos_por_pp,total_producido,codigo_producto,costo_unitario'),
+    todas<DatosSistema['detalleProduccion'][number]>(supabase, 'detalle_produccion', 'id,produccion_id,pp_id,nombre_pp,tipo_pp,cantidad,gramos_por_pp,total_producido,codigo_producto,costo_unitario,costo_total'),
     todas<DatosSistema['rendimiento'][number]>(supabase, 'rendimiento', 'id,produccion_id,fecha,verdura,kg_utilizados,rendimiento_kg,responsable_nombre'),
     todas<DatosSistema['mermas'][number]>(supabase, 'mermas', 'id,fecha,responsable_nombre,observacion,created_at'),
     todas<DatosSistema['detalleMermas'][number]>(supabase, 'detalle_mermas', 'id,merma_id,codigo_producto,nombre_producto,cantidad,unidad_medida,motivo,costo_unitario'),

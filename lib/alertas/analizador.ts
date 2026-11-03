@@ -4,7 +4,8 @@
 
 import { INICIO_MODULO, REGLAS } from './catalogo';
 import type { DatosSistema } from './datos';
-import type { Alerta, Evidencia, ModuloAlerta, MovimientoOrigen, NivelAlerta, VolumenUsuario } from './types';
+import { auditarCantidad, type Referencia } from './auditor-produccion';
+import type { Alerta, EdicionMovimiento, Evidencia, ModuloAlerta, MovimientoOrigen, NivelAlerta, VolumenUsuario } from './types';
 
 // ── Utilidades ────────────────────────────────────────────────────────
 const REGLA = new Map(REGLAS.map(r => [r.codigo, r]));
@@ -19,6 +20,15 @@ function um(u: string | null | undefined): string {
 }
 const esMasaChica = (u: string) => u === 'GR' || u === 'CC';
 const esMasaGrande = (u: string) => u === 'KG' || u === 'LT';
+// Unidad en que se ingresa la cantidad de una línea de producción (ver calcTotalPP en lib/calculos.ts)
+function unidadProduccion(tipo: string | null, umProducto: string | null | undefined): string {
+  const t = String(tipo ?? '').toUpperCase();
+  if (t === 'PORCION') return 'PP';
+  if (t === 'UND') return 'UN';
+  if (t === 'CC') return 'CC';
+  const u = um(umProducto);
+  return u === 'LT' || u === 'CC' ? 'CC' : 'GR';
+}
 
 function fmtN(n: number): string {
   return (Number(n) || 0).toLocaleString('es-CL', { maximumFractionDigits: 2 });
@@ -72,6 +82,7 @@ interface NuevaAlerta {
   movimiento: MovimientoOrigen;
   nivel?: NivelAlerta;
   origen?: string | null;      // id del registro de cabecera que originó la alerta
+  edicion?: EdicionMovimiento;
 }
 
 function crear(p: NuevaAlerta): Alerta {
@@ -93,6 +104,7 @@ function crear(p: NuevaAlerta): Alerta {
     estado: 'PENDIENTE',
     historial: [{ estado: 'PENDIENTE', fecha: p.movimiento.created_at || p.fecha, usuario: 'Sistema', nota: 'Detectada por el análisis' }],
     origen: p.origen ?? undefined,
+    edicion: p.edicion,
   };
 }
 
@@ -129,6 +141,10 @@ export function analizarDatos(d: DatosSistema, desde: string = INICIO_MODULO): R
     const c = cabCol.get(l.colacion_id); if (!c) continue;
     lineas.push({ id: l.id, cab: l.colacion_id, modulo: 'Colación', prefijo: 'COL', codigo: l.codigo_producto, nombre: l.nombre_producto ?? '', cantidad: Number(l.cantidad), um: um(l.unidad_medida), costo: l.costo_unitario, fecha: c.fecha, creado: c.created_at, por: c.responsable_nombre ?? '—', obs: c.menu });
   }
+  // Las líneas "PLATO PREPARADO" arrastran detalle de insumos: desde Alertas solo se corrige la fecha
+  const edLinea = (l: Linea): EdicionMovimiento => /^PLATO PREPARADO:/i.test(l.nombre)
+    ? { tipo: 'cabecera', modulo: l.modulo as 'Mermas' | 'Colación', cabeceraId: l.cab, fecha: l.fecha }
+    : { tipo: 'linea', modulo: l.modulo as 'Mermas' | 'Colación', cabeceraId: l.cab, lineaId: l.id, cantidad: l.cantidad, unidad: l.um, fecha: l.fecha };
   const mov = (l: Linea): MovimientoOrigen => ({
     id: idCorto(l.prefijo, l.cab), fecha_movimiento: l.fecha, created_at: l.creado?.slice(0, 19) ?? l.fecha, created_by: l.por,
     cantidad: `${fmtN(l.cantidad)} ${l.um || ''}`.trim(), motivo: l.motivo ?? undefined, observacion: l.obs ?? undefined,
@@ -151,7 +167,7 @@ export function analizarDatos(d: DatosSistema, desde: string = INICIO_MODULO): R
           { label: 'Referencia', valor: `1 PP = ${fmtN(g)} ${l.um}` },
           { label: 'Te referías a esto:', valor: `${fmtN(l.cantidad * g)} ${l.um}` },
         ],
-        fecha: l.fecha, movimiento: mov(l), origen: l.cab,
+        fecha: l.fecha, movimiento: mov(l), origen: l.cab, edicion: edLinea(l),
       }));
     } else if (l.cantidad > 0 && ((esMasaChica(l.um) && l.cantidad < 5) || (esMasaGrande(l.um) && l.cantidad >= 100))) {
       // VAL-UNI-002 · escala sospechosa (KG ↔ GR)
@@ -166,7 +182,7 @@ export function analizarDatos(d: DatosSistema, desde: string = INICIO_MODULO): R
           { label: 'Dato ingresado', valor: `${fmtN(l.cantidad)} ${l.um}`, destacado: true },
           { label: 'Te referías a esto:', valor: chico ? `${fmtN(l.cantidad)} ${l.um === 'GR' ? 'KG' : 'LT'}` : `${fmtN(l.cantidad / 1000)} ${l.um}` },
         ],
-        fecha: l.fecha, movimiento: mov(l), origen: l.cab,
+        fecha: l.fecha, movimiento: mov(l), origen: l.cab, edicion: edLinea(l),
       }));
     }
 
@@ -177,7 +193,7 @@ export function analizarDatos(d: DatosSistema, desde: string = INICIO_MODULO): R
         detalle: `Línea en ${l.um} · maestro en ${umMaestro}`,
         explicacion: `La línea se registró en ${l.um} pero el producto se maneja en ${umMaestro} en Maestros; el costo se calcula con la unidad del maestro.`,
         evidencia: [{ label: 'Unidad en la línea', valor: l.um, destacado: true }, { label: 'Unidad en Maestros', valor: umMaestro }, { label: 'Cantidad', valor: `${fmtN(l.cantidad)} ${l.um}` }],
-        fecha: l.fecha, movimiento: mov(l), origen: l.cab,
+        fecha: l.fecha, movimiento: mov(l), origen: l.cab, edicion: edLinea(l),
       }));
     }
 
@@ -188,7 +204,7 @@ export function analizarDatos(d: DatosSistema, desde: string = INICIO_MODULO): R
         detalle: !(l.cantidad > 0) ? 'Cantidad 0' : 'Sin producto',
         explicacion: 'La línea se guardó incompleta y no aporta al registro.',
         evidencia: [{ label: 'Producto', valor: l.nombre.trim() || l.codigo || 'Vacío', destacado: !l.nombre.trim() }, { label: 'Cantidad', valor: fmtN(l.cantidad), destacado: !(l.cantidad > 0) }],
-        fecha: l.fecha, movimiento: mov(l), origen: l.cab,
+        fecha: l.fecha, movimiento: mov(l), origen: l.cab, edicion: edLinea(l),
       }));
     }
   }
@@ -210,7 +226,7 @@ export function analizarDatos(d: DatosSistema, desde: string = INICIO_MODULO): R
       detalle: `${g.length} líneas iguales de ${fmtN(l.cantidad)} ${l.um}`,
       explicacion: `El mismo producto con la misma cantidad aparece ${g.length} veces en un solo registro. Puede ser una carga repetida.`,
       evidencia: [{ label: 'Repeticiones', valor: String(g.length), destacado: true }, { label: 'Cada línea', valor: `${fmtN(l.cantidad)} ${l.um}` }, { label: 'Total cargado', valor: `${fmtN(l.cantidad * g.length)} ${l.um}` }],
-      fecha: l.fecha, movimiento: mov(l), origen: l.cab,
+      fecha: l.fecha, movimiento: mov(l), origen: l.cab, edicion: edLinea(g[g.length - 1]),
     }));
   }
 
@@ -233,7 +249,7 @@ export function analizarDatos(d: DatosSistema, desde: string = INICIO_MODULO): R
         detalle: `${fmtN(l.cantidad)} ${l.um} · habitual ${fmtN(med)} ${l.um}`, nivel: l.cantidad >= med * 20 ? 'ALTA' : undefined,
         explicacion: `La merma es ${fmtN(l.cantidad / med)} veces la merma habitual de este producto (${g.length} registros).`,
         evidencia: [{ label: 'Merma registrada', valor: `${fmtN(l.cantidad)} ${l.um}`, destacado: true }, { label: 'Mediana histórica', valor: `${fmtN(med)} ${l.um}` }, { label: 'Registros comparados', valor: String(g.length) }],
-        fecha: l.fecha, movimiento: mov(l), origen: l.cab,
+        fecha: l.fecha, movimiento: mov(l), origen: l.cab, edicion: edLinea(l),
       }));
     }
   }
@@ -258,42 +274,98 @@ export function analizarDatos(d: DatosSistema, desde: string = INICIO_MODULO): R
     id: idCorto('PRO', c.id), fecha_movimiento: c.fecha, created_at: c.created_at?.slice(0, 19) ?? c.fecha, created_by: c.responsable_nombre ?? '—',
     cantidad: `${fmtN(Number(l.cantidad))} ${l.tipo_pp === 'PORCION' ? 'PR' : l.tipo_pp ?? ''}`.trim(), observacion: c.observacion ?? undefined,
   });
+  // Agrupación por código de producto + modalidad (no se mezclan productos de nombre parecido)
   const porPP = new Map<string, typeof lineasProd>();
   for (const x of lineasProd) {
     if (Number(x.l.cantidad) > 0 && !(Number(x.l.costo_unitario) > 0)) sumarCero('Producción', x.l.codigo_producto, x.l.nombre_pp ?? '', x.c.fecha, movProd(x.l, x.c));
-    const k = x.l.pp_id || (x.l.nombre_pp ?? '').toUpperCase();
+    const k = `${x.l.codigo_producto || x.l.pp_id || (x.l.nombre_pp ?? '').toUpperCase()}|${x.l.tipo_pp ?? ''}`;
     if (Number(x.l.cantidad) > 0) porPP.set(k, [...(porPP.get(k) ?? []), x]);
   }
-  // VAL-PRO-001 · cantidad atípica
+  // VAL-PRO-002 (escala ×10/×100/×1.000) y VAL-PRO-001 (cantidad atípica) · auditor histórico (lib/alertas/auditor-produccion.ts)
   for (const g of porPP.values()) {
-    if (g.length < 8) continue;
-    const med = mediana(g.map(x => Number(x.l.cantidad)));
-    if (!(med > 0)) continue;
+    const historial: Referencia[] = g.map(({ l, c }) => ({ id: l.id, fecha: c.fecha, cantidad: Number(l.cantidad), costo: l.costo_total }));
     for (const { l, c } of g) {
+      if (c.fecha < desde) continue;
       const q = Number(l.cantidad);
-      if (q < med * 5) continue;
-      // PP por porción: si la cantidad, leída como gramos, da una cantidad de PP cercana a lo habitual,
-      // lo más probable es que se ingresaron los GR directo en vez de las porciones.
+      const r = auditarCantidad({ id: l.id, fecha: c.fecha, cantidad: q, costo: l.costo_total }, historial);
+      if (!r) continue;
+      const u = unidadProduccion(l.tipo_pp, l.codigo_producto ? prod.get(l.codigo_producto)?.unidad_medida : null);
+      const nombre = l.nombre_pp ?? '—';
+      const cod = l.codigo_producto ? `${l.codigo_producto} · ` : '';
+      const lotesTxt = r.lotes.slice(0, 3).map(x => `${fmtN(x.centro)} ${u} (${x.n} de ${r.comparables})`).join(' · ') || `mediana ${fmtN(r.mediana)} ${u}`;
+      const periodo = `${fmtF(r.desde)} – ${fmtF(r.hasta)}`;
+      const costoTxt = Number(l.costo_total) > 0 && r.costoHabitualLote
+        ? `$${fmtN(Math.round(Number(l.costo_total)))} · un lote habitual ≈ $${fmtN(r.costoHabitualLote)}` : null;
+      const confianza = { label: 'Confianza', valor: `${r.confianza} · ${r.fundamento}` };
+      const nivel: NivelAlerta = r.severidad === 'CRITICA' || r.severidad === 'ALTA' ? 'ALTA' : r.severidad === 'MEDIA' ? 'REVISAR' : 'INFO';
+      const base = {
+        clave: l.id, modulo: 'Producción' as const, registro: nombre, codigo: l.codigo_producto, nivel, fecha: c.fecha,
+        movimiento: movProd(l, c), origen: c.id,
+        edicion: { tipo: 'linea', modulo: 'Producción', cabeceraId: c.id, lineaId: l.id, cantidad: q, unidad: u, fecha: c.fecha } as EdicionMovimiento,
+      };
+
+      // PP por porción: la cantidad leída como gramos da una cantidad de PP habitual → se ingresaron GR en vez de PP
       const gr = Number(l.gramos_por_pp) || 0;
       const enPP = gr > 0 ? q / gr : 0;
-      const posibleGR = l.tipo_pp === 'PORCION' && gr > 0 && q >= gr && enPP < med * 5;
+      if (r.tipo !== 'BAJA' && l.tipo_pp === 'PORCION' && gr > 0 && q >= gr && enPP >= r.p10 * 0.5 && enPP <= r.p90 * 2) {
+        alertas.push(crear({
+          ...base, edicion: { ...base.edicion, sugerida: Math.round(enPP * 100) / 100 } as EdicionMovimiento,
+          regla: 'VAL-PRO-002', titulo: 'Posible ingreso en GR en vez de PP',
+          detalle: `${fmtN(q)} PP · ¿eran ${fmtN(q)} GR = ${fmtN(enPP)} PP?`,
+          explicacion: `${cod}${nombre}: se ingresaron ${fmtN(q)}, posiblemente como GR. Este PP se registra en porciones (1 PP = ${fmtN(gr)} GR): ${fmtN(q)} GR equivalen a ${fmtN(enPP)} PP, en línea con lo habitual (${lotesTxt}; ${r.comparables} producciones, ${periodo}).`,
+          evidencia: [
+            { label: 'Cantidad ingresada', valor: `${fmtN(q)} PP`, destacado: true },
+            { label: 'Te referías a esto:', valor: `${fmtN(enPP)} PP` },
+            { label: 'Equivalencia', valor: `1 PP = ${fmtN(gr)} GR` },
+            { label: 'Lotes habituales', valor: lotesTxt },
+            confianza,
+          ],
+        }));
+        continue;
+      }
+
+      if (r.tipo === 'ESCALA' && r.factor && r.pretendida) {
+        const menor = r.factor >= 1;
+        const veces = menor ? r.factor : 1 / r.factor;
+        const op = menor ? `× ${fmtN(veces)}` : `÷ ${fmtN(veces)}`;
+        const kgEnGr = menor && veces === 1000 && (u === 'GR' || u === 'CC');
+        const enLote = r.lotes.find(x => x.centro === r.loteReferencia)?.n;
+        alertas.push(crear({
+          ...base, edicion: { ...base.edicion, sugerida: Math.round(r.pretendida * 1000) / 1000 } as EdicionMovimiento,
+          regla: 'VAL-PRO-002',
+          titulo: `${r.severidad === 'CRITICA' ? 'Crítica · ' : ''}Posible error de escala ×${fmtN(veces)}`,
+          detalle: `${fmtN(q)} ${u} · lote habitual ${fmtN(r.loteReferencia)} ${u} · ¿${fmtN(r.pretendida)} ${u}?`,
+          explicacion: `${cod}${nombre}: se registraron ${fmtN(q)} ${u}, mientras que ${enLote ?? 'varias'} de las últimas ${r.comparables} producciones (${periodo}) corresponden a lotes de ~${fmtN(r.loteReferencia)} ${u}. `
+            + `La cantidad registrada es ${fmtN(veces)} veces ${menor ? 'menor' : 'mayor'} que ese lote (${fmtN(q)} ${op} = ${fmtN(r.pretendida)} ${u})`
+            + `${kgEnGr ? `, lo que sugiere un ingreso en ${u === 'GR' ? 'KG dentro de un campo GR' : 'LT dentro de un campo CC'}` : ''}. `
+            + 'Que lo ingresado coincida con lo producido no confirma la cantidad.'
+            + (r.cambioReciente ? ` ${r.cambioReciente}` : ''),
+          evidencia: [
+            { label: 'Cantidad registrada', valor: `${fmtN(q)} ${u}`, destacado: true },
+            { label: 'Te referías a esto:', valor: `${fmtN(r.pretendida)} ${u} (${op})` },
+            { label: 'Lotes habituales', valor: lotesTxt },
+            ...(costoTxt ? [{ label: 'Costo registrado', valor: costoTxt }] : []),
+            confianza,
+          ],
+        }));
+        continue;
+      }
+
+      const veces = r.tipo === 'BAJA' ? r.loteReferencia / q : q / r.loteReferencia;
       alertas.push(crear({
-        regla: 'VAL-PRO-001', clave: l.id, modulo: 'Producción', registro: l.nombre_pp ?? '—', codigo: l.codigo_producto,
-        titulo: posibleGR ? 'Posible ingreso en GR en vez de PP' : undefined,
-        detalle: posibleGR ? `${fmtN(q)} PP · ¿eran ${fmtN(q)} GR = ${fmtN(enPP)} PP?` : `${fmtN(q)} · habitual ${fmtN(med)}`,
-        nivel: q >= med * 10 ? 'ALTA' : undefined,
-        explicacion: posibleGR
-          ? `Se ingresaron ${fmtN(q)} directo, posiblemente como GR. Este PP se registra en porciones (1 PP = ${fmtN(gr)} GR): ${fmtN(q)} GR equivalen a ${fmtN(enPP)} PP. Lo habitual es ${fmtN(med)} PP (${g.length} registros).`
-          : `Se registró ${fmtN(q / med)} veces la producción habitual de este PP (${g.length} registros).`,
-        evidencia: posibleGR
-          ? [
-              { label: 'Cantidad ingresada', valor: `${fmtN(q)} PP`, destacado: true },
-              { label: 'Equivalencia', valor: `1 PP = ${fmtN(gr)} GR` },
-              { label: 'Te referías a esto:', valor: `${fmtN(enPP)} PP` },
-              { label: 'Mediana histórica', valor: `${fmtN(med)} PP` },
-            ]
-          : [{ label: 'Cantidad registrada', valor: fmtN(q), destacado: true }, { label: 'Mediana histórica', valor: fmtN(med) }, { label: 'Tipo PP', valor: l.tipo_pp ?? '—' }],
-        fecha: c.fecha, movimiento: movProd(l, c), origen: c.id,
+        ...base, regla: 'VAL-PRO-001',
+        titulo: `Producción ${r.tipo === 'BAJA' ? 'muy inferior' : 'muy superior'} a lo habitual`,
+        detalle: `${fmtN(q)} ${u} · habitual ${fmtN(r.loteReferencia)} ${u}`,
+        explicacion: `${cod}${nombre}: se registraron ${fmtN(q)} ${u}; lo habitual en las últimas ${r.comparables} producciones (${periodo}) es ${lotesTxt}, con rango normal ${fmtN(r.p10)}–${fmtN(r.p90)} ${u}. `
+          + `La cantidad es ${fmtN(veces)} veces ${r.tipo === 'BAJA' ? 'menor' : 'mayor'} que el lote más cercano y no coincide con un error de escala ×10/×100/×1.000. Puede ser un lote parcial o de prueba, o un error de digitación.`
+          + (r.cambioReciente ? ` ${r.cambioReciente}` : ''),
+        evidencia: [
+          { label: 'Cantidad registrada', valor: `${fmtN(q)} ${u}`, destacado: true },
+          { label: 'Lotes habituales', valor: lotesTxt },
+          { label: 'Rango normal (P10–P90)', valor: `${fmtN(r.p10)} – ${fmtN(r.p90)} ${u}` },
+          ...(costoTxt ? [{ label: 'Costo registrado', valor: costoTxt }] : []),
+          confianza,
+        ],
       }));
     }
   }
@@ -320,7 +392,7 @@ export function analizarDatos(d: DatosSistema, desde: string = INICIO_MODULO): R
       detalle: `Merma ${fmtN(merma)} ${l.um} > producción ${fmtN(producido)} ${l.um}`,
       explicacion: 'La merma del día supera lo producido del mismo PP ese día. Puede ser merma de producción de días anteriores o un error de cantidad.',
       evidencia: [{ label: 'Producido ese día', valor: `${fmtN(producido)} ${l.um}` }, { label: 'Merma ese día', valor: `${fmtN(merma)} ${l.um}`, destacado: true }],
-      fecha: l.fecha, movimiento: mov(l), origen: l.cab,
+      fecha: l.fecha, movimiento: mov(l), origen: l.cab, edicion: edLinea(l),
     }));
   }
 
@@ -334,6 +406,7 @@ export function analizarDatos(d: DatosSistema, desde: string = INICIO_MODULO): R
       explicacion: `El texto menciona el ${fmtF(f)} y el registro tiene fecha ${fmtF(fecha)}. Puede ser correcto (registro al día siguiente) o un error de fecha.`,
       evidencia: [{ label: 'Fecha del registro', valor: fmtF(fecha), destacado: true }, { label: 'Fecha en el texto', valor: fmtF(f) }, { label: modulo === 'Colación' ? 'Menú' : 'Observación', valor: `“${texto}”` }],
       fecha, movimiento: { id: idCorto(prefijo, id), fecha_movimiento: fecha, created_at: creado?.slice(0, 19) ?? fecha, created_by: por ?? '—', observacion: texto ?? undefined }, origen: id,
+      edicion: { tipo: 'cabecera', modulo: modulo as 'Producción' | 'Mermas' | 'Colación', cabeceraId: id, fecha },
     }));
   };
   for (const c of d.produccion) revisarFecha('Producción', 'PRO', c.id, c.fecha, c.observacion, c.created_at, c.responsable_nombre, 'Producción del día');
@@ -350,6 +423,8 @@ export function analizarDatos(d: DatosSistema, desde: string = INICIO_MODULO): R
   for (const [v, arr] of pctPorVerdura) if (arr.length >= 5) pctHabitual.set(v, mediana(arr));
   // VAL-REN-002 · verduras se registran en KG: 100 KG o más en un registro es casi seguro gramos
   const LIMITE_KG_VERDURA = 100;
+  const edRen = (r: DatosSistema['rendimiento'][number], kg: number, rin: number): EdicionMovimiento | undefined =>
+    r.produccion_id ? { tipo: 'rendimiento', cabeceraId: r.produccion_id, lineaId: r.id, kg, rendimiento: rin, fecha: r.fecha } : undefined;
   const movRen = (r: DatosSistema['rendimiento'][number], kg: number, rin: number): MovimientoOrigen => ({
     id: idCorto('REN', r.id), fecha_movimiento: r.fecha, created_at: r.fecha, created_by: r.responsable_nombre ?? '—', cantidad: `${fmtN(kg)} KG → ${fmtN(rin)} KG`,
   });
@@ -366,7 +441,7 @@ export function analizarDatos(d: DatosSistema, desde: string = INICIO_MODULO): R
           { label: 'KG rendidos', valor: `${fmtN(rin)} KG`, destacado: rin >= LIMITE_KG_VERDURA },
           { label: 'Te referías a esto:', valor: `${fmtN(kg / 1000)} KG → ${fmtN(rin / 1000)} KG` },
         ],
-        fecha: r.fecha, movimiento: movRen(r, kg, rin), origen: r.produccion_id,
+        fecha: r.fecha, movimiento: movRen(r, kg, rin), origen: r.produccion_id, edicion: edRen(r, kg, rin),
       }));
       continue; // mismo problema: no se suma la alerta de rendimiento porcentual
     }
@@ -378,7 +453,7 @@ export function analizarDatos(d: DatosSistema, desde: string = INICIO_MODULO): R
       detalle: `Rinde ${fmtN(pct * 100)}% (${fmtN(rin)} de ${fmtN(kg)} KG)`, nivel: pct > 1 ? 'ALTA' : undefined,
       explicacion: pct > 1 ? 'El rendimiento es mayor que lo utilizado: probablemente se invirtieron los valores o hay un error de cantidad.' : `El rendimiento es menos de la mitad de lo habitual para ${r.verdura} (${fmtN((habitual ?? 0) * 100)}%).`,
       evidencia: [{ label: 'KG utilizados', valor: fmtN(kg) }, { label: 'KG rendidos', valor: fmtN(rin), destacado: true }, { label: 'Rendimiento', valor: `${fmtN(pct * 100)}%` }, ...(habitual ? [{ label: 'Habitual', valor: `${fmtN(habitual * 100)}%` }] : [])],
-      fecha: r.fecha, movimiento: movRen(r, kg, rin), origen: r.produccion_id,
+      fecha: r.fecha, movimiento: movRen(r, kg, rin), origen: r.produccion_id, edicion: edRen(r, kg, rin),
     }));
   }
 
@@ -402,6 +477,7 @@ export function analizarDatos(d: DatosSistema, desde: string = INICIO_MODULO): R
         explicacion: `El movimiento es ${fmtN(q / med)} veces lo habitual para este producto y tipo de movimiento (${g.length} registros).`,
         evidencia: [{ label: 'Cantidad', valor: `${fmtN(q)} ${u}`, destacado: true }, { label: 'Mediana', valor: `${fmtN(med)} ${u}` }, { label: 'Movimiento', valor: [m.movimiento, m.subtipo].filter(Boolean).join(' · ') }],
         fecha: m.fecha, movimiento: { id: idCorto('CAR', m.id), fecha_movimiento: m.fecha, created_at: m.created_at?.slice(0, 19) ?? m.fecha, created_by: m.responsable_nombre ?? '—', cantidad: `${fmtN(q)} ${u}`, observacion: m.observacion ?? undefined },
+        edicion: { tipo: 'carnico', lineaId: m.id, cantidad: q, unidad: u, fecha: m.fecha },
       }));
     }
   }

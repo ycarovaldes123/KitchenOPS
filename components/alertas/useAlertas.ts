@@ -25,9 +25,14 @@ export function useAlertas(fuente: FuenteAlertas = fuenteAnalisis) {
     setPedido(p => ({ n: p.n + 1, refrescar: true }));
   }, []);
 
-  const cambiarEstado = useCallback(async (alerta: Alerta, estado: EstadoRevision) => {
-    const actualizada = await fuente.cambiarEstado(alerta, estado, 'Administrador');
+  const cambiarEstado = useCallback(async (alerta: Alerta, estado: EstadoRevision, nota?: string) => {
+    const actualizada = await fuente.cambiarEstado(alerta, estado, 'Administrador', nota);
     setDatos(d => d && { ...d, alertas: d.alertas.map(a => a.id === alerta.id ? actualizada : a) });
+  }, [fuente]);
+
+  // Re-análisis silencioso (tras corregir un movimiento): no muestra "Analizando…" ni bloquea la pantalla
+  const reanalizarEnSegundoPlano = useCallback(() => {
+    fuente.cargar(true).then(d => setDatos(d)).catch(() => { /* se mantiene lo que hay; el botón Actualizar sigue disponible */ });
   }, [fuente]);
 
   const reiniciarRevisiones = useCallback(() => {
@@ -36,5 +41,5 @@ export function useAlertas(fuente: FuenteAlertas = fuenteAnalisis) {
     setPedido(p => ({ n: p.n + 1, refrescar: false }));
   }, []);
 
-  return { datos, error, cargando, actualizar, cambiarEstado, reiniciarRevisiones };
+  return { datos, error, cargando, actualizar, reanalizarEnSegundoPlano, cambiarEstado, reiniciarRevisiones };
 }

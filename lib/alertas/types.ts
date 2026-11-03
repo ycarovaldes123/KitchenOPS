@@ -72,7 +72,15 @@ export interface Alerta {
   estado: EstadoRevision;
   historial: CambioEstado[];
   origen?: string;           // id del registro (producción / merma / colación) que originó la alerta
+  edicion?: EdicionMovimiento; // qué se puede corregir del movimiento desde el módulo Alertas
 }
+
+// Datos para corregir el movimiento de origen desde Alertas (usa los PATCH de cada módulo, solo admin).
+export type EdicionMovimiento =
+  | { tipo: 'linea'; modulo: 'Producción' | 'Mermas' | 'Colación'; cabeceraId: string; lineaId: string; cantidad: number; unidad: string; fecha: string; sugerida?: number }
+  | { tipo: 'rendimiento'; cabeceraId: string; lineaId: string; kg: number; rendimiento: number; fecha: string }
+  | { tipo: 'carnico'; lineaId: string; cantidad: number; unidad: string; fecha: string }
+  | { tipo: 'cabecera'; modulo: 'Producción' | 'Mermas' | 'Colación'; cabeceraId: string; fecha: string };
 
 // Volumen de movimientos por usuario en el período (contexto para la tasa de alertas)
 export interface VolumenUsuario {

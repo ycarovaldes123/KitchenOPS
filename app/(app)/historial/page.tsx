@@ -638,6 +638,57 @@ function Observacion({ texto }: { texto: string | null | undefined }) {
   );
 }
 
+// ── Garzón asociado a mermas "Error Garzón" / "Devolución Cliente" ──
+// El nombre se guarda en detalle_mermas_platos.observacion como "Garzón: …" (Error Garzón) o
+// "Detalle: …" (Devolución Cliente, campo "Garzón u otro motivo"). Los registros antiguos sin ese
+// prefijo tienen texto libre (ej. "Se equivocó"), que no es un nombre: se muestra "No registrado".
+const MOTIVOS_GARZON = new Set(['Error Garzón', 'Devolución Cliente']);
+
+type GarzonItem = { nombre: string | null; plato: string; motivo: string; nota: string | null };
+
+// Solo para mostrar: "ivan torres" → "Ivan Torres" (no modifica lo guardado)
+const nombrePropio = (s: string) => s.trim().toLocaleLowerCase('es-CL').replace(/(^|[\s'-])(\p{L})/gu, (_, sep: string, l: string) => sep + l.toLocaleUpperCase('es-CL'));
+
+function garzonesDeMerma(det: Record<string, unknown>[], platos: Record<string, unknown>[]): GarzonItem[] {
+  const out: GarzonItem[] = [];
+  for (const p of platos) {
+    const motivo = normalizeMotivoMerma(p.motivo);
+    if (!motivo || !MOTIVOS_GARZON.has(motivo)) continue;
+    const obs = String(p.observacion ?? '').trim();
+    const m = /^(Garzón|Garzon|Detalle)\s*:\s*(.*)$/i.exec(obs);
+    const nombre = m && m[2].trim() ? nombrePropio(m[2]) : null;
+    out.push({ nombre, plato: String(p.nombre_plato ?? ''), motivo, nota: !m && obs ? obs : null });
+  }
+  // Líneas de producto con esos motivos sin plato preparado detrás (el detalle no guarda garzón)
+  const conPlato = new Set(platos.map(p => String(p.nombre_plato ?? '').trim().toUpperCase()));
+  for (const d of det) {
+    const motivo = normalizeMotivoMerma(d.motivo);
+    if (!motivo || !MOTIVOS_GARZON.has(motivo)) continue;
+    const nombre = String(d.nombre_producto ?? '');
+    const plato = nombre.replace(/^PLATO PREPARADO:\s*/i, '');
+    if (/^PLATO PREPARADO:/i.test(nombre) && conPlato.has(plato.trim().toUpperCase())) continue;
+    out.push({ nombre: null, plato, motivo, nota: null });
+  }
+  return out;
+}
+
+function Garzones({ items }: { items: GarzonItem[] }) {
+  if (!items.length) return null;
+  return (
+    <div className="hst-garzones">
+      {items.map((g, i) => (
+        <div key={i} className={`hst-garzon${g.nombre ? '' : ' is-vacio'}`}>
+          <span className="hst-garzon-ico"><NavIcon name="user" size={14} strokeWidth={2.2} /></span>
+          <div>
+            <b>Garzón: {g.nombre ?? 'No registrado'}</b>
+            <small>{g.plato} · {g.motivo}{g.nota ? ` · “${g.nota}”` : ''}</small>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function FiltradoNota({ q, visibles, total, unidad }: { q: string; visibles: number; total: number; unidad: string }) {
   return <p className="hst-filtrado">Mostrando solo lo que coincide con «{q}»: {visibles} de {total} {unidad}</p>;
 }
@@ -1889,6 +1940,7 @@ function TablaMermas({ datos, isAdmin, onRefresh, verCostos, productos, porDia, 
                         })}
                       </div>
                       <Observacion texto={m.observacion as string} />
+                      <Garzones items={garzonesDeMerma(det, platos)} />
                     </div>
 
                     {platosMostrar.length > 0 && (

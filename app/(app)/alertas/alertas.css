@@ -163,3 +163,32 @@ button.alr-kpi:focus-visible { outline: 2px solid var(--ac); outline-offset: 2px
 .alr-mail-item span { font-size: 12.5px; color: var(--ts); }
 .alr-mail-more { margin: 12px 0 16px; font-size: 13px; color: var(--ts); }
 .alr-mail-banner { margin: 0 24px; padding: 8px 12px; border-radius: 8px; background: var(--alr-info-bg); border: 1px solid var(--alr-info-bo); color: var(--alr-info); font-size: 12.5px; }
+
+/* ── Rango de fechas personalizado ── */
+.alr-rango { display: flex; gap: 8px; flex-wrap: wrap; }
+.alr-rango label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ts); }
+.alr-date { padding: 0 10px; cursor: text; font-family: inherit; }
+@media (max-width: 639px) {
+  .alr-rango { width: 100%; }
+  .alr-rango label { flex: 1 1 calc(50% - 4px); }
+  .alr-rango .alr-date { flex: 1; min-width: 0; }
+}
+
+/* ── Corregir movimiento (drawer, cuando la alerta está marcada como error) ── */
+.alr-edit { margin-top: 16px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--alr-alta-bo); background: var(--alr-alta-bg); }
+.alr-edit h3 { display: flex; align-items: center; gap: 6px; margin: 0 0 4px; font-size: 13.5px; font-weight: 700; color: var(--alr-alta); }
+.alr-edit-hint { margin: 6px 0 0; font-size: 12.5px; color: var(--ts); line-height: 1.4; }
+.alr-edit-none { margin-top: 16px; }
+.alr-edit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-top: 12px; }
+.alr-edit-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ts); }
+.alr-input { width: 100%; padding: 0 10px; cursor: text; font-family: inherit; }
+.alr-edit-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.alr-edit .rpp-alert { margin-top: 10px; }
+
+/* Aviso tras guardar una corrección */
+.alr-aviso { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 16px; }
+.rpp-alert.is-success { background: var(--alr-obs-bg); border-color: var(--alr-obs-bo); color: var(--alr-obs); }
+
+/* Evidencia adicional (lotes, costo, confianza) bajo las 3 tarjetas principales */
+.alr-evid-mas { margin-top: 10px; font-size: 12.5px; }
+.alr-edit-sug .rpp-btn { margin-top: 6px; align-self: flex-start; }

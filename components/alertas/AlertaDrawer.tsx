@@ -6,6 +6,7 @@ import { fmtFecha, fmtFechaHora } from '@/lib/alertas/metricas';
 import { REGLAS } from '@/lib/alertas/catalogo';
 import type { Alerta, EstadoRevision, ModoRegla } from '@/lib/alertas/types';
 import { ESTADO_LABEL, EstadoChip, NivelChip } from './AlertasChips';
+import EditarMovimiento from './EditarMovimiento';
 
 const MODO_LABEL: Record<ModoRegla, string> = { OBSERVAR: 'Observar', ADVERTIR: 'Advertir al guardar', BLOQUEAR: 'Bloquear' };
 
@@ -13,6 +14,8 @@ interface Props {
   alerta: Alerta;
   onClose: () => void;
   onEstado: (estado: EstadoRevision) => void;
+  // Se guardó una corrección del movimiento (nota = resumen del cambio)
+  onCorregido: (nota: string) => void;
 }
 
 // Revisar una alerta la marca; nunca la elimina (todo queda en el historial).
@@ -23,9 +26,11 @@ const ACCIONES: { estado: EstadoRevision; label: string; icono: string }[] = [
 ];
 const MAX_EVIDENCIA = 3;
 
-export default function AlertaDrawer({ alerta, onClose, onEstado }: Props) {
+export default function AlertaDrawer({ alerta, onClose, onEstado, onCorregido }: Props) {
   const m = alerta.movimiento;
-  const evidencia = [...alerta.evidencia].sort((a, b) => Number(!!b.destacado) - Number(!!a.destacado)).slice(0, MAX_EVIDENCIA);
+  const ordenada = [...alerta.evidencia].sort((a, b) => Number(!!b.destacado) - Number(!!a.destacado));
+  const evidencia = ordenada.slice(0, MAX_EVIDENCIA);
+  const masEvidencia = ordenada.slice(MAX_EVIDENCIA);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -61,6 +66,11 @@ export default function AlertaDrawer({ alerta, onClose, onEstado }: Props) {
               </div>
             ))}
           </div>
+          {masEvidencia.length > 0 && (
+            <dl className="alr-kv alr-evid-mas">
+              {masEvidencia.map(e => (<div key={e.label} style={{ display: 'contents' }}><dt>{e.label}</dt><dd>{e.valor}</dd></div>))}
+            </dl>
+          )}
 
           <div className="alr-d-actions-row" role="group" aria-label="Revisar alerta">
             {ACCIONES.map(a => (
@@ -75,6 +85,11 @@ export default function AlertaDrawer({ alerta, onClose, onEstado }: Props) {
               </button>
             ))}
           </div>
+
+          {/* Marcada como error: se puede corregir el movimiento aquí mismo */}
+          {alerta.estado === 'ERROR_CONFIRMADO' && (alerta.edicion
+            ? <EditarMovimiento edicion={alerta.edicion} onCorregido={onCorregido} />
+            : <p className="alr-edit-hint alr-edit-none">Esta alerta no corresponde a un movimiento puntual (p. ej. datos maestros o costos); corrígela desde Maestros o Costos.</p>)}
 
           <details className="alr-details">
             <summary><NavIcon name="eye" size={15} /> Ver movimiento e historial</summary>
@@ -91,7 +106,7 @@ export default function AlertaDrawer({ alerta, onClose, onEstado }: Props) {
             <ul className="alr-hist">
               {alerta.historial.map((h, i) => (
                 <li key={i}>
-                  <div>{ESTADO_LABEL[h.estado]}<small>{fmtFechaHora(h.fecha)} · {h.usuario}</small></div>
+                  <div>{ESTADO_LABEL[h.estado]}<small>{fmtFechaHora(h.fecha)} · {h.usuario}{h.nota && h.usuario !== 'Sistema' ? ` · ${h.nota}` : ''}</small></div>
                 </li>
               ))}
             </ul>

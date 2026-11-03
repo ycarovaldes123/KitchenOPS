@@ -7,7 +7,7 @@ import type { Alerta, CambioEstado, DatosModulo, EstadoRevision } from './types'
 export interface FuenteAlertas {
   cargar(refrescar?: boolean): Promise<DatosModulo>;
   // Las alertas nunca se eliminan: cada revisión se agrega al historial
-  cambiarEstado(alerta: Alerta, estado: EstadoRevision, usuario: string): Promise<Alerta>;
+  cambiarEstado(alerta: Alerta, estado: EstadoRevision, usuario: string, nota?: string): Promise<Alerta>;
 }
 
 // ── Revisiones del piloto: localStorage (solo este navegador; no llegan a la base) ──
@@ -46,9 +46,9 @@ export const fuenteAnalisis: FuenteAlertas = {
     const datos = data as DatosModulo;
     return { ...datos, alertas: datos.alertas.map(a => conRevisiones(a, revisiones)) };
   },
-  async cambiarEstado(alerta, estado, usuario) {
+  async cambiarEstado(alerta, estado, usuario, nota) {
     const r = leer();
-    const cambio: CambioEstado = { estado, fecha: ahoraLocal(), usuario };
+    const cambio: CambioEstado = { estado, fecha: ahoraLocal(), usuario, ...(nota ? { nota } : {}) };
     r[alerta.id] = [...(r[alerta.id] ?? []), cambio];
     guardar(r);
     return { ...alerta, estado, historial: [...alerta.historial, cambio] };

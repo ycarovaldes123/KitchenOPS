@@ -35,10 +35,15 @@ export function metricasPorUsuario(alertas: Alerta[], volumen: VolumenUsuario[])
 }
 
 // ── Rango de fechas de los filtros (relativo al "hoy" del escenario) ──
-export type RangoFecha = 'HOY' | '7D' | 'MES' | 'MES_ANTERIOR' | 'TODO';
+export type RangoFecha = 'HOY' | '7D' | 'MES' | 'MES_ANTERIOR' | 'TODO' | 'PERSONALIZADO';
 
-export function enRango(fecha: string, rango: RangoFecha, hoy: string): boolean {
+// PERSONALIZADO: `desde` / `hasta` (YYYY-MM-DD, ambos opcionales e inclusivos)
+export function enRango(fecha: string, rango: RangoFecha, hoy: string, desde = '', hasta = ''): boolean {
   if (rango === 'TODO') return true;
+  if (rango === 'PERSONALIZADO') {
+    const [a, b] = desde && hasta && desde > hasta ? [hasta, desde] : [desde, hasta];
+    return (!a || fecha >= a) && (!b || fecha <= b);
+  }
   if (rango === 'HOY') return fecha === hoy;
   const [y, m, dia] = hoy.split('-').map(Number);
   if (rango === 'MES') return fecha.startsWith(hoy.slice(0, 7));
@@ -47,8 +52,8 @@ export function enRango(fecha: string, rango: RangoFecha, hoy: string): boolean 
     return fecha.startsWith(prev);
   }
   // Últimos 7 días (en UTC para no correr el día por zona horaria)
-  const desde = new Date(Date.UTC(y, m - 1, dia - 6)).toISOString().slice(0, 10);
-  return fecha >= desde && fecha <= hoy;
+  const hace7 = new Date(Date.UTC(y, m - 1, dia - 6)).toISOString().slice(0, 10);
+  return fecha >= hace7 && fecha <= hoy;
 }
 
 // Formatos locales (dd/mm/aaaa)

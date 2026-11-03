@@ -46,6 +46,7 @@ function conBorrador(d: DatosSistema, modulo: ModuloValidable, body: Fila): Dato
       cantidad: num(l.cantidad), gramos_por_pp: l.gramos_por_pp == null ? null : num(l.gramos_por_pp),
       total_producido: l.total_producido == null ? null : num(l.total_producido), codigo_producto: txt(l.codigo_producto),
       costo_unitario: l.costo_unitario == null ? null : num(l.costo_unitario),
+      costo_total: l.costo_total == null ? null : num(l.costo_total),
     }))];
     out.rendimiento = [...d.rendimiento, ...filas(body.rendimiento).map((r, i) => ({
       id: `${BORRADOR}-r${i}`, produccion_id: BORRADOR, fecha: String(r.fecha ?? fecha), verdura: String(r.verdura ?? ''),

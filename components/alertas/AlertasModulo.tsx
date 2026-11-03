@@ -8,7 +8,7 @@ import type { Alerta, ModuloAlerta, NivelAlerta } from '@/lib/alertas/types';
 import type { FuenteAlertas } from '@/lib/alertas/fuente';
 import { alertasDelResumen } from '@/lib/alertas/resumen';
 import { useAlertas } from './useAlertas';
-import FiltrosAlertas, { FILTROS_INICIALES, RANGO_LABEL, type Filtros } from './FiltrosAlertas';
+import FiltrosAlertas, { FILTROS_INICIALES, etiquetaRango, type Filtros } from './FiltrosAlertas';
 import TablaAlertas from './TablaAlertas';
 import AlertaDrawer from './AlertaDrawer';
 import ReglasPanel from './ReglasPanel';
@@ -34,15 +34,19 @@ function coincide(a: Alerta, texto: string): boolean {
 
 // `fuente` permite inyectar otra fuente de datos (por defecto: análisis real vía /api/alertas)
 export default function AlertasModulo({ fuente }: { fuente?: FuenteAlertas }) {
-  const { datos, error, cargando, actualizar, cambiarEstado, reiniciarRevisiones } = useAlertas(fuente);
+  const { datos, error, cargando, actualizar, reanalizarEnSegundoPlano, cambiarEstado, reiniciarRevisiones } = useAlertas(fuente);
   const [pestana, setPestana] = useState<Pestana>('alertas');
   const [filtros, setFiltros] = useState<Filtros>(FILTROS_INICIALES);
   const [seleccionadaId, setSeleccionadaId] = useState<string | null>(null);
   const [correo, setCorreo] = useState(false);
+  const [aviso, setAviso] = useState('');
 
   const alertas = useMemo(() => datos?.alertas ?? [], [datos]);
   const hoy = datos?.hoy ?? '';
-  const enPeriodo = useMemo(() => alertas.filter(a => enRango(a.fecha, filtros.rango, hoy)), [alertas, filtros.rango, hoy]);
+  const enPeriodo = useMemo(
+    () => alertas.filter(a => enRango(a.fecha, filtros.rango, hoy, filtros.desde, filtros.hasta)),
+    [alertas, filtros.rango, filtros.desde, filtros.hasta, hoy],
+  );
 
   const visibles = useMemo(() => enPeriodo
     .filter(a => (!filtros.modulo || a.modulo === filtros.modulo)
@@ -55,6 +59,14 @@ export default function AlertasModulo({ fuente }: { fuente?: FuenteAlertas }) {
   const modulos = useMemo(() => [...new Set(alertas.map(a => a.modulo))].sort() as ModuloAlerta[], [alertas]);
   const seleccionada = alertas.find(a => a.id === seleccionadaId) ?? null;
 
+  // Siguiente alerta de la lista visible (o la anterior si era la última); se calcula antes de cambiar el estado,
+  // porque con el filtro "Pendientes" la alerta revisada sale de la lista.
+  const siguienteDe = (id: string): string | null => {
+    const i = visibles.findIndex(a => a.id === id);
+    if (i < 0) return null;
+    return (visibles[i + 1] ?? visibles[i - 1])?.id ?? null;
+  };
+
   // Correo: mismas alertas que el envío real (Producción, Mermas, Colación · último día con alertas)
   const { fecha: ultimoDia, alertas: delUltimoDia } = alertasDelResumen(alertas);
 
@@ -64,7 +76,7 @@ export default function AlertasModulo({ fuente }: { fuente?: FuenteAlertas }) {
     { label: 'Pendientes', valor: pendientes.length, main: true, activo: filtros.estado === 'PENDIENTE' && !filtros.nivel, aplicar: { estado: 'PENDIENTE', nivel: '' } },
     { label: 'Alta atención', valor: pendientes.filter(a => a.nivel === 'ALTA').length, activo: filtros.nivel === 'ALTA', aplicar: { estado: 'PENDIENTE', nivel: 'ALTA' } },
     { label: 'Revisadas', valor: enPeriodo.length - pendientes.length, activo: false, aplicar: { estado: '', nivel: '' } },
-    { label: `Total · ${RANGO_LABEL[filtros.rango].toLowerCase()}`, valor: enPeriodo.length, activo: !filtros.estado && !filtros.nivel, aplicar: { estado: '', nivel: '' } },
+    { label: `Total · ${filtros.rango === 'PERSONALIZADO' ? etiquetaRango(filtros) : etiquetaRango(filtros).toLowerCase()}`, valor: enPeriodo.length, activo: !filtros.estado && !filtros.nivel, aplicar: { estado: '', nivel: '' } },
   ];
 
   return (
@@ -121,7 +133,13 @@ export default function AlertasModulo({ fuente }: { fuente?: FuenteAlertas }) {
               </button>
             ))}
           </div>
-          <FiltrosAlertas filtros={filtros} onChange={setFiltros} modulos={modulos} visibles={visibles.length} />
+          {aviso && (
+            <div className="rpp-alert is-success alr-aviso" role="status">
+              <span>{aviso}</span>
+              <button type="button" className="rpp-icon-btn" aria-label="Cerrar aviso" onClick={() => setAviso('')}><NavIcon name="x" size={14} /></button>
+            </div>
+          )}
+          <FiltrosAlertas filtros={filtros} onChange={setFiltros} modulos={modulos} visibles={visibles.length} hoy={hoy} />
           <TablaAlertas key={JSON.stringify(filtros)} alertas={visibles} seleccionada={seleccionadaId} onSelect={a => setSeleccionadaId(a.id)} />
         </>
       ) : pestana === 'metricas' ? (
@@ -135,7 +153,19 @@ export default function AlertasModulo({ fuente }: { fuente?: FuenteAlertas }) {
           key={seleccionada.id}
           alerta={seleccionada}
           onClose={() => setSeleccionadaId(null)}
-          onEstado={estado => { void cambiarEstado(seleccionada, estado); }}
+          onEstado={estado => {
+            // "Dato correcto" y "Corregido" cierran la revisión: pasa al siguiente movimiento. "Es error" se queda para editar.
+            const siguiente = estado === 'ERROR_CONFIRMADO' ? seleccionada.id : siguienteDe(seleccionada.id);
+            void cambiarEstado(seleccionada, estado);
+            setSeleccionadaId(siguiente);
+          }}
+          onCorregido={nota => {
+            const siguiente = siguienteDe(seleccionada.id);
+            void cambiarEstado(seleccionada, 'CORREGIDO', nota);
+            setSeleccionadaId(siguiente);
+            setAviso(`Movimiento corregido: ${seleccionada.registro}${nota ? ` · ${nota}` : ''}`);
+            reanalizarEnSegundoPlano();
+          }}
         />
       )}
 
