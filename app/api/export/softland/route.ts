@@ -161,10 +161,8 @@ export async function GET(req: NextRequest) {
     }
 
     if (!resultado.filas.length) return NextResponse.json({ error: 'No hay datos para generar la planilla en ese mes' }, { status: 404 });
-    // El folio ingresado aplica a la guía única (GE / consumo); GS_PRODUCCION tiene una guía por PP.
-    const guias = [...new Set(resultado.filas.map(f => f.guia))];
-    const folios = new Map<string, number>(folio && guias.length === 1 ? [[guias[0], folio]] : []);
-    const buffer = await construirExcelSoftland(archivo, resultado.filas, mes, folios);
+    // Folio inicial: GS_PRODUCCION suma 1 por PP y GS_CONSUMO 1 cada 40 líneas.
+    const buffer = await construirExcelSoftland(archivo, resultado.filas, mes, folio);
     const filename = nombreArchivoSoftland(archivo, mes, archivo === 'gs_consumo' ? fuente : undefined);
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,

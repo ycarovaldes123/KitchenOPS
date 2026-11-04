@@ -6,10 +6,10 @@ type Opcion = 'ge_produccion' | 'gs_produccion' | 'consumo_merma' | 'consumo_col
 
 const OPCIONES: { value: Opcion; titulo: string; formato: string; desc: string }[] = [
   { value: 'ge_produccion', titulo: 'Producción PP (ingreso)', formato: 'GE_PRODUCCION · concepto 10', desc: 'PP terminados del mes (códigos 0502), una guía "PRODUCCION <MES>".' },
-  { value: 'gs_produccion', titulo: 'Producción (salida de insumos)', formato: 'GS_PRODUCCION · concepto 09', desc: 'Insumos usados en cada PP según su receta; una guía por PP. Cta 1-1-06-05.' },
-  { value: 'consumo_merma', titulo: 'Merma', formato: 'GS_CONSUMO · concepto 07', desc: 'Merma de productos + insumos de platos dados de baja, guía "MERMA <MES>".' },
-  { value: 'consumo_colacion', titulo: 'Colación personal', formato: 'GS_CONSUMO · concepto 07', desc: 'Ingredientes de las colaciones del mes, guía "COLACION PERSONAL <MES>".' },
-  { value: 'consumo_inventario', titulo: 'Toma de inventario', formato: 'GS_CONSUMO · concepto 07', desc: 'Lo contado en la toma elegida, como guía de Merma o de Colación.' },
+  { value: 'gs_produccion', titulo: 'Producción (salida por receta)', formato: 'GS_PRODUCCION · concepto 09', desc: 'Una guía por PP ("PROD. X RC=n") con folio correlativo: código 0501 (el del PP 0502) y lo producido dividido por el rendimiento de la receta. Cta 1-1-06-05.' },
+  { value: 'consumo_merma', titulo: 'Merma', formato: 'GS_CONSUMO · concepto 07', desc: 'Merma de productos + insumos de platos dados de baja, guía "MERMA <MES>"; folio correlativo cada 40 líneas.' },
+  { value: 'consumo_colacion', titulo: 'Colación personal', formato: 'GS_CONSUMO · concepto 07', desc: 'Ingredientes de las colaciones del mes, guía "COLACION PERSONAL <MES>"; folio correlativo cada 40 líneas.' },
+  { value: 'consumo_inventario', titulo: 'Toma de inventario', formato: 'GS_CONSUMO · concepto 07', desc: 'Lo contado en la toma elegida, como guía de Merma o de Colación; folio correlativo cada 40 líneas.' },
 ];
 
 interface Fila { guia: string; codigo: string; descripcion: string; cantidad: number }
@@ -49,8 +49,6 @@ export default function SoftlandPanel() {
   const [descargando, setDescargando] = useState(false);
   const [err, setErr] = useState('');
   const [verTodo, setVerTodo] = useState(false);
-
-  const unaGuia = opcion !== 'gs_produccion';
 
   const params = useMemo(() => {
     const p = new URLSearchParams({ mes });
@@ -93,7 +91,7 @@ export default function SoftlandPanel() {
     try {
       const p = new URLSearchParams(params);
       p.set('formato', 'xlsx');
-      if (folioNum && unaGuia) p.set('folio', folioNum);
+      if (folioNum) p.set('folio', folioNum);
       const r = await fetch(`/api/export/softland?${p.toString()}`);
       if (!r.ok) { const d = await r.json(); throw new Error(d.error ?? 'Error al generar el archivo'); }
       const nombre = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') ?? '')?.[1] ?? `Softland_${mes}.xlsx`;
@@ -145,9 +143,9 @@ export default function SoftlandPanel() {
           <input type="month" value={mes} onChange={e => setMes(e.target.value)} style={inputSt} />
         </div>
         <div>
-          <label style={labelSt}>Folio (opcional)</label>
-          <input inputMode="numeric" value={unaGuia ? folio : ''} disabled={!unaGuia} onChange={e => setFolio(e.target.value.replace(/\D/g, ''))}
-            placeholder={unaGuia ? 'Vacío hasta asignar' : 'Una guía por PP: se asigna en Excel'} style={{ ...inputSt, opacity: unaGuia ? 1 : 0.6 }} />
+          <label style={labelSt}>Folio inicial (opcional)</label>
+          <input inputMode="numeric" value={folio} onChange={e => setFolio(e.target.value.replace(/\D/g, ''))}
+            placeholder="Vacío hasta asignar" style={inputSt} />
         </div>
         {opcion === 'consumo_inventario' && (
           <>

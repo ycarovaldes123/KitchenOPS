@@ -146,7 +146,18 @@ export function construirGEProduccion(lineas: LineaProduccion[], productos: Map<
   return { filas: consolidar(filas), avisos };
 }
 
-/** GS_PRODUCCION: salida de los insumos de cada PP según su receta; una guía por PP. */
+/** "PP BASTONES DE POLLO (KG)" + 1,5 recetas → "PROD. BASTONES DE POLLO RC=1,5". */
+export function descripcionGuiaPP(nombrePP: string, recetas: number) {
+  const base = nombrePP.trim().replace(/\s*\([^)]*\)\s*$/, '').replace(/^PP\b\.?\s*/i, '').trim();
+  const rc = Number(recetas.toFixed(2)).toLocaleString('es-CL', { maximumFractionDigits: 2 });
+  return `PROD. ${base} RC=${rc}`;
+}
+
+/**
+ * GS_PRODUCCION: una guía por PP producido en el mes ("PROD. X RC=n"), con una sola línea: el código de la receta en Softland, que es el mismo del PP cambiando 0502 por
+ * 0501 (ej. 0502017 → 0501017), y CANTIDAD = lo producido ÷ rendimiento de la receta
+ * (cuántas recetas se hicieron). Cta 1-1-06-05.
+ */
 export function construirGSProduccion(
   lineas: LineaProduccion[], productos: Map<string, ProductoMaestro>, recetas: Map<string, RecetaPP>,
 ): ResultadoSoftland {
@@ -156,37 +167,28 @@ export function construirGSProduccion(
     const pp = productos.get(codigoPP);
     const receta = recetas.get(codigoPP);
     const nombrePP = pp?.nombre ?? receta?.nombre ?? codigoPP;
-    if (!receta || !receta.ingredientes.length) {
-      avisos.push({ tipo: 'excluido', detalle: `${codigoPP} ${nombrePP}: sin receta PP activa con ingredientes (${fmt(total)} ${pp?.unidad_medida ?? ''})` });
+    if (!receta) {
+      avisos.push({ tipo: 'excluido', detalle: `${codigoPP} ${nombrePP}: sin receta PP activa (${fmt(total)} ${pp?.unidad_medida ?? ''})` });
       continue;
     }
     const enUnidadReceta = convertir(total, pp?.unidad_medida ?? receta.unidad_rendimiento, receta.unidad_rendimiento);
     if (enUnidadReceta == null || !(receta.rendimiento > 0)) {
-      avisos.push({ tipo: 'excluido', detalle: `${codigoPP} ${nombrePP}: producción en ${pp?.unidad_medida} y receta en ${receta.unidad_rendimiento}, no se puede convertir` });
+      avisos.push({ tipo: 'excluido', detalle: enUnidadReceta == null
+        ? `${codigoPP} ${nombrePP}: producción en ${pp?.unidad_medida} y receta en ${receta.unidad_rendimiento}, no se puede convertir`
+        : `${codigoPP} ${nombrePP}: la receta no tiene rendimiento` });
       continue;
     }
     if (enUnidadReceta.aproximado) {
       avisos.push({ tipo: 'revisar', detalle: `${codigoPP} ${nombrePP}: producción en ${pp?.unidad_medida} y receta en ${receta.unidad_rendimiento}; se tomó 1 ${pp?.unidad_medida} = 1 ${receta.unidad_rendimiento}` });
     }
-    const proporcion = enUnidadReceta.valor / receta.rendimiento;
-    for (const ing of receta.ingredientes) {
-      const codigo = codigoLimpio(ing.codigo_ingrediente);
-      if (!codigo) {
-        avisos.push({ tipo: 'excluido', detalle: `${nombrePP}: ingrediente "${ing.nombre_ingrediente}" sin código` });
-        continue;
-      }
-      const prod = productos.get(codigo);
-      const bruto = Number(ing.cantidad) * proporcion;
-      const conv = convertir(bruto, ing.unidad_medida, prod?.unidad_medida ?? ing.unidad_medida);
-      if (!conv || conv.aproximado) {
-        avisos.push({ tipo: 'revisar', detalle: conv
-          ? `${nombrePP}: ${codigo} en receta ${ing.unidad_medida} y en maestro ${prod?.unidad_medida}; se tomó 1:1`
-          : `${nombrePP}: ${codigo} en receta ${ing.unidad_medida} y en maestro ${prod?.unidad_medida}; se dejó sin convertir` });
-      }
-      const cantidad = conv?.valor ?? bruto;
-      if (!prod) avisos.push({ tipo: 'revisar', detalle: `${nombrePP}: ${codigo} no está en el maestro, se usa el nombre de la receta` });
-      filas.push({ guia: nombrePP, codigo, descripcion: prod?.nombre ?? ing.nombre_ingrediente, cantidad });
-    }
+    const cantRecetas = enUnidadReceta.valor / receta.rendimiento;
+    const codigoReceta = '0501' + codigoPP.slice(4);
+    filas.push({
+      guia: descripcionGuiaPP(nombrePP, cantRecetas),
+      codigo: codigoReceta,
+      descripcion: productos.get(codigoReceta)?.nombre ?? nombrePP,
+      cantidad: cantRecetas,
+    });
   }
   return { filas: consolidar(filas), avisos };
 }
@@ -272,12 +274,27 @@ const COLOR_ENCABEZADO: Record<ArchivoSoftland, string> = { ge_produccion: 'FF8E
 const HOJA: Record<ArchivoSoftland, string> = { ge_produccion: 'GE', gs_produccion: 'GS_PRODUCCION', gs_consumo: 'GS' };
 const FORMATO_CANTIDAD: Record<ArchivoSoftland, string> = { ge_produccion: '0.0', gs_produccion: '0.00', gs_consumo: '_ * #,##0.00_ ;_ * \\-#,##0.00_ ;_ * "-"_ ;_ @_ ' };
 
+/** Líneas por folio en GS_CONSUMO: cada 40 líneas sigue el folio correlativo. */
+export const LINEAS_POR_FOLIO_CONSUMO = 40;
+
+/** Índice de folio de cada fila: GE = uno solo; GS_PRODUCCION = uno por guía (PP); GS_CONSUMO = cada 40 líneas. */
+function gruposFolio(archivo: ArchivoSoftland, filas: FilaSoftland[]) {
+  let g = -1;
+  return filas.map((f, i) => {
+    if (archivo === 'ge_produccion') return 0;
+    if (archivo === 'gs_consumo') return Math.floor(i / LINEAS_POR_FOLIO_CONSUMO);
+    if (i === 0 || filas[i - 1].guia !== f.guia) g++;
+    return g;
+  });
+}
+
 /**
- * `folios`: folio por guía (opcional). Sin folio, FOLIO queda vacío (celda numérica) y
- * N° ORD = IF(FOLIO="","",FOLIO) para que tome el número apenas se escriba en Excel.
+ * `folioInicial` (opcional): primer folio; los siguientes grupos toman el correlativo (+1).
+ * Sin folio, la primera celda FOLIO queda vacía y el resto son fórmulas que la siguen
+ * (mismo folio dentro del grupo, +1 en el grupo siguiente); N° ORD = FOLIO.
  */
 export async function construirExcelSoftland(
-  archivo: ArchivoSoftland, filas: FilaSoftland[], mes: string, folios: Map<string, number> = new Map(),
+  archivo: ArchivoSoftland, filas: FilaSoftland[], mes: string, folioInicial: number | null = null,
 ): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet(HOJA[archivo], { views: [{ state: 'frozen', ySplit: 1 }] });
@@ -294,11 +311,19 @@ export async function construirExcelSoftland(
   });
 
   const { fechaTexto } = rangoMes(mes);
+  const grupos = gruposFolio(archivo, filas);
+  const primeraFila: number[] = []; // fila Excel donde parte cada grupo
   filas.forEach((f, idx) => {
     const r = idx + 2;
-    const folio = folios.get(f.guia);
+    const g = grupos[idx];
+    if (primeraFila[g] == null) primeraFila[g] = r;
+    let folio: number | ExcelJS.CellFormulaValue | null;
+    if (folioInicial != null) folio = folioInicial + g;
+    else if (r === 2) folio = null;
+    else if (primeraFila[g] !== r) folio = { formula: `IF(B${primeraFila[g]}="","",B${primeraFila[g]})`, result: '' };
+    else { const prev = primeraFila[g - 1]; folio = { formula: `IF(B${prev}="","",B${prev}+1)`, result: '' }; }
     let valores: (string | number | ExcelJS.CellFormulaValue | null)[];
-    const ordProd: number | ExcelJS.CellFormulaValue = folio ?? { formula: `IF(B${r}="","",B${r})`, result: '' };
+    const ordProd: number | ExcelJS.CellFormulaValue = typeof folio === 'number' ? folio : { formula: `IF(B${r}="","",B${r})`, result: '' };
     if (archivo === 'gs_consumo') {
       valores = [BODEGA, folio ?? null, fechaTexto, CONCEPTO[archivo], f.guia, CC, CC, f.codigo, f.descripcion, f.cantidad, CTA_CONTABLE.gs_consumo];
     } else {
