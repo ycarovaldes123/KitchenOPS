@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import SoftlandPanel from '@/components/export/SoftlandPanel';
 
 function hoyChile() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago' }).format(new Date());
@@ -189,6 +190,8 @@ export default function ExportPage() {
           '↓ Descargar Excel'
         )}
       </button>
+
+      <SoftlandPanel />
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
