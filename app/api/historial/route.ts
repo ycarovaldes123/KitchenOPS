@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { getSessionRol } from '@/lib/auth-server';
+import { claveNombre } from '@/lib/colores-responsable';
 
 const SEARCH_FETCH_LIMIT = 5000;
 const SUMMARY_FETCH_LIMIT = 10000;
@@ -284,7 +285,14 @@ export async function GET(req: NextRequest) {
     responsables = [...new Set((rData ?? []).map(r => String((r as { responsable_nombre?: string | null }).responsable_nombre ?? '').trim()).filter(Boolean))]
       .sort((a, b) => a.localeCompare(b, 'es'));
   }
-  const extra = { responsables };
+  // Color elegido por persona en Maestros → Personal, para distinguir su nombre en los registros.
+  const { data: personas } = await supabase.from('responsables').select('nombre,color_hex');
+  const colores: Record<string, string> = {};
+  for (const p of personas ?? []) {
+    const hex = (p as { color_hex?: string | null }).color_hex;
+    if (hex) colores[claveNombre((p as { nombre: string }).nombre)] = hex;
+  }
+  const extra = { responsables, colores };
 
   if (tipo === 'produccion') {
     const detalleSelect = verCostos

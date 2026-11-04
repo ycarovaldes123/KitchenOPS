@@ -7,6 +7,7 @@ import {
   type Area, type NivelAcceso, type PermisosPersona, type PersonaAdmin,
 } from '@/lib/personal';
 import { RMAP, ROLES, ROL_LABEL, type RolType } from '@/lib/roles';
+import { COLORES_NOMBRE, colorDesdeHex } from '@/lib/colores-responsable';
 import '@/app/(app)/maestros/personal.css';
 
 const PASSWORD_MIN = 8;
@@ -16,6 +17,8 @@ type FormState = {
   nombre: string;
   iniciales: string;
   email: string;
+  /** Color del nombre en los registros (hex de COLORES_NOMBRE; '' = sin elegir). */
+  color_hex: string;
   area: Area | '';
   nivel_acceso: NivelAcceso;
   permisos: PermisosPersona;
@@ -210,6 +213,7 @@ export default function PersonalTab({ canEdit }: { canEdit: boolean }) {
     setFormError('');
     setForm({
       id: p.id, nombre: nombreVisible(p.nombre), iniciales: p.iniciales ?? '', email: p.email ?? '',
+      color_hex: colorDesdeHex(p.color_hex)?.hex ?? '',
       area: p.area ?? '', nivel_acceso: p.nivel_acceso, permisos: { ...p.permisos },
       password: '', verPassword: false, perfil: p.perfil ?? '', cuentaExiste: p.cuenta_existe, compartenEmail: p.comparten_email,
     });
@@ -218,7 +222,7 @@ export default function PersonalTab({ canEdit }: { canEdit: boolean }) {
   function abrirNuevo() {
     setFormError('');
     setForm({
-      id: null, nombre: '', iniciales: '', email: '', area: 'cocina', nivel_acceso: 'operativo', permisos: normalizarPermisos({}),
+      id: null, nombre: '', iniciales: '', email: '', color_hex: '', area: 'cocina', nivel_acceso: 'operativo', permisos: normalizarPermisos({}),
       password: '', verPassword: false, perfil: '', cuentaExiste: false, compartenEmail: 1,
     });
   }
@@ -249,6 +253,7 @@ export default function PersonalTab({ canEdit }: { canEdit: boolean }) {
     setFormError('');
     const body = {
       nombre: form.nombre, iniciales: form.iniciales, email: form.email,
+      color_hex: form.color_hex || undefined,
       area: form.area || null, nivel_acceso: form.nivel_acceso, permisos: form.permisos,
       password: form.password || undefined,
       perfil: !perfilFijo && form.perfil ? form.perfil : undefined,
@@ -530,6 +535,22 @@ export default function PersonalTab({ canEdit }: { canEdit: boolean }) {
                     {NIVELES.map(n => <option key={n.value} value={n.value}>{n.label}</option>)}
                   </select>
                 </label>
+                <div className="per-field is-wide">
+                  <span>Color del nombre en registros</span>
+                  <div className="per-colores" role="radiogroup" aria-label="Color del nombre">
+                    {COLORES_NOMBRE.map(c => {
+                      const activo = form.color_hex === c.hex;
+                      return (
+                        <button key={c.value} type="button" role="radio" aria-checked={activo}
+                          className={`per-color${activo ? ' is-on' : ''}`}
+                          style={{ background: c.chip.bg, borderColor: activo ? c.hex : c.chip.border, color: c.chip.color }}
+                          onClick={() => setForm({ ...form, color_hex: c.hex })}>
+                          <i style={{ background: c.hex }} />{c.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
 
               <div className="per-cuenta">

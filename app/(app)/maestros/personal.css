@@ -231,3 +231,14 @@
 .per-pass input { flex: 1; padding-right: 40px; }
 .per-pass-ver { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--ts); cursor: pointer; border-radius: 6px; }
 .per-pass-ver:hover { color: var(--ac); }
+
+/* Color del nombre en registros (verde / azul / rosado / morado) */
+.per-colores { display: flex; flex-wrap: wrap; gap: 8px; }
+.per-color {
+  display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px;
+  border: 1.5px solid; border-radius: 999px; font-size: 13px; font-weight: 600; cursor: pointer;
+  font-family: inherit; transition: box-shadow .15s, transform .1s;
+}
+.per-color i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.per-color.is-on { box-shadow: 0 0 0 3px rgba(0,0,0,.08); border-width: 2px; }
+.per-color:active { transform: scale(.97); }

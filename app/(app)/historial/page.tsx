@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, createContext, useContext } from 'react';
 import { calcCostoProduccionPP, calcTotalPP, formatCLP, formatPct, calcMerma } from '@/lib/calculos';
 import { useRol } from '@/components/RolProvider';
 import NavIcon from '@/components/layout/NavIcon';
 import { MOTIVOS_MERMA_PLATO, MOTIVO_MERMA_COLOR, detalleMotivoPlato, normalizeMotivoMerma } from '@/lib/mermas';
+import { claveNombre, colorDesdeHex, type EstiloChip } from '@/lib/colores-responsable';
 import './historial.css';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -89,15 +90,18 @@ function primerNombre(nombre: string | null | undefined) {
   return limpio.split(/\s+/)[0];
 }
 
-// Color fijo del responsable en el Historial (solo presentación, no altera registros).
-// Rosado y azul por nombre; el resto en neutro. Insensible a mayúsculas y acentos.
+// Color del responsable en el Historial (solo presentación, no altera registros).
+// Primero el color elegido en Maestros → Personal (verde/azul/rosado/morado); si la persona
+// aún no tiene uno, se mantiene la regla antigua por nombre (rosado/azul) y el resto en neutro.
+const ColoresResponsableCtx = createContext<Record<string, string>>({});
 const RESPONSABLES_ROSADO = new Set(['pamela', 'paulina', 'luisa', 'javiera']);
 const RESPONSABLES_AZUL = new Set(['joaquin', 'joaqui', 'joel', 'camilo']);
-type EstiloChip = { bg: string; border: string; color: string };
 const CHIP_ROSADO: EstiloChip = { bg: '#FDF2F8', border: '#F9A8D4', color: '#DB2777' };
 const CHIP_AZUL: EstiloChip = { bg: '#EFF6FF', border: '#93C5FD', color: '#2563EB' };
 const CHIP_NEUTRO: EstiloChip = { bg: '#F5F3F0', border: '#E7E2DC', color: '#525252' };
-function estiloResponsable(nombre: string | null | undefined): EstiloChip {
+function estiloResponsable(nombre: string | null | undefined, colores: Record<string, string>): EstiloChip {
+  const elegido = colorDesdeHex(colores[claveNombre(nombre)]);
+  if (elegido) return elegido.chip;
   const tokens = normalizarTexto(String(nombre ?? '')).split(/\s+/).filter(Boolean);
   if (tokens.some(t => RESPONSABLES_ROSADO.has(t))) return CHIP_ROSADO;
   if (tokens.some(t => RESPONSABLES_AZUL.has(t))) return CHIP_AZUL;
@@ -105,7 +109,7 @@ function estiloResponsable(nombre: string | null | undefined): EstiloChip {
 }
 
 function ResponsableChip({ nombre }: { nombre: string | null | undefined }) {
-  const e = estiloResponsable(nombre);
+  const e = estiloResponsable(nombre, useContext(ColoresResponsableCtx));
   return (
     <span className="hst-chip" title={String(nombre ?? '')} style={{ background: e.bg, borderColor: e.border, color: e.color }}>
       {primerNombre(nombre).toUpperCase()}
@@ -2049,6 +2053,7 @@ export default function HistorialPage() {
   const [maestros, setMaestros] = useState<{ productos: Record<string, unknown>[]; pps: Record<string, unknown>[]; verduras: Record<string, unknown>[] }>({ productos: [], pps: [], verduras: [] });
   const [responsable, setResponsable] = useState('');
   const [responsables, setResponsables] = useState<string[]>([]);
+  const [coloresResp, setColoresResp] = useState<Record<string, string>>({});
   const [resultadoBusqueda, setResultadoBusqueda] = useState<ResultadoBusqueda | null>(null);
   const busqueda = busquedas[tab] ?? '';
 
@@ -2078,6 +2083,7 @@ export default function HistorialPage() {
       setTotal(data.count ?? (data.items?.length ?? 0));
       setSummary(data.summary ?? null);
       setResponsables(Array.isArray(data.responsables) ? data.responsables : []);
+      if (data.colores && typeof data.colores === 'object') setColoresResp(data.colores);
       setResultadoBusqueda(q.trim() ? {
         q: q.trim(),
         coincidencias: Array.isArray(data.coincidencias) ? data.coincidencias : [],
@@ -2142,6 +2148,7 @@ export default function HistorialPage() {
   ];
 
   return (
+    <ColoresResponsableCtx.Provider value={coloresResp}>
     <div className="page hst" style={{ maxWidth: 1560 }}>
       <style>{'@keyframes spin { to { transform: rotate(360deg); } }'}</style>
 
@@ -2240,5 +2247,6 @@ export default function HistorialPage() {
         )}
       </div>
     </div>
+    </ColoresResponsableCtx.Provider>
   );
 }

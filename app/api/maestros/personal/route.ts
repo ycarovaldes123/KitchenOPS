@@ -8,6 +8,7 @@ import {
   AREAS, NIVELES, TABLAS_ACTIVIDAD, aPersona, columnaFaltante, inicialesDe, normalizarPermisos, rolDesdeArea,
   type Area, type NivelAcceso, type ResponsableRow,
 } from '@/lib/personal';
+import { HEX_NOMBRE_VALIDOS } from '@/lib/colores-responsable';
 
 
 const PALETA = ['#E8560A', '#3B82F6', '#0D9373', '#8B5CF6', '#D97706', '#0EA5E9', '#EC4899', '#14B8A6', '#6366F1', '#059669'];
@@ -92,7 +93,9 @@ export async function POST(req: NextRequest) {
   const nuevo = {
     nombre, email, iniciales, activo: true,
     rol: rolDesdeArea(area),
-    color_hex: PALETA[(existentes?.length ?? 0) % PALETA.length],
+    color_hex: HEX_NOMBRE_VALIDOS.has(String(body.color_hex ?? '').toUpperCase())
+      ? String(body.color_hex).toUpperCase()
+      : PALETA[(existentes?.length ?? 0) % PALETA.length],
     area, nivel_acceso: nivel,
     permisos: normalizarPermisos(body.permisos),
   };

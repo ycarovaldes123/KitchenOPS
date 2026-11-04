@@ -7,6 +7,18 @@ import { useRol } from '@/components/RolProvider';
 import FiltroRangoFechas from '../components/FiltroRangoFechas';
 import HistorialEditorDrawer, { type GrupoEditable, type ItemEditable } from '../components/HistorialEditorDrawer';
 import type { Maestros } from '../page';
+import { claveNombre, colorDesdeHex } from '@/lib/colores-responsable';
+
+// Nombre del responsable con el color elegido en Maestros → Personal (sin color: texto normal).
+function NombreResponsable({ nombre, colores }: { nombre: string; colores: Map<string, string | null | undefined> }) {
+  const c = colorDesdeHex(colores.get(claveNombre(nombre)));
+  if (!c) return <>{nombre}</>;
+  return (
+    <span style={{ display: 'inline-block', padding: '1px 8px', borderRadius: 999, border: `1px solid ${c.chip.border}`, background: c.chip.bg, color: c.chip.color, fontWeight: 600 }}>
+      {nombre}
+    </span>
+  );
+}
 
 interface MovimientoHistorial {
   id: string;
@@ -137,6 +149,10 @@ const accionBtnEliminar: React.CSSProperties = { ...accionBtn, color: '#DC2626',
 
 export default function HistorialTab({ maestros }: { maestros: Maestros }) {
   const { puede } = useRol();
+  const coloresResp = useMemo(
+    () => new Map(maestros.responsables.map(r => [claveNombre(r.nombre), r.color_hex])),
+    [maestros.responsables],
+  );
   // Solo administrador puede editar/eliminar movimientos e inventarios ya guardados.
   // El sistema de permisos ya acopla editar/eliminar 1:1 (solo admin tiene ambos en true), asi que
   // un unico flag gobierna el boton "Editar" y, dentro del drawer, sus acciones de borrado.
@@ -445,6 +461,7 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
             {listaFechasActiva.length > 0 && !esInventario && (
               <TablaFechasMovimientos
                 fechas={listaFechasActiva as GrupoFecha<GrupoMovimiento>[]}
+                coloresResp={coloresResp}
                 fechaUltimo={fechaUltimo}
                 soloVentas={subTab === 'ventas'}
                 fechasAbiertas={fechasAbiertas} onToggleFecha={toggleFecha}
@@ -465,6 +482,7 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
             {listaFechasActiva.length > 0 && esInventario && (
               <TablaFechasInventarios
                 fechas={listaFechasActiva as GrupoFecha<GrupoInventario>[]}
+                coloresResp={coloresResp}
                 fechaUltimo={fechaUltimo}
                 fechasAbiertas={fechasAbiertas} onToggleFecha={toggleFecha}
                 batchesAbiertos={batchesAbiertos} onToggleBatch={toggleBatch}
@@ -535,8 +553,9 @@ export default function HistorialTab({ maestros }: { maestros: Maestros }) {
 // ─── Ingresos / Salidas / Ventas: Fecha → Movimiento(s) → Productos ──────────
 
 function TablaFechasMovimientos({
-  fechas, fechaUltimo, soloVentas, fechasAbiertas, onToggleFecha, batchesAbiertos, onToggleBatch, puedeEditar, onEditar, onEliminar, onEliminarDia, busqueda,
+  fechas, fechaUltimo, soloVentas, fechasAbiertas, onToggleFecha, batchesAbiertos, onToggleBatch, puedeEditar, onEditar, onEliminar, onEliminarDia, busqueda, coloresResp,
 }: {
+  coloresResp: Map<string, string | null | undefined>;
   fechas: GrupoFecha<GrupoMovimiento>[];
   fechaUltimo?: string;
   soloVentas: boolean;
@@ -582,7 +601,7 @@ function TablaFechasMovimientos({
                   <td style={{ ...tdStyle, fontWeight: 800 }}>{fg.grupos.length}</td>
                   <td style={tdStyle}>{productos}</td>
                   <td style={tdStyle}>{totalPorUnidad(todosLosItems)}</td>
-                  <td style={tdStyle}>{responsableTexto}</td>
+                  <td style={tdStyle}>{responsables.size === 1 ? <NombreResponsable nombre={responsableTexto} colores={coloresResp} /> : responsableTexto}</td>
                   <td style={tdStyle} onClick={e => e.stopPropagation()}>
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button type="button" onClick={() => onToggleFecha(fg.fecha)} style={accionBtn}>Ver</button>
@@ -623,7 +642,7 @@ function TablaFechasMovimientos({
                                   </span>
                                   <span style={{ fontSize: '12px', color: 'var(--ts)' }}>{SUBTIPO_LABEL[g.subtipo] ?? g.subtipo}</span>
                                   <span style={{ fontSize: '12px', color: 'var(--ts)' }}>· {g.items.length} producto{g.items.length !== 1 ? 's' : ''}</span>
-                                  <span style={{ fontSize: '12px', color: 'var(--ts)' }}>· {g.responsable_nombre}</span>
+                                  <span style={{ fontSize: '12px', color: 'var(--ts)' }}>· <NombreResponsable nombre={g.responsable_nombre} colores={coloresResp} /></span>
                                   <span style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }} onClick={e => e.stopPropagation()}>
                                     <button type="button" onClick={() => onToggleBatch(g.key)} style={accionBtn}>Ver</button>
                                     {!soloVentas && puedeEditar && (
@@ -690,8 +709,9 @@ function DetalleProductosMovimiento({ items, esVenta, busqueda }: { items: Movim
 // ─── Inventarios: Fecha → Cámara/Bodega → Productos ──────────────────────────
 
 function TablaFechasInventarios({
-  fechas, fechaUltimo, fechasAbiertas, onToggleFecha, batchesAbiertos, onToggleBatch, puedeEditar, onEditar, onEliminar, onEliminarDia, busqueda,
+  fechas, fechaUltimo, fechasAbiertas, onToggleFecha, batchesAbiertos, onToggleBatch, puedeEditar, onEditar, onEliminar, onEliminarDia, busqueda, coloresResp,
 }: {
+  coloresResp: Map<string, string | null | undefined>;
   fechas: GrupoFecha<GrupoInventario>[];
   fechaUltimo?: string;
   fechasAbiertas: Set<string>;
@@ -733,7 +753,7 @@ function TablaFechasInventarios({
                   </td>
                   <td style={{ ...tdStyle, fontWeight: 800 }}>{fg.grupos.length}</td>
                   <td style={tdStyle}>{productos}</td>
-                  <td style={tdStyle}>{responsableTexto}</td>
+                  <td style={tdStyle}>{responsables.size === 1 ? <NombreResponsable nombre={responsableTexto} colores={coloresResp} /> : responsableTexto}</td>
                   <td style={tdStyle} onClick={e => e.stopPropagation()}>
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button type="button" onClick={() => onToggleFecha(fg.fecha)} style={accionBtn}>Ver</button>
@@ -771,7 +791,7 @@ function TablaFechasInventarios({
                                     {g.tipo === 'INICIAL' ? 'Inicial' : 'Final'}
                                   </span>
                                   <span style={{ fontSize: '12px', color: 'var(--ts)' }}>· {g.items.length} producto{g.items.length !== 1 ? 's' : ''}</span>
-                                  <span style={{ fontSize: '12px', color: 'var(--ts)' }}>· {g.responsable_nombre}</span>
+                                  <span style={{ fontSize: '12px', color: 'var(--ts)' }}>· <NombreResponsable nombre={g.responsable_nombre} colores={coloresResp} /></span>
                                   <span style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }} onClick={e => e.stopPropagation()}>
                                     <button type="button" onClick={() => onToggleBatch(g.key)} style={accionBtn}>Ver</button>
                                     {puedeEditar && (

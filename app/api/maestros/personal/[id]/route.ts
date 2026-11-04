@@ -7,6 +7,7 @@ import { guardarCuenta, mapaCuentas, validarPassword } from '@/lib/cuentas-acces
 import {
   AREAS, NIVELES, TABLAS_ACTIVIDAD, aPersona, columnaFaltante, normalizarPermisos, type ResponsableRow,
 } from '@/lib/personal';
+import { HEX_NOMBRE_VALIDOS } from '@/lib/colores-responsable';
 
 // Los registros historicos (produccion, mermas, colacion, frutas, inventarios, carnicos) apuntan a
 // responsables.id: quien tiene historial solo se activa/desactiva; DELETE solo borra personas sin registros.
@@ -46,6 +47,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.nivel_acceso !== undefined) {
     if (!NIVELES.some(n => n.value === body.nivel_acceso)) return NextResponse.json({ error: 'Nivel de acceso no valido' }, { status: 400 });
     updates.nivel_acceso = body.nivel_acceso;
+  }
+  if (body.color_hex !== undefined && body.color_hex !== null) {
+    const hex = String(body.color_hex).toUpperCase();
+    if (!HEX_NOMBRE_VALIDOS.has(hex)) return NextResponse.json({ error: 'Color no valido' }, { status: 400 });
+    if (hex !== String(anterior.color_hex ?? '').toUpperCase()) updates.color_hex = hex;
   }
   if (body.permisos !== undefined) updates.permisos = normalizarPermisos(body.permisos);
 
