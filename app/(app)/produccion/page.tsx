@@ -46,6 +46,8 @@ function totalLabel(row: PPRow): string {
   const total = calcTotalPP(cant, { tipo_pp: row.tipo_pp as TipoPP, gramos_por_pp: row.gramos_por_pp }, row._unidad_medida);
   if (row.tipo_pp === 'CC') return `${total} cc`;
   if (row.tipo_pp === 'DIRECTO') return `${total} ${row.unidad_base.toLowerCase() || 'u.'}`;
+  // PP que se guarda en unidades (ej. pancetas: se ingresan GR y se divide por los GR de cada una).
+  if (/^(UN|UND|PR)$/i.test(String(row._unidad_medida ?? '').trim()) && Number(row.gramos_por_pp) > 0 && Number(row.gramos_por_pp) < 1) return `${Number(total.toFixed(2))} un`;
   return total >= 1000 ? `${(total / 1000).toFixed(2)} kg` : `${total} g`;
 }
 

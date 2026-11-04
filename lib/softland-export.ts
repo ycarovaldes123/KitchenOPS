@@ -146,9 +146,12 @@ export function construirGEProduccion(lineas: LineaProduccion[], productos: Map<
   return { filas: consolidar(filas), avisos };
 }
 
-/** "PP BASTONES DE POLLO (KG)" + 1,5 recetas → "PROD. BASTONES DE POLLO RC=1,5". */
+// Paréntesis que hablan de unidad/porción: (GR), (PP=200GR), (PR=250GR), (15 GR C/U), (150GR), (PP=125).
+const PARENTESIS_UNIDAD = /\s*\((?=[^)]*(?:\b(?:PP|PR)\s*=|(?:GR|GRS|KG|KGS|CC|LT|ML|UN|UND|PR|PP)\b))[^)]*\)/gi;
+
+/** "PP. ARROZ BLANCO (GR) (PP=200GR)" + 5 recetas → "PROD. ARROZ BLANCO RC=5" (se quitan los paréntesis de unidad). */
 export function descripcionGuiaPP(nombrePP: string, recetas: number) {
-  const base = nombrePP.trim().replace(/\s*\([^)]*\)\s*$/, '').replace(/^PP\b\.?\s*/i, '').trim();
+  const base = nombrePP.trim().replace(PARENTESIS_UNIDAD, '').replace(/^PP\b\.?\s*/i, '').replace(/\s+/g, ' ').trim();
   const rc = Number(recetas.toFixed(2)).toLocaleString('es-CL', { maximumFractionDigits: 2 });
   return `PROD. ${base} RC=${rc}`;
 }
