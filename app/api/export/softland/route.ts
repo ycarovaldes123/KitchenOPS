@@ -4,14 +4,14 @@ import { createClient } from '@/utils/supabase/server';
 import {
   construirExcelSoftland, construirGEProduccion, construirGSConsumo, construirGSProduccion, descripcionGuia,
   nombreArchivoSoftland, rangoMes,
-  type ArchivoSoftland, type FuenteConsumo, type GuiaConsumo, type LineaConsumo, type LineaProduccion,
+  type ArchivoSoftland, type FuenteConsumo, type LineaConsumo, type LineaProduccion,
   type ProductoMaestro, type RecetaPP, type ResultadoSoftland,
 } from '@/lib/softland-export';
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
 const ARCHIVOS: ArchivoSoftland[] = ['ge_produccion', 'gs_produccion', 'gs_consumo'];
-const FUENTES: FuenteConsumo[] = ['merma', 'colacion', 'inventario'];
+const FUENTES: FuenteConsumo[] = ['merma', 'colacion'];
 
 /** PostgREST corta en 1000 filas: pagina hasta traer todo. */
 async function todas<T>(consulta: (desde: number, hasta: number) => PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>): Promise<T[]> {
@@ -89,22 +89,13 @@ async function lineasColacion(supabase: Supabase, desde: string, hasta: string):
   })));
 }
 
-type InvRow = { fecha: string; detalle_inventario: { codigo_producto: string | null; nombre_producto: string; cantidad: number; unidad_medida: string | null }[] };
-
-async function inventariosMes(supabase: Supabase, desde: string, hasta: string) {
-  return todas<InvRow>((a, b) => supabase
-    .from('inventarios').select('id,fecha,detalle_inventario(codigo_producto,nombre_producto,cantidad,unidad_medida)')
-    .gte('fecha', desde).lte('fecha', hasta).order('id').range(a, b));
-}
-
 function folioValido(v: string | null) {
   const n = Number(String(v ?? '').trim());
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
 // GET /api/export/softland?archivo=ge_produccion|gs_produccion|gs_consumo&mes=YYYY-MM
-//   &fuente=merma|colacion|inventario (gs_consumo) &guia=merma|colacion (inventario)
-//   &fecha_inv=YYYY-MM-DD (inventario, opcional) &folio=N (opcional) &formato=json|xlsx
+//   &fuente=merma|colacion (gs_consumo) &folio=N (opcional) &formato=json|xlsx
 export async function GET(req: NextRequest) {
   const s = await requireRol(['admin', 'finanzas']);
   if (!s.ok) return s.response;
@@ -116,7 +107,6 @@ export async function GET(req: NextRequest) {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) return NextResponse.json({ error: 'Mes no válido (AAAA-MM)' }, { status: 400 });
   const fuente = (p.get('fuente') ?? 'merma') as FuenteConsumo;
   if (archivo === 'gs_consumo' && !FUENTES.includes(fuente)) return NextResponse.json({ error: 'Fuente no válida' }, { status: 400 });
-  const guiaInv: GuiaConsumo = p.get('guia') === 'colacion' ? 'colacion' : 'merma';
   const folio = folioValido(p.get('folio'));
   if (p.get('folio') && !folio) return NextResponse.json({ error: 'El folio debe ser un número entero' }, { status: 400 });
 
@@ -126,26 +116,12 @@ export async function GET(req: NextRequest) {
   try {
     const productos = await maestroProductos(supabase);
     let resultado: ResultadoSoftland;
-    let fechasInventario: { fecha: string; productos: number }[] | undefined;
-    let fechaInv: string | null = null;
 
     if (archivo === 'ge_produccion') {
       resultado = construirGEProduccion(await lineasProduccion(supabase, desde, hasta), productos, mes);
     } else if (archivo === 'gs_produccion') {
       const [lineas, recetas] = await Promise.all([lineasProduccion(supabase, desde, hasta), recetasPP(supabase)]);
       resultado = construirGSProduccion(lineas, productos, recetas);
-    } else if (fuente === 'inventario') {
-      // Toma de inventario: lo contado en una fecha del mes (todas las bodegas de ese día).
-      const invs = await inventariosMes(supabase, desde, hasta);
-      const porFecha = new Map<string, number>();
-      for (const inv of invs) porFecha.set(inv.fecha, (porFecha.get(inv.fecha) ?? 0) + (inv.detalle_inventario?.length ?? 0));
-      fechasInventario = [...porFecha].map(([fecha, n]) => ({ fecha, productos: n })).sort((a, b) => b.fecha.localeCompare(a.fecha));
-      const pedida = p.get('fecha_inv');
-      fechaInv = pedida && porFecha.has(pedida) ? pedida : fechasInventario[0]?.fecha ?? null;
-      const lineas = invs.filter(i => i.fecha === fechaInv).flatMap(i => (i.detalle_inventario ?? []).map(d => ({
-        codigo_producto: d.codigo_producto, nombre: d.nombre_producto, cantidad: Number(d.cantidad), unidad_medida: d.unidad_medida,
-      })));
-      resultado = construirGSConsumo(lineas, productos, descripcionGuia(guiaInv, mes));
     } else {
       const lineas = fuente === 'merma' ? await lineasMerma(supabase, desde, hasta) : await lineasColacion(supabase, desde, hasta);
       resultado = construirGSConsumo(lineas, productos, descripcionGuia(fuente, mes));
@@ -156,7 +132,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({
         archivo, mes, fechaTexto: rangoMes(mes).fechaTexto,
         filas: resultado.filas, guias, avisos: resultado.avisos,
-        fechasInventario, fechaInventario: fechaInv,
       });
     }
 

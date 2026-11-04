@@ -2,22 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-type Opcion = 'ge_produccion' | 'gs_produccion' | 'consumo_merma' | 'consumo_colacion' | 'consumo_inventario';
+type Opcion = 'ge_produccion' | 'gs_produccion' | 'consumo_merma' | 'consumo_colacion';
 
 const OPCIONES: { value: Opcion; titulo: string; formato: string; desc: string }[] = [
   { value: 'ge_produccion', titulo: 'Producción PP (ingreso)', formato: 'GE_PRODUCCION · concepto 10', desc: 'PP terminados del mes (códigos 0502), una guía "PRODUCCION <MES>".' },
   { value: 'gs_produccion', titulo: 'Producción (salida por receta)', formato: 'GS_PRODUCCION · concepto 09', desc: 'Una guía por PP ("PROD. X RC=n") con folio correlativo: código 0501 (el del PP 0502) y lo producido dividido por el rendimiento de la receta. Cta 1-1-06-05.' },
   { value: 'consumo_merma', titulo: 'Merma', formato: 'GS_CONSUMO · concepto 07', desc: 'Merma de productos + insumos de platos dados de baja, guía "MERMA <MES>"; folio correlativo cada 40 líneas.' },
   { value: 'consumo_colacion', titulo: 'Colación personal', formato: 'GS_CONSUMO · concepto 07', desc: 'Ingredientes de las colaciones del mes, guía "COLACION PERSONAL <MES>"; folio correlativo cada 40 líneas.' },
-  { value: 'consumo_inventario', titulo: 'Toma de inventario', formato: 'GS_CONSUMO · concepto 07', desc: 'Lo contado en la toma elegida, como guía de Merma o de Colación; folio correlativo cada 40 líneas.' },
 ];
 
 interface Fila { guia: string; codigo: string; descripcion: string; cantidad: number }
 interface Aviso { tipo: 'excluido' | 'revisar'; detalle: string }
-interface Vista {
-  filas: Fila[]; guias: string[]; avisos: Aviso[]; fechaTexto: string;
-  fechasInventario?: { fecha: string; productos: number }[]; fechaInventario?: string | null;
-}
+interface Vista { filas: Fila[]; guias: string[]; avisos: Aviso[]; fechaTexto: string }
 
 function mesAnterior() {
   const hoy = new Date(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Santiago' }));
@@ -26,7 +22,6 @@ function mesAnterior() {
 }
 
 const fmtCant = (n: number) => n.toLocaleString('es-CL', { maximumFractionDigits: 4 });
-const fmtFecha = (iso: string) => iso.split('-').reverse().join('/');
 
 const labelSt = {
   display: 'block' as const, fontSize: '11px', fontWeight: 600 as const,
@@ -42,8 +37,6 @@ export default function SoftlandPanel() {
   const [opcion, setOpcion] = useState<Opcion>('ge_produccion');
   const [mes, setMes] = useState(mesAnterior());
   const [folio, setFolio] = useState('');
-  const [guiaInv, setGuiaInv] = useState<'merma' | 'colacion'>('merma');
-  const [fechaInv, setFechaInv] = useState('');
   const [vista, setVista] = useState<Vista | null>(null);
   const [cargando, setCargando] = useState(false);
   const [descargando, setDescargando] = useState(false);
@@ -56,13 +49,9 @@ export default function SoftlandPanel() {
     else {
       p.set('archivo', 'gs_consumo');
       p.set('fuente', opcion.replace('consumo_', ''));
-      if (opcion === 'consumo_inventario') {
-        p.set('guia', guiaInv);
-        if (fechaInv) p.set('fecha_inv', fechaInv);
-      }
     }
     return p;
-  }, [opcion, mes, guiaInv, fechaInv]);
+  }, [opcion, mes]);
 
   const cargar = useCallback(async (p: URLSearchParams) => {
     setCargando(true); setErr('');
@@ -82,7 +71,7 @@ export default function SoftlandPanel() {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- vista previa al cambiar planilla/mes/opciones
   useEffect(() => { if (/^\d{4}-\d{2}$/.test(mes)) void cargar(params); }, [params, mes, cargar]);
 
-  function cambiarOpcion(o: Opcion) { setOpcion(o); setFechaInv(''); setVerTodo(false); }
+  function cambiarOpcion(o: Opcion) { setOpcion(o); setVerTodo(false); }
 
   async function descargar() {
     const folioNum = folio.trim();
@@ -147,25 +136,6 @@ export default function SoftlandPanel() {
           <input inputMode="numeric" value={folio} onChange={e => setFolio(e.target.value.replace(/\D/g, ''))}
             placeholder="Vacío hasta asignar" style={inputSt} />
         </div>
-        {opcion === 'consumo_inventario' && (
-          <>
-            <div>
-              <label style={labelSt}>Guía</label>
-              <select value={guiaInv} onChange={e => setGuiaInv(e.target.value as 'merma' | 'colacion')} style={inputSt}>
-                <option value="merma">Merma</option>
-                <option value="colacion">Colación personal</option>
-              </select>
-            </div>
-            <div>
-              <label style={labelSt}>Toma de inventario</label>
-              <select value={fechaInv || vista?.fechaInventario || ''} onChange={e => setFechaInv(e.target.value)} style={inputSt}
-                disabled={!vista?.fechasInventario?.length}>
-                {!vista?.fechasInventario?.length && <option value="">Sin tomas en el mes</option>}
-                {vista?.fechasInventario?.map(f => <option key={f.fecha} value={f.fecha}>{fmtFecha(f.fecha)} · {f.productos} líneas</option>)}
-              </select>
-            </div>
-          </>
-        )}
       </div>
 
       {err && (

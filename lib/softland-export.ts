@@ -8,7 +8,7 @@ import { normalizarUM } from './costo-receta-pp';
 import { convertirUnidad } from './defontana-consumo';
 
 export type ArchivoSoftland = 'ge_produccion' | 'gs_produccion' | 'gs_consumo';
-export type FuenteConsumo = 'merma' | 'colacion' | 'inventario';
+export type FuenteConsumo = 'merma' | 'colacion';
 export type GuiaConsumo = 'merma' | 'colacion';
 
 export const BODEGA = '11';
