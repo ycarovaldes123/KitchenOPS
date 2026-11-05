@@ -208,7 +208,16 @@ export function construirGSConsumo(lineas: LineaConsumo[], productos: Map<string
     if (!(cant > 0)) continue;
     if (!codigo) { sinCodigo.set(l.nombre, (sinCodigo.get(l.nombre) ?? 0) + cant); continue; }
     const prod = productos.get(codigo);
-    const conv = convertir(cant, l.unidad_medida, prod?.unidad_medida ?? l.unidad_medida);
+    let conv = convertir(cant, l.unidad_medida, prod?.unidad_medida ?? l.unidad_medida);
+    const porcion = conv ? null : porcionDelNombre(prod?.nombre ?? l.nombre);
+    if (porcion && UNIDADES_CONTEO.has(normalizarUM(l.unidad_medida) ?? '')) {
+      // Registrado en unidades/porciones y el maestro en peso o volumen: 1 UN = la porción del nombre (PP=200GR).
+      const enPeso = convertir(cant * porcion.cantidad, porcion.unidad, prod?.unidad_medida ?? null);
+      if (enPeso) {
+        conv = enPeso;
+        avisos.push({ tipo: 'revisar', detalle: `${codigo} ${l.nombre}: registrado en ${l.unidad_medida}; se tomó 1 ${l.unidad_medida} = ${fmt(porcion.cantidad)} ${porcion.unidad} (porción del nombre)` });
+      }
+    }
     if (!conv || conv.aproximado) {
       avisos.push({ tipo: 'revisar', detalle: conv
         ? `${codigo} ${l.nombre}: registrado en ${l.unidad_medida} y maestro en ${prod?.unidad_medida}; se tomó 1:1`
@@ -220,6 +229,14 @@ export function construirGSConsumo(lineas: LineaConsumo[], productos: Map<string
   }
   for (const [nombre, cant] of sinCodigo) avisos.push({ tipo: 'excluido', detalle: `${nombre}: sin código de producto (${fmt(cant)})` });
   return { filas: consolidar(filas), avisos: dedupe(avisos) };
+}
+
+/** "PP. CANASTO DE PAPAS (PP=200GR) (GR)" → { cantidad: 200, unidad: 'GR' }. */
+function porcionDelNombre(nombre: string | null | undefined) {
+  const m = /\b(?:PP|PR)\s*=\s*(\d+(?:[.,]\d+)?)\s*(GR|GRS|KG|CC|ML|LT)\b/i.exec(String(nombre ?? ''));
+  if (!m) return null;
+  const cantidad = Number(m[1].replace(',', '.'));
+  return cantidad > 0 ? { cantidad, unidad: m[2].toUpperCase() } : null;
 }
 
 function dedupe(avisos: Aviso[]) {
