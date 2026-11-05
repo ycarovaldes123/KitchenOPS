@@ -150,7 +150,7 @@
 .hst-edit-bar { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; padding: 12px 0 2px; }
 .hst-edit-fecha { display: flex; flex-direction: column; gap: 3px; margin-right: 6px; }
 .hst-edit-fecha span { font-size: 11px; color: var(--hst-tx2); }
-.hst-edit-fecha input { height: 34px; padding: 0 8px; border: 1px solid var(--ac); border-radius: 8px; font: inherit; font-size: 13px; background: var(--sf); color: var(--tx); }
+.hst-edit-fecha input, .hst-edit-fecha select { height: 34px; padding: 0 8px; border: 1px solid var(--ac); border-radius: 8px; font: inherit; font-size: 13px; background: var(--sf); color: var(--tx); }
 .hst-err { color: var(--rd); font-size: 12px; margin: 8px 0 0; }
 .hst-muted { color: var(--hst-tx2); font-size: 13px; margin: 0; }
 

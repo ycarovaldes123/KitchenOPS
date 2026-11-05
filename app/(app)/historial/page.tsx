@@ -1488,8 +1488,8 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos, porDia, busqued
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, number>>({});
-  /** Bodega (ubicación) editada por línea existente; si no está, se mantiene la guardada. */
-  const [editUbic, setEditUbic] = useState<Record<string, string>>({});
+  /** Bodega del movimiento completo al editar: '' = mantener la de cada línea. */
+  const [editBodega, setEditBodega] = useState('');
   const [editFecha, setEditFecha] = useState('');
   const [newRows, setNewRows] = useState<Array<{ localId: string; ubicacion: string; codigo_producto: string; cantidad: number }>>([]);
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
@@ -1512,7 +1512,7 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos, porDia, busqued
     if (editingId === id) {
       setEditingId(null);
       setEditValues({});
-      setEditUbic({});
+      setEditBodega('');
       setEditFecha('');
       setNewRows([]);
       setDeletedIds(new Set());
@@ -1526,7 +1526,7 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos, porDia, busqued
     const fechaActual = String(datos.find(item => (item.id as string) === id)?.fecha ?? '');
     setEditingId(id);
     setEditValues(vals);
-    setEditUbic({});
+    setEditBodega('');
     setEditFecha(fechaActual);
     setNewRows([]);
     setDeletedIds(new Set());
@@ -1536,17 +1536,17 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos, porDia, busqued
   const cancelEdit = () => {
     setEditingId(null);
     setEditValues({});
-      setEditUbic({});
+    setEditBodega('');
     setEditFecha('');
     setNewRows([]);
     setDeletedIds(new Set());
     setSaveErr('');
   };
 
-  const addRow = () => {
+  const addRow = (bodegaBase?: string) => {
     setNewRows(rows => [...rows, {
       localId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      ubicacion: 'CAMARA CONGELADOS',
+      ubicacion: editBodega || bodegaBase || 'CAMARA CONGELADOS',
       codigo_producto: '',
       cantidad: 1,
     }]);
@@ -1568,14 +1568,14 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos, porDia, busqued
         .filter(d => !deletedIds.has(d.id as string))
         .map(d => ({
           id: d.id as string,
-          ubicacion: editUbic[d.id as string] ?? String(d.ubicacion ?? ''),
+          ubicacion: editBodega || String(d.ubicacion ?? ''),
           cantidad: editValues[d.id as string] ?? (d.cantidad as number),
         }));
 
       const nuevos = newRows.map(row => {
         const producto = productosMap.get(row.codigo_producto);
         return {
-          ubicacion: row.ubicacion,
+          ubicacion: editBodega || row.ubicacion,
           codigo_producto: row.codigo_producto,
           nombre_producto: producto?.nombre ?? '',
           cantidad: Number(row.cantidad) || 0,
@@ -1600,7 +1600,7 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos, porDia, busqued
       }
       setEditingId(null);
       setEditValues({});
-      setEditUbic({});
+      setEditBodega('');
       setEditFecha('');
       setNewRows([]);
       setDeletedIds(new Set());
@@ -1664,7 +1664,16 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos, porDia, busqued
                 >
                   {editando && isAdmin && (
                     <EditBar conFecha editFecha={editFecha} setEditFecha={setEditFecha} addLabel="Añadir línea"
-                      onAdd={addRow} onSave={() => saveEditInventario(id, det, observacion)} onCancel={cancelEdit} saving={saving} />
+                      extra={(
+                        <label className="hst-edit-fecha">
+                          <span>Bodega</span>
+                          <select value={editBodega} onChange={e => setEditBodega(e.target.value)} aria-label="Bodega del movimiento">
+                            <option value="">{ubicaciones.length > 1 ? `Mantener (${ubicaciones.length} bodegas)` : (ubicaciones[0] ?? 'Sin bodega')}</option>
+                            {UBICACIONES_INVENTARIO.filter(u => ubicaciones.length > 1 || u !== ubicaciones[0]).map(u => <option key={u} value={u}>{u}</option>)}
+                          </select>
+                        </label>
+                      )}
+                      onAdd={() => addRow(ubicaciones[0])} onSave={() => saveEditInventario(id, det, observacion)} onCancel={cancelEdit} saving={saving} />
                   )}
                   {saveErr && editando && <p className="hst-err">{saveErr}</p>}
                   {filtrado && <FiltradoNota q={busqueda?.q ?? ''} visibles={detMostrar.length} total={det.length} unidad="productos" />}
@@ -1677,18 +1686,7 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos, porDia, busqued
                           const qty = editando ? (editValues[item.id as string] ?? (item.cantidad as number)) : (item.cantidad as number);
                           return (
                             <LineaProducto
-                              key={String(item.id)} nombre={nombreLinea(item)}
-                              sub={editando ? (() => {
-                                const actual = editUbic[item.id as string] ?? String(item.ubicacion ?? '');
-                                const opciones = UBICACIONES_INVENTARIO.includes(actual) || !actual ? UBICACIONES_INVENTARIO : [actual, ...UBICACIONES_INVENTARIO];
-                                return (
-                                  <select className="hst-ubic-select" value={actual} aria-label={`Bodega de ${nombreLinea(item)}`}
-                                    onChange={e => setEditUbic(x => ({ ...x, [item.id as string]: e.target.value }))}>
-                                    {!actual && <option value="">Elegir bodega</option>}
-                                    {opciones.map(u => <option key={u} value={u}>{u}</option>)}
-                                  </select>
-                                );
-                              })() : (String(item.ubicacion ?? '') || undefined)}
+                              key={String(item.id)} nombre={nombreLinea(item)} sub={(editando && editBodega) || String(item.ubicacion ?? '') || undefined}
                               cantidad={qty} unidad={unidadLinea(item)} editando={editando}
                               onCantidad={v => setEditValues(x => ({ ...x, [item.id as string]: v }))}
                               costo={null}
@@ -1703,12 +1701,7 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos, porDia, busqued
                               key={row.localId}
                               picker={<SearchablePicker value={row.codigo_producto} options={productoOptions} placeholder="Buscar producto" width="100%"
                                 onChange={value => setNewRows(v => v.map(item => item.localId === row.localId ? { ...item, codigo_producto: value } : item))} />}
-                              sub={(
-                                <select className="hst-ubic-select" value={row.ubicacion} aria-label="Ubicación"
-                                  onChange={e => setNewRows(v => v.map(item => item.localId === row.localId ? { ...item, ubicacion: e.target.value } : item))}>
-                                  {UBICACIONES_INVENTARIO.map(u => <option key={u} value={u}>{u}</option>)}
-                                </select>
-                              )}
+                              sub={editBodega || row.ubicacion}
                               cantidad={row.cantidad} unidad={String(producto?.unidad_medida ?? '').toUpperCase()}
                               onCantidad={v => setNewRows(rows => rows.map(item => item.localId === row.localId ? { ...item, cantidad: v } : item))}
                               costo={null}
