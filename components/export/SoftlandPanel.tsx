@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-type Opcion = 'ge_produccion' | 'gs_produccion' | 'consumo_merma' | 'consumo_colacion';
+type Opcion = 'ge_produccion' | 'gs_produccion' | 'consumo_merma' | 'consumo_colacion' | 'consumo_frutas';
 
 const OPCIONES: { value: Opcion; titulo: string; formato: string; desc: string }[] = [
   { value: 'ge_produccion', titulo: 'Producción PP (ingreso)', formato: 'GE_PRODUCCION · concepto 10', desc: 'PP terminados del mes (códigos 0502), una guía "PRODUCCION <MES>".' },
   { value: 'gs_produccion', titulo: 'Producción (salida por receta)', formato: 'GS_PRODUCCION · concepto 09', desc: 'Una guía por PP ("PROD. X RC=n") con folio correlativo: código 0501 (el del PP 0502) y lo producido dividido por el rendimiento de la receta. Cta 1-1-06-05.' },
   { value: 'consumo_merma', titulo: 'Merma', formato: 'GS_CONSUMO · concepto 07', desc: 'Merma de productos + insumos de platos dados de baja, guía "MERMA <MES>"; folio correlativo cada 40 líneas.' },
   { value: 'consumo_colacion', titulo: 'Colación personal', formato: 'GS_CONSUMO · concepto 07', desc: 'Ingredientes de las colaciones del mes, guía "COLACION PERSONAL <MES>"; folio correlativo cada 40 líneas.' },
+  { value: 'consumo_frutas', titulo: 'Consumo de frutas', formato: 'GS_CONSUMO · concepto 07', desc: 'Frutas entregadas en el mes (módulo Frutas), sumadas por código, guía "CONSUMO FRUTAS <MES>"; folio correlativo cada 40 líneas.' },
 ];
 
 interface Fila { guia: string; codigo: string; descripcion: string; cantidad: number }

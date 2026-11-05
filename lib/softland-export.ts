@@ -8,8 +8,8 @@ import { normalizarUM } from './costo-receta-pp';
 import { convertirUnidad } from './defontana-consumo';
 
 export type ArchivoSoftland = 'ge_produccion' | 'gs_produccion' | 'gs_consumo';
-export type FuenteConsumo = 'merma' | 'colacion';
-export type GuiaConsumo = 'merma' | 'colacion';
+export type FuenteConsumo = 'merma' | 'colacion' | 'frutas';
+export type GuiaConsumo = FuenteConsumo;
 
 export const BODEGA = '11';
 export const CC = '08';
@@ -36,6 +36,7 @@ export function descripcionGuia(tipo: 'produccion' | GuiaConsumo, mes: string) {
   const { etiqueta } = rangoMes(mes);
   if (tipo === 'produccion') return `PRODUCCION ${etiqueta}`;
   if (tipo === 'colacion') return `COLACION PERSONAL ${etiqueta}`;
+  if (tipo === 'frutas') return `CONSUMO FRUTAS ${etiqueta}`;
   return `MERMA ${etiqueta}`;
 }
 
@@ -196,7 +197,7 @@ export function construirGSProduccion(
   return { filas: consolidar(filas), avisos };
 }
 
-/** GS_CONSUMO: una guía (merma / colación) con lo consumido, sumado por código. */
+/** GS_CONSUMO: una guía (merma / colación / frutas) con lo consumido, sumado por código. */
 export function construirGSConsumo(lineas: LineaConsumo[], productos: Map<string, ProductoMaestro>, guia: string): ResultadoSoftland {
   const avisos: Aviso[] = [];
   const filas: FilaSoftland[] = [];

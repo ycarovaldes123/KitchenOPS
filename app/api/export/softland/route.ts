@@ -11,7 +11,7 @@ import {
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
 const ARCHIVOS: ArchivoSoftland[] = ['ge_produccion', 'gs_produccion', 'gs_consumo'];
-const FUENTES: FuenteConsumo[] = ['merma', 'colacion'];
+const FUENTES: FuenteConsumo[] = ['merma', 'colacion', 'frutas'];
 
 /** PostgREST corta en 1000 filas: pagina hasta traer todo. */
 async function todas<T>(consulta: (desde: number, hasta: number) => PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>): Promise<T[]> {
@@ -89,13 +89,23 @@ async function lineasColacion(supabase: Supabase, desde: string, hasta: string):
   })));
 }
 
+async function lineasFrutas(supabase: Supabase, desde: string, hasta: string): Promise<LineaConsumo[]> {
+  type Det = { codigo_producto: string | null; nombre_producto: string; cantidad: number; unidad_medida: string | null };
+  const rows = await todas<{ detalle_frutas: Det[] }>((a, b) => supabase
+    .from('frutas').select('id,detalle_frutas(codigo_producto,nombre_producto,cantidad,unidad_medida)')
+    .gte('fecha', desde).lte('fecha', hasta).order('id').range(a, b));
+  return rows.flatMap(r => (r.detalle_frutas ?? []).map(d => ({
+    codigo_producto: d.codigo_producto, nombre: d.nombre_producto, cantidad: Number(d.cantidad), unidad_medida: d.unidad_medida,
+  })));
+}
+
 function folioValido(v: string | null) {
   const n = Number(String(v ?? '').trim());
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
 // GET /api/export/softland?archivo=ge_produccion|gs_produccion|gs_consumo&mes=YYYY-MM
-//   &fuente=merma|colacion (gs_consumo) &folio=N (opcional) &formato=json|xlsx
+//   &fuente=merma|colacion|frutas (gs_consumo) &folio=N (opcional) &formato=json|xlsx
 export async function GET(req: NextRequest) {
   const s = await requireRol(['admin', 'finanzas']);
   if (!s.ok) return s.response;
@@ -123,7 +133,9 @@ export async function GET(req: NextRequest) {
       const [lineas, recetas] = await Promise.all([lineasProduccion(supabase, desde, hasta), recetasPP(supabase)]);
       resultado = construirGSProduccion(lineas, productos, recetas);
     } else {
-      const lineas = fuente === 'merma' ? await lineasMerma(supabase, desde, hasta) : await lineasColacion(supabase, desde, hasta);
+      const lineas = fuente === 'merma' ? await lineasMerma(supabase, desde, hasta)
+        : fuente === 'frutas' ? await lineasFrutas(supabase, desde, hasta)
+        : await lineasColacion(supabase, desde, hasta);
       resultado = construirGSConsumo(lineas, productos, descripcionGuia(fuente, mes));
     }
 
