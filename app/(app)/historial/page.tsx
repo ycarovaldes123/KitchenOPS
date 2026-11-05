@@ -1488,6 +1488,8 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos, porDia, busqued
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, number>>({});
+  /** Bodega (ubicación) editada por línea existente; si no está, se mantiene la guardada. */
+  const [editUbic, setEditUbic] = useState<Record<string, string>>({});
   const [editFecha, setEditFecha] = useState('');
   const [newRows, setNewRows] = useState<Array<{ localId: string; ubicacion: string; codigo_producto: string; cantidad: number }>>([]);
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
@@ -1510,6 +1512,7 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos, porDia, busqued
     if (editingId === id) {
       setEditingId(null);
       setEditValues({});
+      setEditUbic({});
       setEditFecha('');
       setNewRows([]);
       setDeletedIds(new Set());
@@ -1523,6 +1526,7 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos, porDia, busqued
     const fechaActual = String(datos.find(item => (item.id as string) === id)?.fecha ?? '');
     setEditingId(id);
     setEditValues(vals);
+    setEditUbic({});
     setEditFecha(fechaActual);
     setNewRows([]);
     setDeletedIds(new Set());
@@ -1532,6 +1536,7 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos, porDia, busqued
   const cancelEdit = () => {
     setEditingId(null);
     setEditValues({});
+      setEditUbic({});
     setEditFecha('');
     setNewRows([]);
     setDeletedIds(new Set());
@@ -1563,7 +1568,7 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos, porDia, busqued
         .filter(d => !deletedIds.has(d.id as string))
         .map(d => ({
           id: d.id as string,
-          ubicacion: String(d.ubicacion ?? ''),
+          ubicacion: editUbic[d.id as string] ?? String(d.ubicacion ?? ''),
           cantidad: editValues[d.id as string] ?? (d.cantidad as number),
         }));
 
@@ -1595,6 +1600,7 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos, porDia, busqued
       }
       setEditingId(null);
       setEditValues({});
+      setEditUbic({});
       setEditFecha('');
       setNewRows([]);
       setDeletedIds(new Set());
@@ -1671,7 +1677,18 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos, porDia, busqued
                           const qty = editando ? (editValues[item.id as string] ?? (item.cantidad as number)) : (item.cantidad as number);
                           return (
                             <LineaProducto
-                              key={String(item.id)} nombre={nombreLinea(item)} sub={String(item.ubicacion ?? '') || undefined}
+                              key={String(item.id)} nombre={nombreLinea(item)}
+                              sub={editando ? (() => {
+                                const actual = editUbic[item.id as string] ?? String(item.ubicacion ?? '');
+                                const opciones = UBICACIONES_INVENTARIO.includes(actual) || !actual ? UBICACIONES_INVENTARIO : [actual, ...UBICACIONES_INVENTARIO];
+                                return (
+                                  <select className="hst-ubic-select" value={actual} aria-label={`Bodega de ${nombreLinea(item)}`}
+                                    onChange={e => setEditUbic(x => ({ ...x, [item.id as string]: e.target.value }))}>
+                                    {!actual && <option value="">Elegir bodega</option>}
+                                    {opciones.map(u => <option key={u} value={u}>{u}</option>)}
+                                  </select>
+                                );
+                              })() : (String(item.ubicacion ?? '') || undefined)}
                               cantidad={qty} unidad={unidadLinea(item)} editando={editando}
                               onCantidad={v => setEditValues(x => ({ ...x, [item.id as string]: v }))}
                               costo={null}
