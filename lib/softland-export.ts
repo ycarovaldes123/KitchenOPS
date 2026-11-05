@@ -367,5 +367,7 @@ export async function construirExcelSoftland(
 
 export function nombreArchivoSoftland(archivo: ArchivoSoftland, mes: string, fuente?: FuenteConsumo) {
   const base = archivo === 'ge_produccion' ? 'GE_PRODUCCION_PP' : archivo === 'gs_produccion' ? 'GS_PRODUCCION' : `GS_CONSUMO_${(fuente ?? 'merma').toUpperCase()}`;
-  return `${base}_${mes}.xlsx`;
+  // Nombre con el mes en palabras: GS_CONSUMO_MERMA_OCTUBRE.xlsx
+  const mesNombre = MESES[Number(mes.split('-')[1]) - 1];
+  return `${base}_${mesNombre}.xlsx`;
 }
