@@ -68,6 +68,8 @@ export interface Aviso { tipo: 'excluido' | 'revisar'; detalle: string }
 export interface ResultadoSoftland { filas: FilaSoftland[]; avisos: Aviso[] }
 
 const UNIDADES_CONTEO = new Set(['UN', 'PR']);
+/** Unidades que equivalen a una porción del producto (PP=200GR → 1 UN = 1 PP = 200 GR). */
+const UNIDADES_PORCION = new Set(['UN', 'PR', 'PP']);
 
 const PESO_A_VOLUMEN: Record<string, string> = { GR: 'CC', KG: 'LT', CC: 'GR', LT: 'KG' };
 
@@ -210,8 +212,8 @@ export function construirGSConsumo(lineas: LineaConsumo[], productos: Map<string
     const prod = productos.get(codigo);
     let conv = convertir(cant, l.unidad_medida, prod?.unidad_medida ?? l.unidad_medida);
     const porcion = conv ? null : porcionDelNombre(prod?.nombre ?? l.nombre);
-    if (porcion && UNIDADES_CONTEO.has(normalizarUM(l.unidad_medida) ?? '')) {
-      // Registrado en unidades/porciones y el maestro en peso o volumen: 1 UN = la porción del nombre (PP=200GR).
+    if (porcion && UNIDADES_PORCION.has(normalizarUM(l.unidad_medida) ?? '')) {
+      // Registrado en unidades/porciones (UN, PR o PP) y el maestro en peso o volumen: 1 UN/PP = la porción del nombre (PP=200GR).
       const enPeso = convertir(cant * porcion.cantidad, porcion.unidad, prod?.unidad_medida ?? null);
       if (enPeso) {
         conv = enPeso;
