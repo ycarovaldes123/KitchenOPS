@@ -382,3 +382,17 @@
 .ck-input.is-manual { border-color: #A5B4FC; background: #EEF2FF; color: #3730A3; font-weight: 700; }
 .ck-pu__reset { position: absolute; right: 3px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 4px; background: transparent; color: #4338CA; cursor: pointer; padding: 0; }
 .ck-pu__reset:hover { background: #E0E7FF; }
+
+/* ── Selector Comida / Coctelería / Cafetería (tarjetas tipo Inicio) ── */
+.ck-grupos { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 16px; gap: 12px; }
+.ck-grupo { font: inherit; text-align: left; cursor: pointer; padding: 16px 18px; }
+.ck-grupo .inicio-card__title { margin-top: 12px; }
+.ck-grupo.is-on { border: 2px solid var(--ac); background: color-mix(in srgb, var(--ac) 6%, var(--sf)); padding: 15px 17px; }
+.ck-grupo.is-on .inicio-card__icon { background: var(--ac); color: #fff; }
+.ck-grupo.is-on .inicio-card__title { color: var(--ac); }
+@media (max-width: 700px) {
+  .ck-grupos { gap: 8px; }
+  .ck-grupo { padding: 12px; }
+  .ck-grupo.is-on { padding: 11px; }
+  .ck-grupo .inicio-card__desc { display: none; }
+}

@@ -11,9 +11,10 @@ import ConsumoVentasPanel from '@/components/costos/ConsumoVentasPanel';
 import DefontanaPanel, { type VentaProducto } from '@/components/costos/DefontanaPanel';
 import { CartaTag, NOMBRE_CARTA, PlatoFoto, type Ingrediente, type Plato } from '@/components/costos/shared';
 import { useRol } from '@/components/RolProvider';
-import { CATEGORIAS_CARTA, TIPOS_CARTA, type TipoCarta } from '@/lib/carta';
+import { CATEGORIAS_CARTA, TIPOS_CARTA, grupoDeCategoria, type GrupoCarta, type TipoCarta } from '@/lib/carta';
 import { normalizarCodigoToteat } from '@/lib/defontana-consumo';
 import type { ColorSemaforo } from '@/types/database';
+import '@/components/layout/navegacion.css';
 import '@/components/costos/costos.css';
 
 // Todos y los colores consideran solo platos activos; Inactivos muestra exclusivamente los desactivados.
@@ -33,6 +34,13 @@ const KPI_CLASE: Record<ColorSemaforo, string> = {
   red: 'ck-kpi--red',
   gray: 'ck-kpi--gray',
 };
+
+// Botones grandes (mismo estilo que las tarjetas de Inicio) que eligen qué platos se ven.
+const GRUPOS: { id: GrupoCarta; label: string; icon: string; desc: string }[] = [
+  { id: 'comida', label: 'Comida', icon: 'utensils', desc: 'Platos, picadas, sándwiches, ensaladas y postres' },
+  { id: 'cocteleria', label: 'Coctelería', icon: 'martini', desc: 'Cócteles y tragos' },
+  { id: 'cafeteria', label: 'Cafetería', icon: 'coffee', desc: 'Cafetería y jugos naturales' },
+];
 
 type Vista = 'lista' | 'mosaico';
 type FiltroCarta = 'all' | TipoCarta;
@@ -145,6 +153,7 @@ export default function CostosPage() {
   const [platos, setPlatos] = useState<Plato[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [grupo, setGrupo] = useState<GrupoCarta>('comida');
   const [catFiltro, setCatFiltro] = useState('all');
   const [cartaFiltro, setCartaFiltro] = useState<FiltroCarta>('all');
   const [semFiltro, setSemFiltro] = useState<FiltroEstado>('all');
@@ -267,17 +276,28 @@ export default function CostosPage() {
     };
   }, [panel]);
 
+  // Platos del grupo elegido (Comida / Coctelería / Cafetería): KPIs, categorías y filtros trabajan sobre ellos.
+  const platosGrupo = useMemo(() => platos.filter(p => grupoDeCategoria(p.categoria) === grupo), [platos, grupo]);
+  const conteoGrupo = useMemo(() => {
+    const cuenta: Record<GrupoCarta, number> = { comida: 0, cocteleria: 0, cafeteria: 0 };
+    for (const p of platos) if (p.activo) cuenta[grupoDeCategoria(p.categoria)] += 1;
+    return cuenta;
+  }, [platos]);
   const categorias = useMemo(
-    () => Array.from(new Set([...CATEGORIAS_CARTA, ...platos.map(p => p.categoria)])).sort((a, b) => a.localeCompare(b, 'es')),
-    [platos],
+    () => Array.from(new Set([...CATEGORIAS_CARTA, ...platos.map(p => p.categoria)]))
+      .filter(c => grupoDeCategoria(c) === grupo)
+      .sort((a, b) => a.localeCompare(b, 'es')),
+    [platos, grupo],
   );
   const activos = useMemo(() => platos.filter(p => p.activo), [platos]);
   const totalInactivos = platos.length - activos.length;
+  const activosGrupo = useMemo(() => platosGrupo.filter(p => p.activo), [platosGrupo]);
+  const inactivosGrupo = platosGrupo.length - activosGrupo.length;
 
   const productoQuery = useMemo(() => normalizeSearch(productoBusqueda), [productoBusqueda]);
 
   const filtrados = useMemo(() => (
-    platos.filter(p =>
+    platosGrupo.filter(p =>
       (semFiltro === 'inactivos' ? !p.activo : p.activo) &&
       (cartaFiltro === 'all' || (p.tipo_carta ?? 'ANTIGUA') === cartaFiltro) &&
       (catFiltro === 'all' || p.categoria === catFiltro) &&
@@ -286,7 +306,7 @@ export default function CostosPage() {
       (!soloSinFoto || !p.foto_url) &&
       (!productoQuery || platoMatches(p, productoQuery) || matchingIngredientes(p, productoQuery).length > 0),
     )
-  ), [platos, cartaFiltro, catFiltro, semFiltro, soloSinToteat, soloSinFoto, productoQuery]);
+  ), [platosGrupo, cartaFiltro, catFiltro, semFiltro, soloSinToteat, soloSinFoto, productoQuery]);
 
   const grupos = useMemo(() => {
     const map = new Map<string, Plato[]>();
@@ -300,9 +320,9 @@ export default function CostosPage() {
 
   const resumen = useMemo(() => {
     const cuenta: Record<ColorSemaforo, number> = { green: 0, yellow: 0, red: 0, gray: 0 };
-    for (const p of activos) cuenta[p.semaforo] += 1;
+    for (const p of activosGrupo) cuenta[p.semaforo] += 1;
     return cuenta;
-  }, [activos]);
+  }, [activosGrupo]);
 
   // Activo/Inactivo desde la ficha: cambio optimista, se revierte si el servidor no lo guarda.
   async function toggleActivo(plato: Plato) {
@@ -413,6 +433,14 @@ export default function CostosPage() {
     setSoloSinFoto(false);
   }
 
+  function elegirGrupo(g: GrupoCarta) {
+    if (g === grupo) return;
+    if (editando && !window.confirm('Hay cambios sin guardar en el plato. ¿Descartarlos?')) return;
+    if (panel) abrirPanel(null);
+    setGrupo(g);
+    setCatFiltro('all');
+  }
+
   if (loading) {
     return <div className="page" style={{ color: 'var(--ts)', fontSize: '14px' }}>Cargando carta...</div>;
   }
@@ -491,6 +519,24 @@ export default function CostosPage() {
       <div ref={layoutRef} className={`ck-layout${panel ? ' has-panel' : ''}${editando ? ' is-editing' : ''}`}>
       <div className="ck-main">
 
+      <nav className="inicio-grid ck-grupos" aria-label="Tipo de carta">
+        {GRUPOS.map(g => (
+          <button
+            key={g.id}
+            type="button"
+            onClick={() => elegirGrupo(g.id)}
+            className={`inicio-card ck-grupo${grupo === g.id ? ' is-on' : ''}`}
+            aria-pressed={grupo === g.id}
+          >
+            <span className="inicio-card__icon" aria-hidden>
+              <NavIcon name={g.icon} size={24} />
+            </span>
+            <span className="inicio-card__title">{g.label}</span>
+            <span className="inicio-card__desc">{g.desc} · {conteoGrupo[g.id]} activo{conteoGrupo[g.id] !== 1 ? 's' : ''}</span>
+          </button>
+        ))}
+      </nav>
+
       <div className="ck-kpis">
         {([
           { key: 'green' as const, label: 'Óptimo ≥30%' },
@@ -566,7 +612,7 @@ export default function CostosPage() {
               ? <span className="ck-dot" style={{ background: 'transparent', border: '1.5px solid #8A847D' }} />
               : c.value !== 'all' && <span className="ck-dot" style={{ background: SEMAFORO[c.value].color }} />}
             {c.label}
-            {c.value === 'inactivos' && totalInactivos > 0 && <span style={{ opacity: 0.7, fontWeight: 500 }}>({totalInactivos})</span>}
+            {c.value === 'inactivos' && inactivosGrupo > 0 && <span style={{ opacity: 0.7, fontWeight: 500 }}>({inactivosGrupo})</span>}
           </button>
         ))}
         {hayFiltros && (
@@ -590,12 +636,12 @@ export default function CostosPage() {
       )}
 
       <p className="ck-section-title">
-        {NOMBRE_CARTA[cartaFiltro]}{semFiltro === 'inactivos' ? ' · Inactivos' : ''} · {filtrados.length} plato{filtrados.length !== 1 ? 's' : ''}
+        {GRUPOS.find(g => g.id === grupo)?.label} · {NOMBRE_CARTA[cartaFiltro]}{semFiltro === 'inactivos' ? ' · Inactivos' : ''} · {filtrados.length} plato{filtrados.length !== 1 ? 's' : ''}
       </p>
 
       {filtrados.length === 0 && (
         <div className="ck-empty">
-          {productoQuery ? 'No hay platos con ese nombre, código o producto.' : semFiltro === 'inactivos' ? 'No hay platos inactivos con estos filtros.' : 'No hay platos que coincidan con los filtros.'}
+          {platosGrupo.length === 0 ? `Aún no hay platos de ${GRUPOS.find(g => g.id === grupo)?.label}.${canManage ? ' Créalos con “Nuevo plato” eligiendo su categoría' + (grupo === 'cocteleria' ? ' (COCTELERÍA).' : ' (CAFETERÍA o JUGOS NATURALES).') : ''}` : productoQuery ? 'No hay platos con ese nombre, código o producto.' : semFiltro === 'inactivos' ? 'No hay platos inactivos con estos filtros.' : 'No hay platos que coincidan con los filtros.'}
         </div>
       )}
 

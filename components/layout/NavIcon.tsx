@@ -34,6 +34,9 @@ const PATHS: Record<string, string> = {
   'file-warning':   'M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7zM12 9v4M12 17h.01',
   mail:             'M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM22 7l-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7',
   // ── Usados dentro de módulos (Control Cárnicos, KPIs) ──
+  // Selector Comida / Coctelería / Cafetería (Costos)
+  coffee:   'M10 2v2M14 2v2M6 2v2M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1',
+  martini:  'M8 22h8M12 11v11M19 3l-7 8-7-8z',
   grid:     'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
   barchart: 'M18 20V10M12 20V4M6 20v-6',
   dollar:   'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6',
