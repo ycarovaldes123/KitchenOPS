@@ -32,7 +32,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     const { error } = await supabase.from('pp_recetas').update({ activo: body.activo }).eq('id', id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    if (body.activo) await recalcularRecetaYProducto(supabase, id, { ...anterior, activo: true, ingredientes: [] });
+    if (body.activo) await recalcularRecetaYProducto(supabase, id, { ...anterior, activo: true, area: 'COCINA', ingredientes: [] });
 
     await auditLog(supabase, {
       usuario_email: s.email,
@@ -76,6 +76,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     rendimiento:        input.rendimiento,
     unidad_rendimiento: input.unidad_rendimiento,
     activo:             input.activo,
+    area:               input.area,
   }).eq('id', id);
   if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 });
 

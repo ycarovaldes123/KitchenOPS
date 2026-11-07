@@ -24,6 +24,8 @@ export interface PPReceta {
   costo_unitario_calculado: number;
   estado: string;
   activo: boolean;
+  /** Sección de la receta en Maestros → Recetas PP. Sin columna (antes del SQL) se trata como COCINA. */
+  area?: 'COCINA' | 'SALON' | null;
   importado_at: string | null;
   calculado_at: string | null;
   ingredientes: PPRecetaIngrediente[];

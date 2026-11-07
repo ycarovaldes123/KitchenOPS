@@ -100,6 +100,7 @@ async function crearReceta(
       rendimiento:        input.rendimiento,
       unidad_rendimiento: input.unidad_rendimiento,
       activo:             input.activo,
+      area:               input.area,
       estado:             'PENDIENTE',
     })
     .select('id')

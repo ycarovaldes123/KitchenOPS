@@ -12,6 +12,10 @@ import { formatCostoUnitario, formatCantidad } from '@/lib/costo-receta-pp';
 import './recetas-pp.css';
 
 type Tab = 'pp' | 'recetas' | 'productos' | 'personal';
+type AreaReceta = 'COCINA' | 'SALON';
+
+// Recetas sin sección asignada (o antes de existir la columna) quedan en Cocina.
+const areaDe = (r: PPReceta): AreaReceta => (r.area === 'SALON' ? 'SALON' : 'COCINA');
 
 interface ActualizarResult {
   total_en_planilla: number;
@@ -99,6 +103,7 @@ export default function MaestrosPage() {
   const [recetaModal, setRecetaModal] = useState<false | 'new' | { edit: PPReceta } | { copy: PPReceta }>(false);
   const [mostrarInactivas, setMostrarInactivas] = useState(false);
   const [soloDuplicadas, setSoloDuplicadas] = useState(false);
+  const [areaRecetas, setAreaRecetas] = useState<AreaReceta>('COCINA');
   const [ocultarProdInactivos, setOcultarProdInactivos] = useState(true);
   const [prodFamilia, setProdFamilia] = useState('');
   const [prodSinDefontana, setProdSinDefontana] = useState(false);
@@ -431,6 +436,7 @@ export default function MaestrosPage() {
   const duplicadas = recetasDuplicadas(recetasActivas);
 
   const filteredRecetas = recetas.filter(rec =>
+    areaDe(rec) === areaRecetas &&
     (mostrarInactivas || rec.activo !== false) &&
     (!soloDuplicadas || duplicadas.has(rec.id)) &&
     (rec.nombre.toLowerCase().includes(recetaSearch.toLowerCase()) ||
@@ -439,7 +445,8 @@ export default function MaestrosPage() {
   );
 
   const recetasNoActivo = recetasActivas.filter(r => r.estado !== 'ACTIVO');
-  const recetasInactivas = recetas.length - recetasActivas.length;
+  const recetasInactivas = recetas.filter(r => areaDe(r) === areaRecetas).length - recetasActivas.filter(r => areaDe(r) === areaRecetas).length;
+  const conteoArea = (a: AreaReceta) => recetas.filter(r => areaDe(r) === a && (mostrarInactivas || r.activo !== false)).length;
 
   const needsGramos = ppForm.tipo_pp === 'PORCION' || ppForm.tipo_pp === 'UND';
 
@@ -739,6 +746,25 @@ export default function MaestrosPage() {
                   <button type="button" aria-label="Cerrar mensaje" onClick={() => setRecetasMsg(null)} className="rpp-icon-btn" style={{ width: 28, height: 28, color: 'inherit' }}><NavIcon name="x" size={14} /></button>
                 </div>
               )}
+
+              <div className="rpp-areas" role="tablist" aria-label="Sección de recetas">
+                {(['COCINA', 'SALON'] as AreaReceta[]).map(a => (
+                  <button
+                    key={a}
+                    type="button"
+                    role="tab"
+                    aria-selected={areaRecetas === a}
+                    className={`rpp-area-btn${areaRecetas === a ? ' is-active' : ''}`}
+                    onClick={() => {
+                      setAreaRecetas(a);
+                      if (selectedReceta && areaDe(selectedReceta) !== a) { setSelectedReceta(null); setDrawerOpen(false); }
+                    }}
+                  >
+                    {a === 'COCINA' ? 'Cocina' : 'Salón'}
+                    <span className="rpp-area-count">{conteoArea(a)}</span>
+                  </button>
+                ))}
+              </div>
 
               <div className="rpp-toolbar">
                 <div className="rpp-search">
@@ -1080,6 +1106,7 @@ export default function MaestrosPage() {
         <RecetaPPEditorModal
           receta={recetaModal !== 'new' && 'edit' in recetaModal ? recetaModal.edit : null}
           copyFrom={recetaModal !== 'new' && 'copy' in recetaModal ? recetaModal.copy : null}
+          areaInicial={areaRecetas}
           productos={productos}
           onClose={() => setRecetaModal(false)}
           onSaved={msg => {

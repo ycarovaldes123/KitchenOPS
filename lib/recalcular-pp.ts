@@ -41,6 +41,7 @@ export interface RecalcularResult {
 interface IngredienteRow {
   id: string;
   codigo_ingrediente: string | null;
+  nombre_ingrediente: string | null;
   cantidad: number;
   unidad_medida: string;
   costo_unitario_snap: number | null;
@@ -95,7 +96,7 @@ export async function recalcularCostosPP(supabase: SupabaseClient, ids?: string[
   if (ids && ids.length === 0) return { recalculadas: 0, errores: [] };
 
   const select = `id, codigo_pp, rendimiento, unidad_rendimiento, costo_total_calculado, costo_unitario_calculado, estado,
-    pp_receta_ingredientes (id, codigo_ingrediente, cantidad, unidad_medida, costo_unitario_snap, costo_linea_calculado, sin_codigo, sin_costo)`;
+    pp_receta_ingredientes (id, codigo_ingrediente, nombre_ingrediente, cantidad, unidad_medida, costo_unitario_snap, costo_linea_calculado, sin_codigo, sin_costo)`;
   let recetas: RecetaRow[];
   try {
     recetas = ids?.length
@@ -150,7 +151,8 @@ export async function recalcularCostosPP(supabase: SupabaseClient, ids?: string[
 
     for (const ing of receta.pp_receta_ingredientes ?? []) {
       const prod = ing.codigo_ingrediente ? prodMap.get(ing.codigo_ingrediente) : null;
-      const sinCodigo = !ing.codigo_ingrediente || !prod;
+      // El agua de la llave no es un producto inventariado: costo 0 sin dejar la receta INCOMPLETA.
+      const sinCodigo = (!ing.codigo_ingrediente || !prod) && !esAguaSinCosto(ing);
       const costoUnit = prod?.costo_promedio ?? 0;
       const sinCosto = !sinCodigo && costoUnit === 0;
       const costoLinea = prod ? round6(costoLineaPP(ing.cantidad, ing.unidad_medida, prod.unidad_medida, costoUnit)) : 0;
@@ -215,4 +217,12 @@ export async function recalcularCostosPP(supabase: SupabaseClient, ids?: string[
   const carta = await sincronizarCostosCarta(supabase);
   errores.push(...carta.errores.map(e => `carta: ${e}`));
   return { recalculadas, errores };
+}
+
+const AGUA_SIN_COSTO = new Set(['AGUA', 'AGUA POTABLE', 'AGUA FRIA', 'AGUA CALIENTE', 'AGUA HERVIDA']);
+
+function esAguaSinCosto(ing: { codigo_ingrediente: string | null; nombre_ingrediente: string | null }): boolean {
+  if (ing.codigo_ingrediente) return false;
+  const nombre = (ing.nombre_ingrediente ?? '').normalize('NFD').replace(/\p{M}/gu, '').replace(/\(.*?\)/g, '').trim().toUpperCase();
+  return AGUA_SIN_COSTO.has(nombre);
 }

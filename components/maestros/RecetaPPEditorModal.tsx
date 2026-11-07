@@ -21,6 +21,7 @@ export interface RecetaPPEditable {
   rendimiento: number;
   unidad_rendimiento: string;
   activo: boolean;
+  area?: 'COCINA' | 'SALON' | null;
   ingredientes: {
     id: string;
     orden: number;
@@ -42,6 +43,8 @@ interface IngredienteForm {
 interface Props {
   receta: RecetaPPEditable | null;
   copyFrom?: RecetaPPEditable | null;
+  /** Sección por defecto para una receta nueva (la sub-pestaña abierta). */
+  areaInicial?: 'COCINA' | 'SALON';
   productos: ProductoMaestro[];
   onClose: () => void;
   onSaved: (msg: string) => void;
@@ -58,7 +61,7 @@ function emptyRow(): IngredienteForm {
   return { localId: newId(), codigo: '', nombre: '', cantidad: '', unidad_medida: 'KG' };
 }
 
-export default function RecetaPPEditorModal({ receta, copyFrom = null, productos, onClose, onSaved }: Props) {
+export default function RecetaPPEditorModal({ receta, copyFrom = null, areaInicial = 'COCINA', productos, onClose, onSaved }: Props) {
   const source = receta ?? copyFrom;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -68,6 +71,7 @@ export default function RecetaPPEditorModal({ receta, copyFrom = null, productos
   const [rendimiento, setRendimiento] = useState(source?.rendimiento?.toString() ?? '');
   const [unidadRend, setUnidadRend] = useState(source?.unidad_rendimiento ?? 'GR');
   const [activo, setActivo] = useState(receta?.activo !== false);
+  const [area, setArea] = useState<'COCINA' | 'SALON'>(source?.area === 'SALON' ? 'SALON' : source ? 'COCINA' : areaInicial);
   const [ingredientes, setIngredientes] = useState<IngredienteForm[]>(
     source?.ingredientes?.length
       ? [...source.ingredientes].sort((a, b) => a.orden - b.orden).map(ing => ({
@@ -161,6 +165,7 @@ export default function RecetaPPEditorModal({ receta, copyFrom = null, productos
         rendimiento: rendNum,
         unidad_rendimiento: unidadRend,
         activo,
+        area,
         ingredientes: ingredientes
           .filter(row => (Number(row.cantidad) || 0) > 0 && (row.codigo || row.nombre.trim()))
           .map(row => ({
@@ -244,6 +249,13 @@ export default function RecetaPPEditorModal({ receta, copyFrom = null, productos
               <span className="rpp-label">Unidad rendimiento</span>
               <select value={unidadRend} onChange={e => setUnidadRend(e.target.value)} className="rpp-input">
                 {UNIDADES_RENDIMIENTO.map(u => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </label>
+            <label className="rpp-field">
+              <span className="rpp-label">Sección</span>
+              <select value={area} onChange={e => setArea(e.target.value as 'COCINA' | 'SALON')} className="rpp-input">
+                <option value="COCINA">Cocina</option>
+                <option value="SALON">Salón</option>
               </select>
             </label>
             <label className="rpp-toggle">

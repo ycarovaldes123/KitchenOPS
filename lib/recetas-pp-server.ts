@@ -12,6 +12,7 @@ export interface RecetaPPInput {
   rendimiento: number;
   unidad_rendimiento: string;
   activo: boolean;
+  area: 'COCINA' | 'SALON';
   ingredientes: {
     codigo_ingrediente: string | null;
     nombre_ingrediente: string;
@@ -52,6 +53,7 @@ export function parseRecetaPPBody(body: Record<string, unknown>): RecetaPPInput 
     rendimiento,
     unidad_rendimiento: unidad,
     activo: body.activo !== false,
+    area: String(body.area ?? '').toUpperCase() === 'SALON' ? 'SALON' : 'COCINA',
     ingredientes,
   };
 }

@@ -323,7 +323,7 @@
   display: grid; gap: 12px;
   grid-template-columns: 40fr 18fr 42fr;
 }
-.rpp-form-grid.is-row2 { grid-template-columns: 1fr 1fr 1fr; margin-top: 12px; }
+.rpp-form-grid.is-row2 { grid-template-columns: 1fr 1fr 1fr 1fr; margin-top: 12px; }
 @media (max-width: 767px) {
   .rpp-form-grid, .rpp-form-grid.is-row2 { grid-template-columns: 1fr 1fr; }
   .rpp-form-grid > .span-full-sm { grid-column: 1 / -1; }
@@ -428,4 +428,28 @@
     content: attr(data-label) ' '; font-family: 'DM Sans', sans-serif; font-weight: 600;
     font-size: 10.5px; letter-spacing: .3px; text-transform: uppercase; color: var(--ts);
   }
+}
+
+/* ── Sub-pestañas Cocina / Salón ───────────────────────────────── */
+.rpp-areas {
+  display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 16px;
+  background: var(--bg); border: 1px solid var(--bo); border-radius: 12px;
+}
+.rpp-area-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: none; background: transparent; cursor: pointer;
+  padding: 8px 18px; border-radius: 9px; min-height: 40px;
+  font-size: 14px; font-weight: 600; color: var(--ts);
+  transition: background .15s, color .15s;
+}
+.rpp-area-btn:hover { color: var(--tx); }
+.rpp-area-btn.is-active { background: var(--sf); color: var(--ac); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.rpp-area-count {
+  font-size: 11px; font-weight: 700; border-radius: 999px; padding: 1px 8px;
+  background: var(--bo); color: var(--tx);
+}
+.rpp-area-btn.is-active .rpp-area-count { background: var(--ac); color: #fff; }
+@media (max-width: 639px) {
+  .rpp-areas { display: flex; }
+  .rpp-area-btn { flex: 1; justify-content: center; }
 }
