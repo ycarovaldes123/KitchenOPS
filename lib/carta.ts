@@ -21,21 +21,30 @@ export function esTipoCarta(value: unknown): value is TipoCarta {
 export const CATEGORIAS_CARTA = [
   'PLATOS',
   'PICADAS',
+  'PICADAS EVENTO',
+  'PICADAS PROMOCIÓN',
+  'PICADAS PEDIDOS YA',
   'SANDWICH & BURGERS',
+  'SANDWICH & BURGERS PEDIDOS YA',
+  'SANDWICH PERSONAL',
   'ENSALADAS',
+  'ENSALADAS PEDIDOS YA',
   'POSTRES',
+  'POSTRES PEDIDOS YA',
   'AGREGADOS Y PORCIONES',
   'JUGOS NATURALES',
   'CAFETERÍA',
+  'CAFETERÍA GASTO',
   'CAFETERÍA GASTOS PERSONAL',
   'CAFETERÍA PERSONAL',
+  'CAFÉ CORTESÍA',
   'MAQUINA DE CAFE LAVAZZA',
   'COCTELERÍA',
   'CATERING',
 ] as const;
 
 // Selector Comida / Coctelería / Cafetería de Costos: el grupo sale de la categoria del plato.
-// Cafeteria agrupa las categorias CAFETERÍA*, MAQUINA DE CAFE LAVAZZA y JUGOS NATURALES; Cocteleria, las que contienen
+// Cafeteria agrupa las categorias CAFETERÍA*, CAFÉ* (p. ej. CAFÉ CORTESÍA), MAQUINA DE CAFE LAVAZZA y JUGOS NATURALES; Cocteleria, las que contienen
 // COCTEL/COCKTAIL/TRAGO; todo lo demas es Comida.
 export const GRUPOS_CARTA = ['comida', 'cocteleria', 'cafeteria'] as const;
 export type GrupoCarta = typeof GRUPOS_CARTA[number];
@@ -43,6 +52,6 @@ export type GrupoCarta = typeof GRUPOS_CARTA[number];
 export function grupoDeCategoria(categoria: string | null | undefined): GrupoCarta {
   const c = String(categoria ?? '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   if (/COCTEL|COCKTAIL|TRAGO/.test(c)) return 'cocteleria';
-  if (c.startsWith('CAFETERIA') || c.includes('LAVAZZA') || c.includes('JUGO')) return 'cafeteria';
+  if (c.startsWith('CAFE') || c.includes('LAVAZZA') || c.includes('JUGO')) return 'cafeteria';
   return 'comida';
 }
