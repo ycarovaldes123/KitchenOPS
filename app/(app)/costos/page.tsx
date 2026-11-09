@@ -13,8 +13,8 @@ import { CartaTag, NOMBRE_CARTA, PlatoFoto, type Ingrediente, type Plato } from 
 import { useRol } from '@/components/RolProvider';
 import { CATEGORIAS_CARTA, TIPOS_CARTA, grupoDeCategoria, type GrupoCarta, type TipoCarta } from '@/lib/carta';
 
-// En Comida solo se trabaja con Carta antigua y Carta actual (nueva).
-const TIPOS_CARTA_COMIDA: TipoCarta[] = ['ANTIGUA', 'NUEVA'];
+// En Comida se trabaja con Carta antigua, Carta actual (nueva) y PedidosYa (categorías "... PEDIDOS YA").
+const TIPOS_CARTA_COMIDA: TipoCarta[] = ['ANTIGUA', 'NUEVA', 'PEDIDOSYA'];
 import { normalizarCodigoToteat } from '@/lib/defontana-consumo';
 import type { ColorSemaforo } from '@/types/database';
 import '@/components/layout/navegacion.css';

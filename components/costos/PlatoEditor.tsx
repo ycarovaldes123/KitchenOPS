@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatCLP, formatPct } from '@/lib/calculos';
 import NavIcon from '@/components/layout/NavIcon';
-import { CATEGORIAS_CARTA, NOMBRE_TIPO_CARTA, TIPOS_CARTA, esTipoCarta, type TipoCarta } from '@/lib/carta';
+import { CATEGORIAS_CARTA, NOMBRE_TIPO_CARTA, TIPOS_CARTA, esTipoCarta, grupoDeCategoria, type TipoCarta } from '@/lib/carta';
 import ProductSearchSelect from './ProductSearchSelect';
 import SelectBuscable from './SelectBuscable';
 import { PlatoFoto, type Plato } from './shared';
@@ -284,7 +284,10 @@ export default function PlatoEditor({
     return lista.map(c => ({ value: c, label: c }));
   }, [source?.categoria]);
 
-  const opcionesCarta = useMemo(() => TIPOS_CARTA.map(t => ({ value: t, label: NOMBRE_TIPO_CARTA[t] })), []);
+  // Un plato de Comida no va en la carta Bebestibles (salvo que ya estuviera ahí, para no perder el valor).
+  const opcionesCarta = useMemo(() => TIPOS_CARTA
+    .filter(t => t !== 'BEBESTIBLES' || grupoDeCategoria(categoria) !== 'comida' || tipoCarta === 'BEBESTIBLES')
+    .map(t => ({ value: t, label: NOMBRE_TIPO_CARTA[t] })), [categoria, tipoCarta]);
 
   async function handleFotoFile(file: File | null) {
     if (fotoInputRef.current) fotoInputRef.current.value = '';
