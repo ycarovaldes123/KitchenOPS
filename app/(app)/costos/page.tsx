@@ -174,6 +174,7 @@ export default function CostosPage() {
   const [aviso, setAviso] = useState<Aviso | null>(null);
   const [dfEditor, setDfEditor] = useState<EditorDefontana | null>(null);
   const [dfRefresh, setDfRefresh] = useState(0);
+  const [actualizandoPrecios, setActualizandoPrecios] = useState(false);
 
   useEffect(() => {
     if (!aviso) return;
@@ -436,6 +437,31 @@ export default function CostosPage() {
     setSoloSinFoto(false);
   }
 
+  // Botón "Actualizar precio": recalcula el precio carta desde Toteat ((venta + descuento) / cantidad)
+  // y guarda solo los platos cuyo precio cambió.
+  async function actualizarPreciosToteat() {
+    if (actualizandoPrecios) return;
+    if (editando && !window.confirm('Hay cambios sin guardar en el plato. ¿Descartarlos?')) return;
+    if (!window.confirm('Se recalculará el precio carta de todos los platos con código Toteat según las ventas de los últimos 30 días: (venta + descuento) ÷ cantidad vendida. Los platos sin ventas en ese período conservan su precio. ¿Continuar?')) return;
+    setActualizandoPrecios(true);
+    try {
+      const res = await fetch('/api/carta/precio-toteat', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) throw new Error(data.error || 'No se pudieron actualizar los precios');
+      if (editando) abrirPanel(null);
+      await cargarCarta();
+      setAviso({
+        texto: data.actualizados
+          ? `${data.actualizados} precio${data.actualizados !== 1 ? 's' : ''} actualizado${data.actualizados !== 1 ? 's' : ''} desde Toteat`
+          : 'Precios al día: no hubo cambios en Toteat',
+      });
+    } catch (e) {
+      setAviso({ texto: e instanceof Error ? e.message : 'No se pudieron actualizar los precios', error: true });
+    } finally {
+      setActualizandoPrecios(false);
+    }
+  }
+
   function elegirGrupo(g: GrupoCarta) {
     if (g === grupo) return;
     if (editando && !window.confirm('Hay cambios sin guardar en el plato. ¿Descartarlos?')) return;
@@ -480,6 +506,11 @@ export default function CostosPage() {
             {canManage && (
               <button type="button" className="ck-btn ck-btn--primary" onClick={() => { if (!editando || window.confirm('Hay cambios sin guardar en el plato. ¿Descartarlos?')) abrirPanel({ modo: 'nuevo' }); }}>
                 <NavIcon name="plus" size={16} /> Nuevo plato
+              </button>
+            )}
+            {(canManage || soloPrecio) && (
+              <button type="button" className="ck-btn" onClick={actualizarPreciosToteat} disabled={actualizandoPrecios} title="Recalcula el precio carta desde las ventas de Toteat: (venta + descuento) ÷ cantidad vendida">
+                <NavIcon name="rotate-ccw" size={16} /> {actualizandoPrecios ? 'Actualizando…' : 'Actualizar precio'}
               </button>
             )}
             <div className="ck-toggle" role="group" aria-label="Vista">

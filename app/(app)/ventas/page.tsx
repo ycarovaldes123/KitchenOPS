@@ -48,6 +48,12 @@ function formatPercent(value: number | null) {
   return `${new Intl.NumberFormat('es-CL', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value * 100)}%`;
 }
 
+// Venta sin descuentos: lo pagado en Toteat ya trae el descuento restado y el descuento viene negativo,
+// así que se suma de vuelta. Con este monto se calculan % costo y margen (costo real del plato a precio lleno).
+function ventaSinDescuento(item: ToteatItem) {
+  return (Number(item.gross_amount) || 0) - (Number(item.discount_amount) || 0);
+}
+
 function normalizeKey(value: string) {
   return value
     .normalize('NFD')
@@ -127,7 +133,7 @@ export default function VentasPage() {
       };
 
       prev.cantidad += Number(item.quantity) || 0;
-      prev.total += Number(item.gross_amount) || 0;
+      prev.total += ventaSinDescuento(item);
       prev.descuento += Number(item.discount_amount) || 0;
       prev.nombre = canonicalName;
       prev.categoria = categoriaCanonica;
@@ -168,7 +174,7 @@ export default function VentasPage() {
       const sub = subcategoriaPorClave.get(normalizeKey(categoriaCanonica)) ?? OTROS;
       const acc = map.get(sub) ?? map.get(OTROS)!;
       acc.cantidad += Number(item.quantity) || 0;
-      acc.total += Number(item.gross_amount) || 0;
+      acc.total += ventaSinDescuento(item);
     }
 
     // Solo subcategorias con movimiento en el rango consultado.
@@ -417,7 +423,7 @@ export default function VentasPage() {
             {subcategoriaSeleccionada
               ? 'Vuelve a hacer clic en la fila de la subcategoria para cerrar este detalle. '
               : ''}
-            Orden alfabetico.
+            Orden alfabetico. Venta TOTEAT incluye el descuento sumado (venta sin descuentos); % costo y margen se calculan sobre ese monto.
           </div>
         </div>
         <div style={{ overflowX: 'auto' }}>
