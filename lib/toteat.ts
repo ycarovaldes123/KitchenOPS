@@ -27,6 +27,8 @@ export interface ToteatVentaItem {
   quantity: number;
   gross_amount: number | null;
   net_amount: number | null;
+  // Descuento de la línea tal como lo trae Toteat (Ventas Jerarquía): monto negativo, 0 si no hubo.
+  discount_amount: number;
   raw: Record<string, unknown>;
 }
 
@@ -309,6 +311,7 @@ function normalizeDetail(
     quantity: firstNumber(detail, ['quantity', 'qty', 'cantidad', 'amount']) ?? 1,
     gross_amount: firstNumber(detail, ['grossAmount', 'payed', 'total', 'totalAmount', 'gross', 'monto', 'priceTotal', 'netPrice']),
     net_amount: firstNumber(detail, ['netAmount', 'netPrice', 'subtotal', 'net', 'montoNeto']),
+    discount_amount: firstNumber(detail, ['discounts', 'discount', 'descuento', 'descuentos']) ?? 0,
     raw: { order, detail },
   };
 }

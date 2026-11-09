@@ -12,6 +12,7 @@ interface ToteatItem {
   category: string | null;
   quantity: number;
   gross_amount: number | null;
+  discount_amount?: number | null;
 }
 
 interface ToteatResponse {
@@ -87,6 +88,7 @@ export default function VentasPage() {
       categoria_toteat: string | null;
       cantidad: number;
       total: number;
+      descuento: number;
       receta: CartaItem | null;
       costo_unitario: number | null;
       costo_total: number | null;
@@ -114,6 +116,7 @@ export default function VentasPage() {
         categoria_toteat: item.category,
         cantidad: 0,
         total: 0,
+        descuento: 0,
         receta,
         costo_unitario: receta?.costo_neto ?? null,
         costo_total: null,
@@ -125,6 +128,7 @@ export default function VentasPage() {
 
       prev.cantidad += Number(item.quantity) || 0;
       prev.total += Number(item.gross_amount) || 0;
+      prev.descuento += Number(item.discount_amount) || 0;
       prev.nombre = canonicalName;
       prev.categoria = categoriaCanonica;
       prev.categoria_toteat = item.category ?? prev.categoria_toteat;
@@ -426,6 +430,7 @@ export default function VentasPage() {
                   { label: 'Categoria TOTEAT', pcOnly: false },
                   { label: 'Cantidad', pcOnly: false },
                   { label: 'Venta TOTEAT', pcOnly: false },
+                  { label: 'Descuento', pcOnly: true },
                   { label: 'Costo receta bruto', pcOnly: true },
                   { label: '% costo', pcOnly: true },
                   { label: 'Margen', pcOnly: true },
@@ -442,7 +447,7 @@ export default function VentasPage() {
             </thead>
             <tbody>
               {resumenVisible.length === 0 ? (
-                <tr><td colSpan={8} style={{ padding: '34px 16px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>{busqueda.trim() ? 'Sin resultados para la busqueda' : 'Sin ventas consultadas'}</td></tr>
+                <tr><td colSpan={9} style={{ padding: '34px 16px', textAlign: 'center', color: 'var(--ts)', fontSize: '13px' }}>{busqueda.trim() ? 'Sin resultados para la busqueda' : 'Sin ventas consultadas'}</td></tr>
               ) : resumenVisible.map(row => (
                 <tr
                   key={`${row.codigo ?? ''}-${row.nombre}`}
@@ -453,6 +458,7 @@ export default function VentasPage() {
                   <td style={{ fontSize: '12px', color: 'var(--ts)' }}>{row.categoria_toteat ?? row.categoria ?? '-'}</td>
                   <td style={{ fontSize: '13px', fontVariantNumeric: 'tabular-nums' }}>{formatQty(row.cantidad)}</td>
                   <td style={{ fontSize: '13px', fontVariantNumeric: 'tabular-nums' }}>{row.total ? formatCLP(Math.round(row.total)) : '-'}</td>
+                  <td className="col-pc" style={{ fontSize: '13px', fontVariantNumeric: 'tabular-nums', color: Math.round(row.descuento) !== 0 ? '#B91C1C' : 'var(--ts)' }}>{Math.round(row.descuento) !== 0 ? `${row.descuento < 0 ? '-' : ''}${formatCLP(Math.abs(Math.round(row.descuento)))}` : '-'}</td>
                   <td className="col-pc" style={{ fontSize: '13px', fontVariantNumeric: 'tabular-nums', color: row.costo_bruto_total != null ? '#0F766E' : 'var(--ts)' }}>{row.costo_bruto_total != null ? formatCLP(Math.round(row.costo_bruto_total)) : '-'}</td>
                   <td className="col-pc" style={{ fontSize: '13px', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: row.pct_costo != null && row.pct_costo > 0.35 ? '#B45309' : '#047857' }}>{formatPercent(row.pct_costo)}</td>
                   <td className="col-pc" style={{ fontSize: '13px', fontVariantNumeric: 'tabular-nums', color: row.margen != null && row.margen >= 0 ? '#047857' : '#B91C1C' }}>{row.margen != null ? formatCLP(Math.round(row.margen)) : '-'}</td>

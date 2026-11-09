@@ -12,6 +12,9 @@ import DefontanaPanel, { type VentaProducto } from '@/components/costos/Defontan
 import { CartaTag, NOMBRE_CARTA, PlatoFoto, type Ingrediente, type Plato } from '@/components/costos/shared';
 import { useRol } from '@/components/RolProvider';
 import { CATEGORIAS_CARTA, TIPOS_CARTA, grupoDeCategoria, type GrupoCarta, type TipoCarta } from '@/lib/carta';
+
+// En Comida solo se trabaja con Carta antigua y Carta actual (nueva).
+const TIPOS_CARTA_COMIDA: TipoCarta[] = ['ANTIGUA', 'NUEVA'];
 import { normalizarCodigoToteat } from '@/lib/defontana-consumo';
 import type { ColorSemaforo } from '@/types/database';
 import '@/components/layout/navegacion.css';
@@ -439,6 +442,7 @@ export default function CostosPage() {
     if (panel) abrirPanel(null);
     setGrupo(g);
     setCatFiltro('all');
+    setCartaFiltro('all');
   }
 
   if (loading) {
@@ -575,7 +579,7 @@ export default function CostosPage() {
 
         <select className="ck-select" value={cartaFiltro} onChange={e => setCartaFiltro(e.target.value as FiltroCarta)} aria-label="Carta">
           <option value="all">{NOMBRE_CARTA.all}</option>
-          {TIPOS_CARTA.map(t => <option key={t} value={t}>{NOMBRE_CARTA[t]}</option>)}
+          {(grupo === 'comida' ? TIPOS_CARTA_COMIDA : TIPOS_CARTA).map(t => <option key={t} value={t}>{NOMBRE_CARTA[t]}</option>)}
         </select>
 
         <select className="ck-select" value={catFiltro} onChange={e => setCatFiltro(e.target.value)} aria-label="Categoría">
