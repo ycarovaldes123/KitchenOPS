@@ -24,6 +24,19 @@ const CAMBIOS_RECETA_CARTA: CambioReceta[] = [
     codigo_actual: '0502302',
     anterior: { codigo_producto: '0301022', nombre: 'ESCALOPA DE VACUNO (UN)', cantidad: 1, unidad_medida: 'UN' },
   },
+  // 2026-11-10: SCHNITZEL DE POLLO y PORCION SCHNITZEL AVE descuentan el PP en vez del filete, desde septiembre.
+  {
+    codigo_toteat: 'K15076',
+    desde: '2026-09-01',
+    codigo_actual: '0502303',
+    anterior: { codigo_producto: '0302001', nombre: 'FILETE DE PECHUGA (KG)', cantidad: 0.12, unidad_medida: 'KG' },
+  },
+  {
+    codigo_toteat: 'K15093',
+    desde: '2026-09-01',
+    codigo_actual: '0502303',
+    anterior: { codigo_producto: '0302001', nombre: 'FILETE DE PECHUGA (KG)', cantidad: 0.12, unidad_medida: 'KG' },
+  },
 ];
 
 function cambiosAnteriores(codigoToteat: string, fecha: string) {

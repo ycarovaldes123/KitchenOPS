@@ -29,7 +29,7 @@ const EXCLUIR = new Set([]);
 // (el hueso carnudo ya sale como Producción al hacer la salsa).
 const NO_DESGLOSAR = new Set(['0502037', '0502273']);
 // PP de Costos que en la tabla de Control Cárnicos están con el código de la carne
-const EQUIVALENTES = { '0502302': 'PP SCHNITZEL VACUNO (1UN = 120GR) UND', '0502296': 'PP OSOBUCO (UND)' };
+const EQUIVALENTES = {}; // schnitzel (0502302/0502303) y osobuco (0502296) ya usan su código de receta PP
 
 const carta = await all('carta', 'id,nombre,categoria,activo,codigo_toteat,tipo_carta');
 const ings = await all('carta_ingredientes', 'carta_id,codigo_producto,nombre,cantidad,unidad_medida');
