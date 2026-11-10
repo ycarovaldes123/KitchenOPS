@@ -5,6 +5,7 @@ import { formatCLP } from '@/lib/calculos';
 import { costoLineaPP, factorConversionUM, normalizarUM, formatCostoUnitario } from '@/lib/costo-receta-pp';
 import NavIcon from '@/components/layout/NavIcon';
 import ProductSearchSelect from '@/components/costos/ProductSearchSelect';
+import { AREAS_RECETA_PP, areaRecetaPP, type AreaRecetaPP } from '@/components/maestros/types';
 
 interface ProductoMaestro {
   codigo: string;
@@ -21,7 +22,7 @@ export interface RecetaPPEditable {
   rendimiento: number;
   unidad_rendimiento: string;
   activo: boolean;
-  area?: 'COCINA' | 'SALON' | null;
+  area?: AreaRecetaPP | null;
   ingredientes: {
     id: string;
     orden: number;
@@ -44,7 +45,7 @@ interface Props {
   receta: RecetaPPEditable | null;
   copyFrom?: RecetaPPEditable | null;
   /** Sección por defecto para una receta nueva (la sub-pestaña abierta). */
-  areaInicial?: 'COCINA' | 'SALON';
+  areaInicial?: AreaRecetaPP;
   productos: ProductoMaestro[];
   onClose: () => void;
   onSaved: (msg: string) => void;
@@ -71,7 +72,7 @@ export default function RecetaPPEditorModal({ receta, copyFrom = null, areaInici
   const [rendimiento, setRendimiento] = useState(source?.rendimiento?.toString() ?? '');
   const [unidadRend, setUnidadRend] = useState(source?.unidad_rendimiento ?? 'GR');
   const [activo, setActivo] = useState(receta?.activo !== false);
-  const [area, setArea] = useState<'COCINA' | 'SALON'>(source?.area === 'SALON' ? 'SALON' : source ? 'COCINA' : areaInicial);
+  const [area, setArea] = useState<AreaRecetaPP>(source ? areaRecetaPP(source.area) : areaInicial);
   const [ingredientes, setIngredientes] = useState<IngredienteForm[]>(
     source?.ingredientes?.length
       ? [...source.ingredientes].sort((a, b) => a.orden - b.orden).map(ing => ({
@@ -253,9 +254,8 @@ export default function RecetaPPEditorModal({ receta, copyFrom = null, areaInici
             </label>
             <label className="rpp-field">
               <span className="rpp-label">Sección</span>
-              <select value={area} onChange={e => setArea(e.target.value as 'COCINA' | 'SALON')} className="rpp-input">
-                <option value="COCINA">Cocina</option>
-                <option value="SALON">Salón</option>
+              <select value={area} onChange={e => setArea(areaRecetaPP(e.target.value))} className="rpp-input">
+                {AREAS_RECETA_PP.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
               </select>
             </label>
             <label className="rpp-toggle">

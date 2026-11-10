@@ -2,6 +2,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { recalcularCostosPP } from './recalcular-pp';
 import { normalizarUM } from './costo-receta-pp';
 import { normalizarNombreProducto } from './nombre-producto';
+import { areaRecetaPP, type AreaRecetaPP } from '@/components/maestros/types';
 
 export const UNIDADES_RENDIMIENTO = ['GR', 'KG', 'CC', 'LT', 'PR', 'UN'];
 
@@ -12,7 +13,7 @@ export interface RecetaPPInput {
   rendimiento: number;
   unidad_rendimiento: string;
   activo: boolean;
-  area: 'COCINA' | 'SALON';
+  area: AreaRecetaPP;
   ingredientes: {
     codigo_ingrediente: string | null;
     nombre_ingrediente: string;
@@ -53,7 +54,7 @@ export function parseRecetaPPBody(body: Record<string, unknown>): RecetaPPInput 
     rendimiento,
     unidad_rendimiento: unidad,
     activo: body.activo !== false,
-    area: String(body.area ?? '').toUpperCase() === 'SALON' ? 'SALON' : 'COCINA',
+    area: areaRecetaPP(body.area),
     ingredientes,
   };
 }

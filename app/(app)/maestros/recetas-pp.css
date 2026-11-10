@@ -430,7 +430,7 @@
   }
 }
 
-/* ── Sub-pestañas Cocina / Salón ───────────────────────────────── */
+/* ── Sub-pestañas Cocina / Salón / Pastelería ───────────────────────────────── */
 .rpp-areas {
   display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 16px;
   background: var(--bg); border: 1px solid var(--bo); border-radius: 12px;

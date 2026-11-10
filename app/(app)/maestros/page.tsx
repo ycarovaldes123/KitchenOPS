@@ -7,15 +7,15 @@ import RecetaPPEditorModal from '@/components/maestros/RecetaPPEditorModal';
 import RecetaPPFicha, { RecetaEstadoChip } from '@/components/maestros/RecetaPPFicha';
 import PersonalTab from '@/components/maestros/PersonalTab';
 import NavIcon from '@/components/layout/NavIcon';
-import type { PPReceta } from '@/components/maestros/types';
+import { AREAS_RECETA_PP, areaRecetaPP, type PPReceta, type AreaRecetaPP } from '@/components/maestros/types';
 import { formatCostoUnitario, formatCantidad } from '@/lib/costo-receta-pp';
 import './recetas-pp.css';
 
 type Tab = 'pp' | 'recetas' | 'productos' | 'personal';
-type AreaReceta = 'COCINA' | 'SALON';
+type AreaReceta = AreaRecetaPP;
 
 // Recetas sin sección asignada (o antes de existir la columna) quedan en Cocina.
-const areaDe = (r: PPReceta): AreaReceta => (r.area === 'SALON' ? 'SALON' : 'COCINA');
+const areaDe = (r: PPReceta): AreaReceta => areaRecetaPP(r.area);
 
 interface ActualizarResult {
   total_en_planilla: number;
@@ -748,7 +748,7 @@ export default function MaestrosPage() {
               )}
 
               <div className="rpp-areas" role="tablist" aria-label="Sección de recetas">
-                {(['COCINA', 'SALON'] as AreaReceta[]).map(a => (
+                {AREAS_RECETA_PP.map(({ value: a, label }) => (
                   <button
                     key={a}
                     type="button"
@@ -760,7 +760,7 @@ export default function MaestrosPage() {
                       if (selectedReceta && areaDe(selectedReceta) !== a) { setSelectedReceta(null); setDrawerOpen(false); }
                     }}
                   >
-                    {a === 'COCINA' ? 'Cocina' : 'Salón'}
+                    {label}
                     <span className="rpp-area-count">{conteoArea(a)}</span>
                   </button>
                 ))}

@@ -18,5 +18,12 @@ export function resolve(specifier, context, next) {
     }
     return next(rootUrl + target, context);
   }
+  // Imports relativos sin extensión dentro de archivos .ts (ej. './costo-receta-pp')
+  if (specifier.startsWith('.') && !path.extname(specifier) && context.parentURL?.endsWith('.ts')) {
+    const url = new URL(specifier, context.parentURL);
+    for (const ext of ['.ts', '.tsx']) {
+      if (fs.existsSync(new URL(url.href + ext))) return next(url.href + ext, context);
+    }
+  }
   return next(specifier, context);
 }
