@@ -12,7 +12,7 @@ const OPCIONES: { value: Opcion; titulo: string; formato: string; desc: string }
   { value: 'consumo_frutas', titulo: 'Consumo de frutas', formato: 'GS_CONSUMO · concepto 07', desc: 'Frutas entregadas en el mes (módulo Frutas), sumadas por código, guía "CONSUMO FRUTAS <MES>"; folio correlativo cada 40 líneas.' },
 ];
 
-interface Fila { guia: string; codigo: string; descripcion: string; cantidad: number }
+interface Fila { guia: string; codigo: string; descripcion: string; cantidad: number; unidad?: string }
 interface Aviso { tipo: 'excluido' | 'revisar'; detalle: string }
 interface Vista { filas: Fila[]; guias: string[]; avisos: Aviso[]; fechaTexto: string }
 
@@ -162,7 +162,7 @@ export default function SoftlandPanel() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg)' }}>
-                    {['Descripción guía', 'Código', 'Descripción', 'Cantidad'].map(h => (
+                    {['Descripción guía', 'Código', 'Descripción', 'U. medida', 'Cantidad'].map(h => (
                       <th key={h} style={{ textAlign: h === 'Cantidad' ? 'right' : 'left', padding: '8px 10px', fontSize: '11px', color: 'var(--ts)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{h}</th>
                     ))}
                   </tr>
@@ -173,6 +173,7 @@ export default function SoftlandPanel() {
                       <td style={{ padding: '6px 10px', color: 'var(--ts)' }}>{f.guia}</td>
                       <td style={{ padding: '6px 10px', fontFamily: 'monospace' }}>{f.codigo}</td>
                       <td style={{ padding: '6px 10px' }}>{f.descripcion}</td>
+                      <td style={{ padding: '6px 10px', color: 'var(--ts)' }}>{f.unidad ?? ''}</td>
                       <td style={{ padding: '6px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtCant(f.cantidad)}</td>
                     </tr>
                   ))}

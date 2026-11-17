@@ -61,6 +61,8 @@ export interface FilaSoftland {
   codigo: string;
   descripcion: string;
   cantidad: number;
+  /** Solo para la vista previa (no va al archivo). */
+  unidad?: string;
 }
 
 export interface Aviso { tipo: 'excluido' | 'revisar'; detalle: string }
@@ -144,7 +146,7 @@ export function construirGEProduccion(lineas: LineaProduccion[], productos: Map<
   for (const [codigo, total] of lineasPP(lineas, avisos)) {
     const prod = productos.get(codigo);
     if (!prod) { avisos.push({ tipo: 'excluido', detalle: `${codigo}: no existe en el maestro de productos` }); continue; }
-    filas.push({ guia, codigo, descripcion: prod.nombre, cantidad: total });
+    filas.push({ guia, codigo, descripcion: prod.nombre, cantidad: total, unidad: prod.unidad_medida ?? undefined });
   }
   return { filas: consolidar(filas), avisos };
 }
@@ -194,6 +196,7 @@ export function construirGSProduccion(
       codigo: codigoReceta,
       descripcion: productos.get(codigoReceta)?.nombre ?? nombrePP,
       cantidad: cantRecetas,
+      unidad: productos.get(codigoReceta)?.unidad_medida ?? undefined,
     });
   }
   return { filas: consolidar(filas), avisos };
@@ -227,7 +230,7 @@ export function construirGSConsumo(lineas: LineaConsumo[], productos: Map<string
     }
     const cantidad = conv?.valor ?? cant;
     if (!prod) avisos.push({ tipo: 'revisar', detalle: `${codigo} ${l.nombre}: no está en el maestro, se usa el nombre registrado` });
-    filas.push({ guia, codigo, descripcion: prod?.nombre ?? l.nombre, cantidad });
+    filas.push({ guia, codigo, descripcion: prod?.nombre ?? l.nombre, cantidad, unidad: prod?.unidad_medida ?? l.unidad_medida ?? undefined });
   }
   for (const [nombre, cant] of sinCodigo) avisos.push({ tipo: 'excluido', detalle: `${nombre}: sin código de producto (${fmt(cant)})` });
   return { filas: consolidar(filas), avisos: dedupe(avisos) };
