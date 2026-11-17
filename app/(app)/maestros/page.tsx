@@ -95,6 +95,7 @@ export default function MaestrosPage() {
   const [recetas, setRecetas] = useState<PPReceta[]>([]);
   const [recetasLoading, setRecetasLoading] = useState(false);
   const [recetasImportando, setRecetasImportando] = useState(false);
+  const [recetasExportando, setRecetasExportando] = useState(false);
   const [recetasRecalculando, setRecetasRecalculando] = useState(false);
   const [recalcProd, setRecalcProd] = useState(false);
   const [recetasMsg, setRecetasMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -384,6 +385,31 @@ export default function MaestrosPage() {
     load();
   }
 
+  async function exportarRecetas() {
+    setRecetasExportando(true);
+    setRecetasMsg(null);
+    try {
+      const res = await fetch(`/api/maestros/recetas-pp/exportar?area=${areaRecetas}`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? 'Error al exportar las recetas');
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = `Recetas_PP_${areaRecetas}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      setRecetasMsg({ ok: false, text: error instanceof Error ? error.message : 'Error al exportar las recetas' });
+    } finally {
+      setRecetasExportando(false);
+    }
+  }
+
   async function descargarConteoProductos() {
     setConteoLoading(true);
     setUploadError('');
@@ -481,6 +507,9 @@ export default function MaestrosPage() {
               </button>
               <button type="button" className="rpp-btn" onClick={() => recetasFileRef.current?.click()} disabled={recetasImportando}>
                 <NavIcon name="upload" size={15} /> {recetasImportando ? 'Importando…' : 'Importar recetas PP'}
+              </button>
+              <button type="button" className="rpp-btn" onClick={exportarRecetas} disabled={recetasExportando || recetas.length === 0}>
+                <NavIcon name="download" size={15} /> {recetasExportando ? 'Exportando…' : 'Exportar recetas PP'}
               </button>
               <button type="button" className="rpp-btn rpp-btn-primary" onClick={() => setRecetaModal('new')}>
                 <NavIcon name="plus" size={15} /> Nueva receta
