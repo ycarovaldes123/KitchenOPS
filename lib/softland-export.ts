@@ -100,6 +100,12 @@ function convertir(cantidad: number, desde: string | null, hasta: string | null)
 const redondear = (n: number) => Number(n.toFixed(4));
 const fmt = (n: number) => n.toLocaleString('es-CL', { maximumFractionDigits: 3 });
 
+/** Deja las filas del limón (jugo de limón) primero, respetando el orden del resto. */
+function limonPrimero(filas: FilaSoftland[]): FilaSoftland[] {
+  const esLimon = (f: FilaSoftland) => f.codigo === CODIGO_PP_JUGO_LIMON || f.codigo === CODIGO_LIMON;
+  return [...filas.filter(esLimon), ...filas.filter(f => !esLimon(f))];
+}
+
 function codigoLimpio(c: string | null | undefined) { return String(c ?? '').trim(); }
 
 /** Suma por guía + código y ordena por guía y descripción. */
@@ -164,7 +170,7 @@ export function construirGEProduccion(
     filas.push({ guia, codigo: CODIGO_PP_JUGO_LIMON, descripcion: pp?.nombre ?? 'PP. JUGO DE LIMON (CC)', cantidad: kgRend * 1000, unidad: 'CC' });
     avisos.push({ tipo: 'revisar', detalle: `${CODIGO_PP_JUGO_LIMON} jugo de limón: rendimiento ${fmt(kgRend)} KG convertido a ${fmt(kgRend * 1000)} CC (1 KG = 1000 CC)` });
   }
-  return { filas: consolidar(filas), avisos };
+  return { filas: limonPrimero(consolidar(filas)), avisos };
 }
 
 // Paréntesis que hablan de unidad/porción: (GR), (PP=200GR), (PR=250GR), (15 GR C/U), (150GR), (PP=125).
@@ -220,7 +226,7 @@ export function construirGSProduccion(
   if (kgUsados > 0) {
     filas.push({ guia: 'PROD. JUGO DE LIMON', codigo: CODIGO_LIMON, descripcion: productos.get(CODIGO_LIMON)?.nombre ?? 'LIMÓN (KG)', cantidad: kgUsados, unidad: 'KG' });
   }
-  return { filas: consolidar(filas), avisos };
+  return { filas: limonPrimero(consolidar(filas)), avisos };
 }
 
 /** GS_CONSUMO: una guía (merma / colación / frutas) con lo consumido, sumado por código. */
