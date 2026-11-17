@@ -56,6 +56,13 @@ export interface LineaProduccion { codigo_producto: string | null; nombre_pp: st
 
 export interface LineaConsumo { codigo_producto: string | null; nombre: string; cantidad: number; unidad_medida: string | null }
 
+/** Rendimiento de verduras del mes (una fila por registro). */
+export interface LineaRendimiento { codigo_producto: string | null; verdura: string; kg_utilizados: number; rendimiento_kg: number }
+
+/** Limón: sale por producción (KG utilizados → GS, rendimiento en CC → GE), no por merma. */
+export const CODIGO_LIMON = '0401006';
+export const CODIGO_PP_JUGO_LIMON = '0502180';
+
 export interface FilaSoftland {
   guia: string;
   codigo: string;
@@ -139,7 +146,9 @@ function lineasPP(lineas: LineaProduccion[], avisos: Aviso[]) {
 }
 
 /** GE_PRODUCCION: ingreso del PP terminado, una sola guía "PRODUCCION <MES> <AÑO>". */
-export function construirGEProduccion(lineas: LineaProduccion[], productos: Map<string, ProductoMaestro>, mes: string): ResultadoSoftland {
+export function construirGEProduccion(
+  lineas: LineaProduccion[], productos: Map<string, ProductoMaestro>, mes: string, rendimientos: LineaRendimiento[] = [],
+): ResultadoSoftland {
   const avisos: Aviso[] = [];
   const guia = descripcionGuia('produccion', mes);
   const filas: FilaSoftland[] = [];
@@ -147,6 +156,13 @@ export function construirGEProduccion(lineas: LineaProduccion[], productos: Map<
     const prod = productos.get(codigo);
     if (!prod) { avisos.push({ tipo: 'excluido', detalle: `${codigo}: no existe en el maestro de productos` }); continue; }
     filas.push({ guia, codigo, descripcion: prod.nombre, cantidad: total, unidad: prod.unidad_medida ?? undefined });
+  }
+  // Jugo de limón (PP 0502180): el rendimiento se registra en KG y el PP va en CC (1 KG = 1000 CC).
+  const kgRend = rendimientos.filter(r => codigoLimpio(r.codigo_producto) === CODIGO_LIMON).reduce((a, r) => a + (Number(r.rendimiento_kg) || 0), 0);
+  if (kgRend > 0) {
+    const pp = productos.get(CODIGO_PP_JUGO_LIMON);
+    filas.push({ guia, codigo: CODIGO_PP_JUGO_LIMON, descripcion: pp?.nombre ?? 'PP. JUGO DE LIMON (CC)', cantidad: kgRend * 1000, unidad: 'CC' });
+    avisos.push({ tipo: 'revisar', detalle: `${CODIGO_PP_JUGO_LIMON} jugo de limón: rendimiento ${fmt(kgRend)} KG convertido a ${fmt(kgRend * 1000)} CC (1 KG = 1000 CC)` });
   }
   return { filas: consolidar(filas), avisos };
 }
@@ -167,7 +183,7 @@ export function descripcionGuiaPP(nombrePP: string, recetas: number) {
  * (cuántas recetas se hicieron). Cta 1-1-06-05.
  */
 export function construirGSProduccion(
-  lineas: LineaProduccion[], productos: Map<string, ProductoMaestro>, recetas: Map<string, RecetaPP>,
+  lineas: LineaProduccion[], productos: Map<string, ProductoMaestro>, recetas: Map<string, RecetaPP>, rendimientos: LineaRendimiento[] = [],
 ): ResultadoSoftland {
   const avisos: Aviso[] = [];
   const filas: FilaSoftland[] = [];
@@ -198,6 +214,11 @@ export function construirGSProduccion(
       cantidad: cantRecetas,
       unidad: productos.get(codigoReceta)?.unidad_medida ?? undefined,
     });
+  }
+  // Jugo de limón: sale del stock el limón utilizado (KG).
+  const kgUsados = rendimientos.filter(r => codigoLimpio(r.codigo_producto) === CODIGO_LIMON).reduce((a, r) => a + (Number(r.kg_utilizados) || 0), 0);
+  if (kgUsados > 0) {
+    filas.push({ guia: 'PROD. JUGO DE LIMON', codigo: CODIGO_LIMON, descripcion: productos.get(CODIGO_LIMON)?.nombre ?? 'LIMÓN (KG)', cantidad: kgUsados, unidad: 'KG' });
   }
   return { filas: consolidar(filas), avisos };
 }

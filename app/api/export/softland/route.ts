@@ -4,7 +4,7 @@ import { createClient } from '@/utils/supabase/server';
 import {
   construirExcelSoftland, construirGEProduccion, construirGSConsumo, construirGSProduccion, descripcionGuia,
   nombreArchivoSoftland, rangoMes,
-  type ArchivoSoftland, type FuenteConsumo, type LineaConsumo, type LineaProduccion,
+  type ArchivoSoftland, type FuenteConsumo, type LineaConsumo, type LineaProduccion, type LineaRendimiento, CODIGO_LIMON,
   type ProductoMaestro, type RecetaPP, type ResultadoSoftland,
 } from '@/lib/softland-export';
 
@@ -34,6 +34,20 @@ async function lineasProduccion(supabase: Supabase, desde: string, hasta: string
     .from('produccion').select('id,detalle_produccion(codigo_producto,nombre_pp,total_producido)')
     .gte('fecha', desde).lte('fecha', hasta).order('id').range(a, b));
   return rows.flatMap(r => r.detalle_produccion ?? []);
+}
+
+/** Rendimiento de verduras del mes, con el código de producto de cada verdura (maestro `verduras`). */
+async function lineasRendimiento(supabase: Supabase, desde: string, hasta: string): Promise<LineaRendimiento[]> {
+  const verduras = await todas<{ nombre: string; codigo_producto: string | null }>((a, b) => supabase
+    .from('verduras').select('nombre,codigo_producto').order('nombre').range(a, b));
+  const codigos = new Map(verduras.filter(v => v.codigo_producto).map(v => [v.nombre.trim().toUpperCase(), String(v.codigo_producto).trim()]));
+  const rows = await todas<{ verdura: string; kg_utilizados: number; rendimiento_kg: number }>((a, b) => supabase
+    .from('rendimiento').select('id,verdura,kg_utilizados,rendimiento_kg')
+    .gte('fecha', desde).lte('fecha', hasta).order('id').range(a, b));
+  return rows.map(r => ({
+    codigo_producto: codigos.get(String(r.verdura).trim().toUpperCase()) ?? null,
+    verdura: r.verdura, kg_utilizados: Number(r.kg_utilizados) || 0, rendimiento_kg: Number(r.rendimiento_kg) || 0,
+  }));
 }
 
 async function recetasPP(supabase: Supabase) {
@@ -75,6 +89,15 @@ async function lineasMerma(supabase: Supabase, desde: string, hasta: string): Pr
     const insumos = await todas<Ins>((a, b) => supabase.from('detalle_mermas_platos_insumos')
       .select('id,codigo_producto,nombre,cantidad_total,unidad_medida').in('detalle_merma_plato_id', parte).order('id').range(a, b));
     lineas.push(...insumos.map(x => ({ codigo_producto: x.codigo_producto, nombre: x.nombre, cantidad: Number(x.cantidad_total), unidad_medida: x.unidad_medida })));
+  }
+
+  // Rendimiento de verduras: la diferencia (KG utilizados − rendimiento) es merma. El limón no va aquí: sale por producción.
+  for (const r of await lineasRendimiento(supabase, desde, hasta)) {
+    const codigo = String(r.codigo_producto ?? '').trim();
+    if (codigo === CODIGO_LIMON) continue;
+    const merma = r.kg_utilizados - r.rendimiento_kg;
+    if (!(merma > 0)) continue;
+    lineas.push({ codigo_producto: codigo || null, nombre: r.verdura, cantidad: merma, unidad_medida: 'KG' });
   }
   return lineas;
 }
@@ -128,10 +151,10 @@ export async function GET(req: NextRequest) {
     let resultado: ResultadoSoftland;
 
     if (archivo === 'ge_produccion') {
-      resultado = construirGEProduccion(await lineasProduccion(supabase, desde, hasta), productos, mes);
+      resultado = construirGEProduccion(await lineasProduccion(supabase, desde, hasta), productos, mes, await lineasRendimiento(supabase, desde, hasta));
     } else if (archivo === 'gs_produccion') {
-      const [lineas, recetas] = await Promise.all([lineasProduccion(supabase, desde, hasta), recetasPP(supabase)]);
-      resultado = construirGSProduccion(lineas, productos, recetas);
+      const [lineas, recetas, rend] = await Promise.all([lineasProduccion(supabase, desde, hasta), recetasPP(supabase), lineasRendimiento(supabase, desde, hasta)]);
+      resultado = construirGSProduccion(lineas, productos, recetas, rend);
     } else {
       const lineas = fuente === 'merma' ? await lineasMerma(supabase, desde, hasta)
         : fuente === 'frutas' ? await lineasFrutas(supabase, desde, hasta)
