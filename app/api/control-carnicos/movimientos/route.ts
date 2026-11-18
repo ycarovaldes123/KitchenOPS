@@ -88,6 +88,9 @@ export async function POST(req: NextRequest) {
   if (subtipo === 'VENTAS') {
     return NextResponse.json({ error: 'El subtipo Ventas se registra desde la pestaña Ventas, no manualmente' }, { status: 400 });
   }
+  if (subtipo === 'INGRESO_PP') {
+    return NextResponse.json({ error: 'El Ingreso PP se registra solo, al guardar la producción en el módulo Producción' }, { status: 400 });
+  }
   const subtiposValidos = SUBTIPOS_POR_MOVIMIENTO[movimiento as 'INGRESO' | 'SALIDA'].map(s2 => s2.value);
   if (!subtiposValidos.includes(subtipo as never)) {
     return NextResponse.json({ error: 'Subtipo no corresponde al movimiento seleccionado' }, { status: 400 });

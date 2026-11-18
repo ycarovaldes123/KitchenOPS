@@ -52,7 +52,8 @@ export default function IngresosSalidasTab({ maestros }: { maestros: Maestros })
   const respActual = maestros.responsables.find(r => r.id === responsableId);
   const puedeGuardar = Boolean(responsableId && observacion.trim() && subtipo);
 
-  const subtiposDisponibles = SUBTIPOS_POR_MOVIMIENTO[movimiento];
+  // Ingreso PP ya no se digita: se genera solo desde Producción.
+  const subtiposDisponibles = SUBTIPOS_POR_MOVIMIENTO[movimiento].filter(s => s.value !== 'INGRESO_PP');
 
   function cambiarMovimiento(value: TipoMovimientoCarnico) {
     setMovimiento(value);

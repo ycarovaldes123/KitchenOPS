@@ -4,6 +4,7 @@ import { createClient } from '@/utils/supabase/server';
 import { requireRol, getSessionRol } from '@/lib/auth-server';
 import { calcTotalPP, calcCostoProduccionPP } from '@/lib/calculos';
 import { puedeHacer } from '@/lib/permissions';
+import { sincronizarIngresoPPDeProduccion, eliminarIngresoPPDeProduccion } from '@/lib/carnicos-ingreso-pp.server';
 
 export async function GET(req: NextRequest) {
   const s = await getSessionRol();
@@ -128,6 +129,9 @@ export async function POST(req: NextRequest) {
       .insert(rendimientoValido.map(r => ({ ...r, produccion_id: prod.id })));
     if (rErr) return NextResponse.json({ error: rErr.message }, { status: 500 });
   }
+
+  // Control Cárnicos: Ingreso PP automático (fecha de la producción → mes que corresponde).
+  await sincronizarIngresoPPDeProduccion(supabase, prod.id);
 
   // Piloto Alertas: analiza el registro recién creado y avisa por correo si tiene alertas.
   // Corre después de responder; no afecta el guardado (ver lib/alertas/notificar.ts).
@@ -348,6 +352,9 @@ export async function PATCH(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // Mantiene el Ingreso PP de Cárnicos igual a la producción editada (cantidades, líneas, fecha).
+  await sincronizarIngresoPPDeProduccion(supabase, produccion_id);
+
   return NextResponse.json({ ok: true });
 }
 
@@ -361,5 +368,6 @@ export async function DELETE(req: NextRequest) {
 
   const { error } = await supabase.from('produccion').delete().eq('id', produccion_id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  await eliminarIngresoPPDeProduccion(supabase, produccion_id);
   return NextResponse.json({ ok: true });
 }
