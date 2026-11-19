@@ -12,3 +12,9 @@ export const UBICACIONES_INVENTARIO = [
 ] as const;
 
 export type UbicacionInventario = typeof UBICACIONES_INVENTARIO[number];
+
+// Normaliza el nombre de ubicación; "CAMARA BRYAN" (nombre antiguo) se guarda como "BODEGA CENTRAL".
+export function normalizarUbicacion(valor: unknown): string {
+  const u = String(valor ?? '').trim().toUpperCase();
+  return /^C[AÁ]MARA\s+BRYAN$/.test(u) ? 'BODEGA CENTRAL' : u;
+}

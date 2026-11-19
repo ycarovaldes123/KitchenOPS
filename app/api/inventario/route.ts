@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { requireRol, getSessionRol } from '@/lib/auth-server';
+import { normalizarUbicacion } from '@/lib/inventario';
 
 function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -63,7 +64,7 @@ export async function POST(req: NextRequest) {
     .map(row => {
       const cantidad = cantidadPayload(row.cantidad);
       return {
-        ubicacion: String(row.ubicacion || '').trim().toUpperCase(),
+        ubicacion: normalizarUbicacion(row.ubicacion),
         codigo_producto: String(row.codigo_producto || '').trim() || null,
         nombre_producto: String(row.nombre_producto || '').trim() || null,
         cantidad,
@@ -140,7 +141,7 @@ export async function PATCH(req: NextRequest) {
     const { error } = await supabase
       .from('detalle_inventario')
       .update({
-        ubicacion: String(row.ubicacion || '').trim().toUpperCase(),
+        ubicacion: normalizarUbicacion(row.ubicacion),
         cantidad,
         updated_at: new Date().toISOString(),
         updated_by: s.email,
@@ -158,7 +159,7 @@ export async function PATCH(req: NextRequest) {
         const cantidad = cantidadPayload(row.cantidad);
         return {
           inventario_id,
-          ubicacion: String(row.ubicacion || '').trim().toUpperCase(),
+          ubicacion: normalizarUbicacion(row.ubicacion),
           codigo_producto: String(row.codigo_producto || '').trim() || null,
           nombre_producto: String(row.nombre_producto || '').trim() || null,
           cantidad,
