@@ -1724,7 +1724,7 @@ function TablaInventario({ datos, isAdmin, onRefresh, productos, porDia, busqued
   );
 }
 
-const UBICACIONES_INVENTARIO = ['CAMARA CONGELADOS', 'CAMARA MANTENCION', 'BODEGA SECA', 'SALAD BAR', 'DESPACHO', 'COCINA', 'MUEBLE DE ASEO', 'VITRINA', 'CAMARA BRYAN', 'BODEGA PASTELERIA'];
+const UBICACIONES_INVENTARIO = ['CAMARA CONGELADOS', 'CAMARA MANTENCION', 'BODEGA SECA', 'SALAD BAR', 'DESPACHO', 'COCINA', 'MUEBLE DE ASEO', 'VITRINA', 'BODEGA CENTRAL', 'BODEGA PASTELERIA'];
 
 function MotivoChip({ motivo, extra = 0 }: { motivo: string; extra?: number }) {
   const color = MOTIVO_COLOR[motivo] ?? '#6B7280';

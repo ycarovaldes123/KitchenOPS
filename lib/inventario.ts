@@ -7,7 +7,7 @@ export const UBICACIONES_INVENTARIO = [
   'COCINA',
   'MUEBLE DE ASEO',
   'VITRINA',
-  'CAMARA BRYAN',
+  'BODEGA CENTRAL',
   'BODEGA PASTELERIA',
 ] as const;
 
