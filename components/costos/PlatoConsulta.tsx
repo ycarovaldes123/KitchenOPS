@@ -100,6 +100,29 @@ function PrecioEditable({ precio, onGuardar }: { precio: number | null; onGuarda
 export default function PlatoConsulta({ plato, onEdit, onCopy, onToggleActivo, cambiandoEstado = false, onEliminar, onGuardarPrecio }: Props) {
   const ings = plato.carta_ingredientes ?? [];
   const sem = SEMAFORO[plato.semaforo];
+  const [generandoPdf, setGenerandoPdf] = useState(false);
+
+  async function descargarFicha() {
+    if (generandoPdf) return;
+    setGenerandoPdf(true);
+    try {
+      const { descargarFichaPlatoPdf } = await import('@/lib/ficha-plato-pdf');
+      await descargarFichaPlatoPdf({
+        nombre: plato.nombre,
+        categoria: plato.categoria,
+        carta: NOMBRE_CARTA[plato.tipo_carta ?? 'ANTIGUA'],
+        cod_softland: plato.cod_softland ?? null,
+        codigo_toteat: plato.codigo_toteat ?? null,
+        foto_url: plato.foto_url,
+        ingredientes: ings,
+        costo_neto: plato.costo_neto,
+      });
+    } catch {
+      window.alert('No se pudo generar el PDF. Intenta nuevamente.');
+    } finally {
+      setGenerandoPdf(false);
+    }
+  }
 
   return (
     <div className="ck-side__scroll">
@@ -147,6 +170,9 @@ export default function PlatoConsulta({ plato, onEdit, onCopy, onToggleActivo, c
               <NavIcon name="trash" size={15} /> Eliminar
             </button>
           )}
+          <button type="button" className="ck-btn" onClick={() => void descargarFicha()} disabled={generandoPdf} title="Descargar ficha del plato en PDF (foto e ingredientes)">
+            <NavIcon name="download" size={15} /> {generandoPdf ? 'Generando...' : 'Ficha PDF'}
+          </button>
           <span style={{ flex: 1 }} />
           <Semaforo color={plato.semaforo} margen={plato.margen_pct} />
         </div>
